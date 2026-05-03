@@ -1,11 +1,17 @@
 import { useEffect } from "react";
 import { useRoute, useLocation } from "wouter";
-import { useGetGuestOrder } from "@workspace/api-client-react";
+import {
+  useGetGuestOrder,
+  useCancelOwnOrder,
+  getGetGuestOrderQueryKey,
+} from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/currency";
-import { Loader2, CheckCircle2, ChefHat, Clock, AlertTriangle, ArrowLeft } from "lucide-react";
+import { Loader2, CheckCircle2, ChefHat, Clock, AlertTriangle, ArrowLeft, XCircle, Lock } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useActiveOrder } from "@/hooks/use-active-order";
+import { toast } from "sonner";
 
 const STATUS_CONFIG = {
   new: { icon: Clock, color: "text-blue-500", bg: "bg-blue-500/10", label: "Eingegangen", sub: "Received" },
@@ -146,6 +152,9 @@ export default function OrderStatus() {
             <span>Gesamt / Total</span>
             <span className="text-primary">{formatCurrency(order.total, order.currency)}</span>
           </div>
+          {(order.editable || order.status === "new" || order.status === "accepted") && (
+            <CancelRow id={order.id} editable={order.editable} token={token} />
+          )}
           {order.guestNote && (
             <div className="p-4 bg-amber-500/5 border-t border-amber-500/10 text-sm">
               <span className="font-medium text-amber-700 dark:text-amber-500">Notiz: </span>
@@ -154,6 +163,40 @@ export default function OrderStatus() {
           )}
         </div>
       </main>
+    </div>
+  );
+}
+
+function CancelRow({ id, editable, token }: { id: string; editable: boolean; token: string }) {
+  const cancel = useCancelOwnOrder();
+  const qc = useQueryClient();
+  const onCancel = async () => {
+    try {
+      await cancel.mutateAsync({ id });
+      toast.success("Bestellung storniert / Order cancelled");
+      await qc.invalidateQueries({ queryKey: getGetGuestOrderQueryKey(id, { token }) });
+    } catch (e) {
+      console.error(e);
+      toast.error("Stornierung fehlgeschlagen — Frist abgelaufen?");
+    }
+  };
+  return (
+    <div className="p-4 border-t border-border flex items-center justify-end">
+      {editable ? (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onCancel}
+          disabled={cancel.isPending}
+          className="gap-1"
+        >
+          <XCircle className="w-4 h-4" /> Bestellung stornieren / Cancel
+        </Button>
+      ) : (
+        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+          <Lock className="w-3 h-3" /> nicht mehr änderbar (08:00-Frist)
+        </span>
+      )}
     </div>
   );
 }

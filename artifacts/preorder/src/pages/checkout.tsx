@@ -1,6 +1,11 @@
-import { useState } from "react";
-import { useRoute, useLocation } from "wouter";
-import { useGetPublishedMenu, useCreateGuestOrder } from "@workspace/api-client-react";
+import { useState, useMemo } from "react";
+import { Link, useRoute, useLocation } from "wouter";
+import { SignedIn, SignedOut, RedirectToSignIn, useUser } from "@clerk/clerk-react";
+import {
+  useGetPublishedMenu,
+  useCreateGuestOrder,
+  useGetCustomerProfile,
+} from "@workspace/api-client-react";
 import { useCart } from "@/hooks/use-cart";
 import { useActiveOrder } from "@/hooks/use-active-order";
 import { Button } from "@/components/ui/button";
@@ -8,20 +13,45 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { formatCurrency } from "@/lib/currency";
-import { ChevronLeft, ArrowRight, Loader2 } from "lucide-react";
+import { ChevronLeft, ArrowRight, Loader2, Lock } from "lucide-react";
 import { toast } from "sonner";
 
-export default function Checkout() {
+function defaultWantedFor(): string {
+  // Today (Europe/Berlin) if before 08:00, otherwise tomorrow.
+  const tz = "Europe/Berlin";
+  const now = new Date();
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const hour = Number(
+    new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", hour12: false }).format(now),
+  );
+  if (hour < 8) return fmt.format(now);
+  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  return fmt.format(tomorrow);
+}
+
+function CheckoutInner() {
   const [, params] = useRoute("/checkout/:locationCode");
   const locationCode = params?.locationCode || "";
   const [, setLocation] = useLocation();
+  const { user } = useUser();
   const { data: menu } = useGetPublishedMenu(locationCode, { query: { enabled: !!locationCode, queryKey: [`/api/preorder/menu/${locationCode}`] } });
-  
+  const { data: profile, isLoading: profileLoading } = useGetCustomerProfile();
+
   const { items, total, clearCart } = useCart();
   const [, setActiveOrder] = useActiveOrder();
-  
-  const [guestName, setGuestName] = useState("");
+
+  const initialName = useMemo(
+    () => [user?.firstName, user?.lastName].filter(Boolean).join(" ") || user?.username || "",
+    [user],
+  );
+  const [guestName, setGuestName] = useState(initialName);
   const [guestNote, setGuestNote] = useState("");
+  const [wantedFor, setWantedFor] = useState<string>(defaultWantedFor());
 
   const createOrder = useCreateGuestOrder();
 
@@ -44,6 +74,7 @@ export default function Checkout() {
           locationCode,
           guestName: guestName.trim(),
           guestNote: guestNote.trim() || null,
+          wantedFor,
           items: items.map(i => ({ dishId: i.dishId, name: i.name, qty: i.qty, price: i.price }))
         }
       });
@@ -60,10 +91,42 @@ export default function Checkout() {
         toast.error("Kein Access Token erhalten / No access token received");
       }
     } catch (error) {
-      toast.error("Fehler bei der Bestellung / Error placing order");
+      const msg = (error as { info?: { error?: string } })?.info?.error;
+      toast.error(msg || "Fehler bei der Bestellung / Error placing order");
       console.error(error);
     }
   };
+
+  if (profileLoading) {
+    return (
+      <div className="min-h-[100dvh] flex items-center justify-center bg-background">
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (profile && profile.accountType !== "business_approved") {
+    return (
+      <div className="min-h-[100dvh] bg-background flex flex-col items-center justify-center p-6 text-center">
+        <Lock className="w-14 h-14 text-amber-500 mb-4" />
+        <h2 className="text-2xl mb-2">Geschäftskonto erforderlich</h2>
+        <p className="text-muted-foreground mb-1 max-w-sm">
+          Vorbestellungen sind nur für freigeschaltete Geschäftskunden möglich.
+        </p>
+        <p className="text-sm text-muted-foreground mb-6 max-w-sm">
+          Pre-orders are limited to approved business accounts.
+        </p>
+        <div className="flex gap-3">
+          <Link href="/profile">
+            <Button>Status / Antrag</Button>
+          </Link>
+          <Button variant="outline" onClick={() => setLocation(`/menu/${locationCode}`)}>
+            Zurück zur Karte
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[100dvh] bg-background flex flex-col pb-safe">
@@ -120,6 +183,23 @@ export default function Checkout() {
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="wantedFor" className="text-base">
+                Für welchen Tag? <span className="text-sm font-normal text-muted-foreground">/ For which day?</span>
+              </Label>
+              <Input
+                id="wantedFor"
+                type="date"
+                value={wantedFor}
+                onChange={(e) => setWantedFor(e.target.value)}
+                min={new Date().toISOString().slice(0, 10)}
+                className="text-lg py-6"
+              />
+              <p className="text-xs text-muted-foreground">
+                Änderungen sind nur bis 08:00 (Europe/Berlin) am gewählten Tag möglich.
+              </p>
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="guestNote" className="text-base flex justify-between">
                 <span>Anmerkung <span className="text-sm font-normal text-muted-foreground ml-1">/ Note</span></span>
                 <span className="text-sm text-muted-foreground font-normal">Optional</span>
@@ -164,5 +244,18 @@ export default function Checkout() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function Checkout() {
+  return (
+    <>
+      <SignedOut>
+        <RedirectToSignIn />
+      </SignedOut>
+      <SignedIn>
+        <CheckoutInner />
+      </SignedIn>
+    </>
   );
 }

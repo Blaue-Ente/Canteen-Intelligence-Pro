@@ -48,6 +48,8 @@ function RootLayoutNav() {
       <Stack.Screen name="sales" options={{ title: "Tagesabschluss" }} />
       <Stack.Screen name="zettle" options={{ title: "Zettle" }} />
       <Stack.Screen name="orders" options={{ title: "Bestellungen" }} />
+      <Stack.Screen name="customers" options={{ title: "Kunden" }} />
+      <Stack.Screen name="aggregate" options={{ title: "Tagesübersicht" }} />
       <Stack.Screen name="inventur" options={{ title: "Inventur" }} />
       <Stack.Screen name="dienstplan" options={{ title: "Dienstplan" }} />
       <Stack.Screen name="recipe/[id]" options={{ title: "Rezept" }} />

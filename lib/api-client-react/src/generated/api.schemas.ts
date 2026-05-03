@@ -186,12 +186,21 @@ export interface GuestOrder {
   guestName: string;
   /** @nullable */
   guestNote?: string | null;
+  /** @nullable */
+  customerId?: string | null;
+  /**
+   * ISO date YYYY-MM-DD when the order is wanted for.
+   * @nullable
+   */
+  wantedFor?: string | null;
   items: OrderItem[];
   total: number;
   currency: string;
   status: GuestOrderStatus;
   /** @nullable */
   accessToken?: string | null;
+  /** True if the order can still be edited or cancelled (before 08:00 Europe/Berlin of wantedFor). */
+  editable: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -201,11 +210,98 @@ export interface CreateOrderBody {
   guestName: string;
   /** @nullable */
   guestNote?: string | null;
+  /**
+   * ISO date YYYY-MM-DD; defaults to today.
+   * @nullable
+   */
+  wantedFor?: string | null;
   items: OrderItem[];
 }
 
 export interface UpdateOrderStatusBody {
   status: GuestOrderStatus;
+}
+
+export interface UpdateOrderItemsBody {
+  items: OrderItem[];
+  /** @nullable */
+  guestNote?: string | null;
+}
+
+export type CustomerAccountType =
+  (typeof CustomerAccountType)[keyof typeof CustomerAccountType];
+
+export const CustomerAccountType = {
+  regular: "regular",
+  business_pending: "business_pending",
+  business_approved: "business_approved",
+  rejected: "rejected",
+} as const;
+
+export interface CustomerProfile {
+  clerkUserId: string;
+  displayName: string;
+  /** @nullable */
+  email?: string | null;
+  /** @nullable */
+  homeLocationCode?: string | null;
+  accountType: CustomerAccountType;
+  /** @nullable */
+  ownerOrgId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpsertCustomerProfileBody {
+  displayName: string;
+  /** @nullable */
+  email?: string | null;
+  /** @nullable */
+  homeLocationCode?: string | null;
+  /** If true, sets accountType to business_pending (only valid from regular). */
+  requestBusiness?: boolean;
+}
+
+export type DecideCustomerBodyDecision =
+  (typeof DecideCustomerBodyDecision)[keyof typeof DecideCustomerBodyDecision];
+
+export const DecideCustomerBodyDecision = {
+  approve: "approve",
+  reject: "reject",
+} as const;
+
+export interface DecideCustomerBody {
+  decision: DecideCustomerBodyDecision;
+}
+
+export type OrderAggregateLineItemsItem = {
+  dishId: string;
+  name: string;
+  qty: number;
+};
+
+export interface OrderAggregateLine {
+  customerName: string;
+  /** @nullable */
+  customerId?: string | null;
+  items: OrderAggregateLineItemsItem[];
+  total: number;
+  orderIds: string[];
+}
+
+export type OrderAggregateResponseTotalsByDishItem = {
+  dishId: string;
+  name: string;
+  qty: number;
+};
+
+export interface OrderAggregateResponse {
+  date: string;
+  locationCode: string;
+  currency: string;
+  totalsByDish: OrderAggregateResponseTotalsByDishItem[];
+  byCustomer: OrderAggregateLine[];
+  grandTotal: number;
 }
 
 export type GetGuestOrderParams = {
@@ -223,4 +319,16 @@ export type GetLocationRollupParams = {
 
 export type ListStaffOrdersParams = {
   locationCode: string;
+};
+
+export type GetStaffOrdersAggregateParams = {
+  locationCode: string;
+  /**
+   * ISO date YYYY-MM-DD (Europe/Berlin); defaults to today.
+   */
+  date?: string;
+};
+
+export type ListStaffCustomersParams = {
+  status?: CustomerAccountType;
 };

@@ -14,12 +14,21 @@ export interface GuestOrder {
   guestName: string;
   /** @nullable */
   guestNote?: string | null;
+  /** @nullable */
+  customerId?: string | null;
+  /**
+   * ISO date YYYY-MM-DD when the order is wanted for.
+   * @nullable
+   */
+  wantedFor?: string | null;
   items: OrderItem[];
   total: number;
   currency: string;
   status: GuestOrderStatus;
   /** @nullable */
   accessToken?: string | null;
+  /** True if the order can still be edited or cancelled (before 08:00 Europe/Berlin of wantedFor). */
+  editable: boolean;
   createdAt: string;
   updatedAt: string;
 }

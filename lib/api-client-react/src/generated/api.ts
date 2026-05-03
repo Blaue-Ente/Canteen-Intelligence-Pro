@@ -19,19 +19,26 @@ import type {
 import type {
   CreateFeedbackBody,
   CreateOrderBody,
+  CustomerProfile,
+  DecideCustomerBody,
   ErrorResponse,
   FeedbackSummary,
   GetGuestOrderParams,
   GetLocationRollupParams,
+  GetStaffOrdersAggregateParams,
   GuestFeedback,
   GuestOrder,
   HealthStatus,
+  ListStaffCustomersParams,
   ListStaffFeedbackParams,
   ListStaffOrdersParams,
   LocationRollup,
+  OrderAggregateResponse,
   PublishMenuBody,
   PublishedMenu,
+  UpdateOrderItemsBody,
   UpdateOrderStatusBody,
+  UpsertCustomerProfileBody,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -949,3 +956,704 @@ export function useListStaffOrders<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Staff aggregate of orders by customer for a given day.
+ */
+export const getGetStaffOrdersAggregateUrl = (
+  params: GetStaffOrdersAggregateParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/preorder/staff/orders/aggregate?${stringifiedParams}`
+    : `/api/preorder/staff/orders/aggregate`;
+};
+
+export const getStaffOrdersAggregate = async (
+  params: GetStaffOrdersAggregateParams,
+  options?: RequestInit,
+): Promise<OrderAggregateResponse> => {
+  return customFetch<OrderAggregateResponse>(
+    getGetStaffOrdersAggregateUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetStaffOrdersAggregateQueryKey = (
+  params?: GetStaffOrdersAggregateParams,
+) => {
+  return [
+    `/api/preorder/staff/orders/aggregate`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetStaffOrdersAggregateQueryOptions = <
+  TData = Awaited<ReturnType<typeof getStaffOrdersAggregate>>,
+  TError = ErrorType<unknown>,
+>(
+  params: GetStaffOrdersAggregateParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getStaffOrdersAggregate>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetStaffOrdersAggregateQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getStaffOrdersAggregate>>
+  > = ({ signal }) =>
+    getStaffOrdersAggregate(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getStaffOrdersAggregate>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetStaffOrdersAggregateQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getStaffOrdersAggregate>>
+>;
+export type GetStaffOrdersAggregateQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Staff aggregate of orders by customer for a given day.
+ */
+
+export function useGetStaffOrdersAggregate<
+  TData = Awaited<ReturnType<typeof getStaffOrdersAggregate>>,
+  TError = ErrorType<unknown>,
+>(
+  params: GetStaffOrdersAggregateParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getStaffOrdersAggregate>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetStaffOrdersAggregateQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get the authenticated customer's profile (creates a default 'regular' profile if missing).
+ */
+export const getGetCustomerProfileUrl = () => {
+  return `/api/preorder/customer/me`;
+};
+
+export const getCustomerProfile = async (
+  options?: RequestInit,
+): Promise<CustomerProfile> => {
+  return customFetch<CustomerProfile>(getGetCustomerProfileUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetCustomerProfileQueryKey = () => {
+  return [`/api/preorder/customer/me`] as const;
+};
+
+export const getGetCustomerProfileQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCustomerProfile>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getCustomerProfile>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetCustomerProfileQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCustomerProfile>>
+  > = ({ signal }) => getCustomerProfile({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCustomerProfile>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCustomerProfileQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCustomerProfile>>
+>;
+export type GetCustomerProfileQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get the authenticated customer's profile (creates a default 'regular' profile if missing).
+ */
+
+export function useGetCustomerProfile<
+  TData = Awaited<ReturnType<typeof getCustomerProfile>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getCustomerProfile>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCustomerProfileQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update profile and optionally request business approval.
+ */
+export const getUpsertCustomerProfileUrl = () => {
+  return `/api/preorder/customer/me`;
+};
+
+export const upsertCustomerProfile = async (
+  upsertCustomerProfileBody: UpsertCustomerProfileBody,
+  options?: RequestInit,
+): Promise<CustomerProfile> => {
+  return customFetch<CustomerProfile>(getUpsertCustomerProfileUrl(), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(upsertCustomerProfileBody),
+  });
+};
+
+export const getUpsertCustomerProfileMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof upsertCustomerProfile>>,
+    TError,
+    { data: BodyType<UpsertCustomerProfileBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof upsertCustomerProfile>>,
+  TError,
+  { data: BodyType<UpsertCustomerProfileBody> },
+  TContext
+> => {
+  const mutationKey = ["upsertCustomerProfile"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof upsertCustomerProfile>>,
+    { data: BodyType<UpsertCustomerProfileBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return upsertCustomerProfile(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpsertCustomerProfileMutationResult = NonNullable<
+  Awaited<ReturnType<typeof upsertCustomerProfile>>
+>;
+export type UpsertCustomerProfileMutationBody =
+  BodyType<UpsertCustomerProfileBody>;
+export type UpsertCustomerProfileMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update profile and optionally request business approval.
+ */
+export const useUpsertCustomerProfile = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof upsertCustomerProfile>>,
+    TError,
+    { data: BodyType<UpsertCustomerProfileBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof upsertCustomerProfile>>,
+  TError,
+  { data: BodyType<UpsertCustomerProfileBody> },
+  TContext
+> => {
+  return useMutation(getUpsertCustomerProfileMutationOptions(options));
+};
+
+/**
+ * @summary List the authenticated customer's recent orders.
+ */
+export const getListCustomerOrdersUrl = () => {
+  return `/api/preorder/customer/orders`;
+};
+
+export const listCustomerOrders = async (
+  options?: RequestInit,
+): Promise<GuestOrder[]> => {
+  return customFetch<GuestOrder[]>(getListCustomerOrdersUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListCustomerOrdersQueryKey = () => {
+  return [`/api/preorder/customer/orders`] as const;
+};
+
+export const getListCustomerOrdersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCustomerOrders>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listCustomerOrders>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListCustomerOrdersQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listCustomerOrders>>
+  > = ({ signal }) => listCustomerOrders({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCustomerOrders>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCustomerOrdersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCustomerOrders>>
+>;
+export type ListCustomerOrdersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List the authenticated customer's recent orders.
+ */
+
+export function useListCustomerOrders<
+  TData = Awaited<ReturnType<typeof listCustomerOrders>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listCustomerOrders>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCustomerOrdersQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Customer edits the items / note of their own order before the daily 08:00 cutoff.
+ */
+export const getUpdateOrderItemsUrl = (id: string) => {
+  return `/api/preorder/orders/${id}/items`;
+};
+
+export const updateOrderItems = async (
+  id: string,
+  updateOrderItemsBody: UpdateOrderItemsBody,
+  options?: RequestInit,
+): Promise<GuestOrder> => {
+  return customFetch<GuestOrder>(getUpdateOrderItemsUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateOrderItemsBody),
+  });
+};
+
+export const getUpdateOrderItemsMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateOrderItems>>,
+    TError,
+    { id: string; data: BodyType<UpdateOrderItemsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateOrderItems>>,
+  TError,
+  { id: string; data: BodyType<UpdateOrderItemsBody> },
+  TContext
+> => {
+  const mutationKey = ["updateOrderItems"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateOrderItems>>,
+    { id: string; data: BodyType<UpdateOrderItemsBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateOrderItems(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateOrderItemsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateOrderItems>>
+>;
+export type UpdateOrderItemsMutationBody = BodyType<UpdateOrderItemsBody>;
+export type UpdateOrderItemsMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Customer edits the items / note of their own order before the daily 08:00 cutoff.
+ */
+export const useUpdateOrderItems = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateOrderItems>>,
+    TError,
+    { id: string; data: BodyType<UpdateOrderItemsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateOrderItems>>,
+  TError,
+  { id: string; data: BodyType<UpdateOrderItemsBody> },
+  TContext
+> => {
+  return useMutation(getUpdateOrderItemsMutationOptions(options));
+};
+
+/**
+ * @summary Customer cancels their own order before the daily 08:00 cutoff.
+ */
+export const getCancelOwnOrderUrl = (id: string) => {
+  return `/api/preorder/orders/${id}/cancel`;
+};
+
+export const cancelOwnOrder = async (
+  id: string,
+  options?: RequestInit,
+): Promise<GuestOrder> => {
+  return customFetch<GuestOrder>(getCancelOwnOrderUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getCancelOwnOrderMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof cancelOwnOrder>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof cancelOwnOrder>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["cancelOwnOrder"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof cancelOwnOrder>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return cancelOwnOrder(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CancelOwnOrderMutationResult = NonNullable<
+  Awaited<ReturnType<typeof cancelOwnOrder>>
+>;
+
+export type CancelOwnOrderMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Customer cancels their own order before the daily 08:00 cutoff.
+ */
+export const useCancelOwnOrder = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof cancelOwnOrder>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof cancelOwnOrder>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getCancelOwnOrderMutationOptions(options));
+};
+
+/**
+ * @summary Staff lists customer profiles bound to caller's locations, optionally filtered by status.
+ */
+export const getListStaffCustomersUrl = (params?: ListStaffCustomersParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/preorder/staff/customers?${stringifiedParams}`
+    : `/api/preorder/staff/customers`;
+};
+
+export const listStaffCustomers = async (
+  params?: ListStaffCustomersParams,
+  options?: RequestInit,
+): Promise<CustomerProfile[]> => {
+  return customFetch<CustomerProfile[]>(getListStaffCustomersUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListStaffCustomersQueryKey = (
+  params?: ListStaffCustomersParams,
+) => {
+  return [
+    `/api/preorder/staff/customers`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListStaffCustomersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listStaffCustomers>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListStaffCustomersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listStaffCustomers>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListStaffCustomersQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listStaffCustomers>>
+  > = ({ signal }) => listStaffCustomers(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listStaffCustomers>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListStaffCustomersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listStaffCustomers>>
+>;
+export type ListStaffCustomersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Staff lists customer profiles bound to caller's locations, optionally filtered by status.
+ */
+
+export function useListStaffCustomers<
+  TData = Awaited<ReturnType<typeof listStaffCustomers>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListStaffCustomersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listStaffCustomers>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListStaffCustomersQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Staff approves or rejects a pending business customer request.
+ */
+export const getDecideStaffCustomerUrl = (clerkUserId: string) => {
+  return `/api/preorder/staff/customers/${clerkUserId}`;
+};
+
+export const decideStaffCustomer = async (
+  clerkUserId: string,
+  decideCustomerBody: DecideCustomerBody,
+  options?: RequestInit,
+): Promise<CustomerProfile> => {
+  return customFetch<CustomerProfile>(getDecideStaffCustomerUrl(clerkUserId), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(decideCustomerBody),
+  });
+};
+
+export const getDecideStaffCustomerMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof decideStaffCustomer>>,
+    TError,
+    { clerkUserId: string; data: BodyType<DecideCustomerBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof decideStaffCustomer>>,
+  TError,
+  { clerkUserId: string; data: BodyType<DecideCustomerBody> },
+  TContext
+> => {
+  const mutationKey = ["decideStaffCustomer"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof decideStaffCustomer>>,
+    { clerkUserId: string; data: BodyType<DecideCustomerBody> }
+  > = (props) => {
+    const { clerkUserId, data } = props ?? {};
+
+    return decideStaffCustomer(clerkUserId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DecideStaffCustomerMutationResult = NonNullable<
+  Awaited<ReturnType<typeof decideStaffCustomer>>
+>;
+export type DecideStaffCustomerMutationBody = BodyType<DecideCustomerBody>;
+export type DecideStaffCustomerMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Staff approves or rejects a pending business customer request.
+ */
+export const useDecideStaffCustomer = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof decideStaffCustomer>>,
+    TError,
+    { clerkUserId: string; data: BodyType<DecideCustomerBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof decideStaffCustomer>>,
+  TError,
+  { clerkUserId: string; data: BodyType<DecideCustomerBody> },
+  TContext
+> => {
+  return useMutation(getDecideStaffCustomerMutationOptions(options));
+};

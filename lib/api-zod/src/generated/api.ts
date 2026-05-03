@@ -124,6 +124,10 @@ export const CreateGuestOrderBody = zod.object({
   locationCode: zod.string(),
   guestName: zod.string(),
   guestNote: zod.string().nullish(),
+  wantedFor: zod
+    .string()
+    .nullish()
+    .describe("ISO date YYYY-MM-DD; defaults to today."),
   items: zod.array(
     zod.object({
       dishId: zod.string(),
@@ -150,6 +154,11 @@ export const GetGuestOrderResponse = zod.object({
   locationCode: zod.string(),
   guestName: zod.string(),
   guestNote: zod.string().nullish(),
+  customerId: zod.string().nullish(),
+  wantedFor: zod
+    .string()
+    .nullish()
+    .describe("ISO date YYYY-MM-DD when the order is wanted for."),
   items: zod.array(
     zod.object({
       dishId: zod.string(),
@@ -169,6 +178,11 @@ export const GetGuestOrderResponse = zod.object({
     "cancelled",
   ]),
   accessToken: zod.string().nullish(),
+  editable: zod
+    .boolean()
+    .describe(
+      "True if the order can still be edited or cancelled (before 08:00 Europe\/Berlin of wantedFor).",
+    ),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -196,6 +210,11 @@ export const UpdateOrderStatusResponse = zod.object({
   locationCode: zod.string(),
   guestName: zod.string(),
   guestNote: zod.string().nullish(),
+  customerId: zod.string().nullish(),
+  wantedFor: zod
+    .string()
+    .nullish()
+    .describe("ISO date YYYY-MM-DD when the order is wanted for."),
   items: zod.array(
     zod.object({
       dishId: zod.string(),
@@ -215,6 +234,11 @@ export const UpdateOrderStatusResponse = zod.object({
     "cancelled",
   ]),
   accessToken: zod.string().nullish(),
+  editable: zod
+    .boolean()
+    .describe(
+      "True if the order can still be edited or cancelled (before 08:00 Europe\/Berlin of wantedFor).",
+    ),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -376,6 +400,11 @@ export const ListStaffOrdersResponseItem = zod.object({
   locationCode: zod.string(),
   guestName: zod.string(),
   guestNote: zod.string().nullish(),
+  customerId: zod.string().nullish(),
+  wantedFor: zod
+    .string()
+    .nullish()
+    .describe("ISO date YYYY-MM-DD when the order is wanted for."),
   items: zod.array(
     zod.object({
       dishId: zod.string(),
@@ -395,7 +424,303 @@ export const ListStaffOrdersResponseItem = zod.object({
     "cancelled",
   ]),
   accessToken: zod.string().nullish(),
+  editable: zod
+    .boolean()
+    .describe(
+      "True if the order can still be edited or cancelled (before 08:00 Europe\/Berlin of wantedFor).",
+    ),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
 export const ListStaffOrdersResponse = zod.array(ListStaffOrdersResponseItem);
+
+/**
+ * @summary Staff aggregate of orders by customer for a given day.
+ */
+export const GetStaffOrdersAggregateQueryParams = zod.object({
+  locationCode: zod.coerce.string(),
+  date: zod.coerce
+    .string()
+    .optional()
+    .describe("ISO date YYYY-MM-DD (Europe\/Berlin); defaults to today."),
+});
+
+export const GetStaffOrdersAggregateResponse = zod.object({
+  date: zod.string(),
+  locationCode: zod.string(),
+  currency: zod.string(),
+  totalsByDish: zod.array(
+    zod.object({
+      dishId: zod.string(),
+      name: zod.string(),
+      qty: zod.number(),
+    }),
+  ),
+  byCustomer: zod.array(
+    zod.object({
+      customerName: zod.string(),
+      customerId: zod.string().nullish(),
+      items: zod.array(
+        zod.object({
+          dishId: zod.string(),
+          name: zod.string(),
+          qty: zod.number(),
+        }),
+      ),
+      total: zod.number(),
+      orderIds: zod.array(zod.string()),
+    }),
+  ),
+  grandTotal: zod.number(),
+});
+
+/**
+ * @summary Get the authenticated customer's profile (creates a default 'regular' profile if missing).
+ */
+export const GetCustomerProfileResponse = zod.object({
+  clerkUserId: zod.string(),
+  displayName: zod.string(),
+  email: zod.string().nullish(),
+  homeLocationCode: zod.string().nullish(),
+  accountType: zod.enum([
+    "regular",
+    "business_pending",
+    "business_approved",
+    "rejected",
+  ]),
+  ownerOrgId: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Update profile and optionally request business approval.
+ */
+export const UpsertCustomerProfileBody = zod.object({
+  displayName: zod.string(),
+  email: zod.string().nullish(),
+  homeLocationCode: zod.string().nullish(),
+  requestBusiness: zod
+    .boolean()
+    .optional()
+    .describe(
+      "If true, sets accountType to business_pending (only valid from regular).",
+    ),
+});
+
+export const UpsertCustomerProfileResponse = zod.object({
+  clerkUserId: zod.string(),
+  displayName: zod.string(),
+  email: zod.string().nullish(),
+  homeLocationCode: zod.string().nullish(),
+  accountType: zod.enum([
+    "regular",
+    "business_pending",
+    "business_approved",
+    "rejected",
+  ]),
+  ownerOrgId: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary List the authenticated customer's recent orders.
+ */
+export const ListCustomerOrdersResponseItem = zod.object({
+  id: zod.string(),
+  locationCode: zod.string(),
+  guestName: zod.string(),
+  guestNote: zod.string().nullish(),
+  customerId: zod.string().nullish(),
+  wantedFor: zod
+    .string()
+    .nullish()
+    .describe("ISO date YYYY-MM-DD when the order is wanted for."),
+  items: zod.array(
+    zod.object({
+      dishId: zod.string(),
+      name: zod.string(),
+      qty: zod.number(),
+      price: zod.number(),
+    }),
+  ),
+  total: zod.number(),
+  currency: zod.string(),
+  status: zod.enum([
+    "new",
+    "accepted",
+    "preparing",
+    "ready",
+    "served",
+    "cancelled",
+  ]),
+  accessToken: zod.string().nullish(),
+  editable: zod
+    .boolean()
+    .describe(
+      "True if the order can still be edited or cancelled (before 08:00 Europe\/Berlin of wantedFor).",
+    ),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListCustomerOrdersResponse = zod.array(
+  ListCustomerOrdersResponseItem,
+);
+
+/**
+ * @summary Customer edits the items / note of their own order before the daily 08:00 cutoff.
+ */
+export const UpdateOrderItemsParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const UpdateOrderItemsBody = zod.object({
+  items: zod.array(
+    zod.object({
+      dishId: zod.string(),
+      name: zod.string(),
+      qty: zod.number(),
+      price: zod.number(),
+    }),
+  ),
+  guestNote: zod.string().nullish(),
+});
+
+export const UpdateOrderItemsResponse = zod.object({
+  id: zod.string(),
+  locationCode: zod.string(),
+  guestName: zod.string(),
+  guestNote: zod.string().nullish(),
+  customerId: zod.string().nullish(),
+  wantedFor: zod
+    .string()
+    .nullish()
+    .describe("ISO date YYYY-MM-DD when the order is wanted for."),
+  items: zod.array(
+    zod.object({
+      dishId: zod.string(),
+      name: zod.string(),
+      qty: zod.number(),
+      price: zod.number(),
+    }),
+  ),
+  total: zod.number(),
+  currency: zod.string(),
+  status: zod.enum([
+    "new",
+    "accepted",
+    "preparing",
+    "ready",
+    "served",
+    "cancelled",
+  ]),
+  accessToken: zod.string().nullish(),
+  editable: zod
+    .boolean()
+    .describe(
+      "True if the order can still be edited or cancelled (before 08:00 Europe\/Berlin of wantedFor).",
+    ),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Customer cancels their own order before the daily 08:00 cutoff.
+ */
+export const CancelOwnOrderParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const CancelOwnOrderResponse = zod.object({
+  id: zod.string(),
+  locationCode: zod.string(),
+  guestName: zod.string(),
+  guestNote: zod.string().nullish(),
+  customerId: zod.string().nullish(),
+  wantedFor: zod
+    .string()
+    .nullish()
+    .describe("ISO date YYYY-MM-DD when the order is wanted for."),
+  items: zod.array(
+    zod.object({
+      dishId: zod.string(),
+      name: zod.string(),
+      qty: zod.number(),
+      price: zod.number(),
+    }),
+  ),
+  total: zod.number(),
+  currency: zod.string(),
+  status: zod.enum([
+    "new",
+    "accepted",
+    "preparing",
+    "ready",
+    "served",
+    "cancelled",
+  ]),
+  accessToken: zod.string().nullish(),
+  editable: zod
+    .boolean()
+    .describe(
+      "True if the order can still be edited or cancelled (before 08:00 Europe\/Berlin of wantedFor).",
+    ),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Staff lists customer profiles bound to caller's locations, optionally filtered by status.
+ */
+export const ListStaffCustomersQueryParams = zod.object({
+  status: zod
+    .enum(["regular", "business_pending", "business_approved", "rejected"])
+    .optional(),
+});
+
+export const ListStaffCustomersResponseItem = zod.object({
+  clerkUserId: zod.string(),
+  displayName: zod.string(),
+  email: zod.string().nullish(),
+  homeLocationCode: zod.string().nullish(),
+  accountType: zod.enum([
+    "regular",
+    "business_pending",
+    "business_approved",
+    "rejected",
+  ]),
+  ownerOrgId: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListStaffCustomersResponse = zod.array(
+  ListStaffCustomersResponseItem,
+);
+
+/**
+ * @summary Staff approves or rejects a pending business customer request.
+ */
+export const DecideStaffCustomerParams = zod.object({
+  clerkUserId: zod.coerce.string(),
+});
+
+export const DecideStaffCustomerBody = zod.object({
+  decision: zod.enum(["approve", "reject"]),
+});
+
+export const DecideStaffCustomerResponse = zod.object({
+  clerkUserId: zod.string(),
+  displayName: zod.string(),
+  email: zod.string().nullish(),
+  homeLocationCode: zod.string().nullish(),
+  accountType: zod.enum([
+    "regular",
+    "business_pending",
+    "business_approved",
+    "rejected",
+  ]),
+  ownerOrgId: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});

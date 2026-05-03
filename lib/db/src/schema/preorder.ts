@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, numeric, uuid, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb, numeric, uuid, integer, date } from "drizzle-orm/pg-core";
 
 export interface PreorderDishRow {
   id: string;
@@ -31,6 +31,8 @@ export const guestOrdersTable = pgTable("guest_orders", {
   id: uuid("id").primaryKey().defaultRandom(),
   locationCode: text("location_code").notNull(),
   ownerOrgId: text("owner_org_id").notNull(),
+  customerId: text("customer_id"),
+  wantedFor: date("wanted_for"),
   guestName: text("guest_name").notNull(),
   guestNote: text("guest_note"),
   items: jsonb("items").notNull().$type<
@@ -70,3 +72,21 @@ export const guestFeedbackTable = pgTable("guest_feedback", {
 });
 
 export type GuestFeedbackRow = typeof guestFeedbackTable.$inferSelect;
+
+export type CustomerAccountType = "regular" | "business_pending" | "business_approved" | "rejected";
+
+export const customerProfilesTable = pgTable("customer_profiles", {
+  clerkUserId: text("clerk_user_id").primaryKey(),
+  displayName: text("display_name").notNull(),
+  email: text("email"),
+  homeLocationCode: text("home_location_code"),
+  accountType: text("account_type").$type<CustomerAccountType>().notNull().default("regular"),
+  ownerOrgId: text("owner_org_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
+export type CustomerProfileRow = typeof customerProfilesTable.$inferSelect;

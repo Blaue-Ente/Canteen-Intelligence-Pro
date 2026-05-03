@@ -1,9 +1,11 @@
-import { useRoute, useLocation } from "wouter";
-import { useGetPublishedMenu, PreorderDish } from "@workspace/api-client-react";
+import { Link, useRoute, useLocation } from "wouter";
+import { SignedIn, SignedOut, useAuth } from "@clerk/clerk-react";
+import { useGetPublishedMenu, useGetCustomerProfile, PreorderDish } from "@workspace/api-client-react";
 import { useCart } from "@/hooks/use-cart";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/currency";
-import { Plus, Minus, ChevronRight, AlertCircle, Star, Leaf, Flame } from "lucide-react";
+import { Plus, Minus, ChevronRight, AlertCircle, Star, Leaf, Flame, LogIn, Lock, Clock4 } from "lucide-react";
+import { AuthNav } from "@/components/auth-nav";
 
 export default function Menu() {
   const [, params] = useRoute("/menu/:locationCode");
@@ -12,6 +14,12 @@ export default function Menu() {
   const { data: menu, isLoading, error } = useGetPublishedMenu(locationCode, { query: { enabled: !!locationCode, queryKey: [`/api/preorder/menu/${locationCode}`] } });
   
   const { items, addItem, removeItem, total, count } = useCart();
+  const { isSignedIn } = useAuth();
+  const { data: profile } = useGetCustomerProfile({
+    query: { enabled: !!isSignedIn, queryKey: ["/api/preorder/customer/me"] },
+  });
+  const canOrder = profile?.accountType === "business_approved";
+  const isPending = profile?.accountType === "business_pending";
 
   if (isLoading) {
     return (
@@ -38,11 +46,47 @@ export default function Menu() {
   return (
     <div className="min-h-[100dvh] pb-32 bg-background flex flex-col">
       <header className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border p-4 pt-8">
-        <div className="max-w-xl mx-auto">
-          <p className="text-sm font-medium text-primary uppercase tracking-wider mb-1">{locationCode}</p>
-          <h1 className="text-2xl">{menu.locationName}</h1>
-          <p className="text-sm text-muted-foreground font-serif italic mt-1">Speisekarte / Menu</p>
+        <div className="max-w-xl mx-auto flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-primary uppercase tracking-wider mb-1">{locationCode}</p>
+            <h1 className="text-2xl">{menu.locationName}</h1>
+            <p className="text-sm text-muted-foreground font-serif italic mt-1">Speisekarte / Menu</p>
+          </div>
+          <AuthNav />
         </div>
+        <SignedIn>
+          {!canOrder && (
+            <div className="max-w-xl mx-auto mt-3">
+              {isPending ? (
+                <div className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                  <Clock4 className="w-4 h-4" />
+                  <span>Geschäftskonto wird geprüft — Bestellungen sind bald freigeschaltet.</span>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-2 text-xs px-3 py-2 rounded-lg bg-secondary">
+                  <span className="flex items-center gap-2">
+                    <Lock className="w-4 h-4" />
+                    Bestellungen erfordern ein Geschäftskonto.
+                  </span>
+                  <Link href="/profile">
+                    <Button size="sm" variant="outline" className="h-7">Antrag stellen</Button>
+                  </Link>
+                </div>
+              )}
+            </div>
+          )}
+        </SignedIn>
+        <SignedOut>
+          <div className="max-w-xl mx-auto mt-3 flex items-center justify-between gap-2 text-xs px-3 py-2 rounded-lg bg-secondary">
+            <span className="flex items-center gap-2">
+              <LogIn className="w-4 h-4" />
+              Zum Bestellen anmelden — Bewerten geht auch ohne Konto.
+            </span>
+            <Link href="/sign-in">
+              <Button size="sm" variant="outline" className="h-7">Anmelden</Button>
+            </Link>
+          </div>
+        </SignedOut>
       </header>
 
       <main className="flex-1 max-w-xl w-full mx-auto p-4 space-y-6">
@@ -121,35 +165,41 @@ export default function Menu() {
                   </div>
 
                   <div className="mt-auto pt-3 flex items-center justify-end">
-                    {qty > 0 ? (
-                      <div className="flex items-center gap-3 bg-secondary rounded-full p-1">
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-8 w-8 rounded-full hover:bg-background hover:text-foreground"
-                          onClick={() => removeItem(dish.id)}
-                        >
-                          <Minus className="w-4 h-4" />
-                        </Button>
-                        <span className="w-6 text-center font-medium">{qty}</span>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-8 w-8 rounded-full hover:bg-background hover:text-foreground"
+                    {canOrder ? (
+                      qty > 0 ? (
+                        <div className="flex items-center gap-3 bg-secondary rounded-full p-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 rounded-full hover:bg-background hover:text-foreground"
+                            onClick={() => removeItem(dish.id)}
+                          >
+                            <Minus className="w-4 h-4" />
+                          </Button>
+                          <span className="w-6 text-center font-medium">{qty}</span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 rounded-full hover:bg-background hover:text-foreground"
+                            onClick={() => addItem(dish)}
+                          >
+                            <Plus className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="rounded-full px-4 font-medium"
                           onClick={() => addItem(dish)}
                         >
-                          <Plus className="w-4 h-4" />
+                          Hinzufügen <span className="opacity-50 font-normal ml-1 text-xs">/ Add</span>
                         </Button>
-                      </div>
+                      )
                     ) : (
-                      <Button 
-                        variant="secondary" 
-                        size="sm" 
-                        className="rounded-full px-4 font-medium"
-                        onClick={() => addItem(dish)}
-                      >
-                        Hinzufügen <span className="opacity-50 font-normal ml-1 text-xs">/ Add</span>
-                      </Button>
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                        <Lock className="w-3 h-3" /> nur für Geschäftskunden
+                      </span>
                     )}
                   </div>
                 </div>
@@ -171,7 +221,7 @@ export default function Menu() {
         </div>
       </main>
 
-      {count > 0 && (
+      {count > 0 && canOrder && (
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/95 backdrop-blur border-t border-border z-20">
           <div className="max-w-xl mx-auto">
             <Button 

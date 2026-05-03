@@ -7,15 +7,8 @@
  */
 import type { OrderItem } from "./orderItem";
 
-export interface CreateOrderBody {
-  locationCode: string;
-  guestName: string;
+export interface UpdateOrderItemsBody {
+  items: OrderItem[];
   /** @nullable */
   guestNote?: string | null;
-  /**
-   * ISO date YYYY-MM-DD; defaults to today.
-   * @nullable
-   */
-  wantedFor?: string | null;
-  items: OrderItem[];
 }

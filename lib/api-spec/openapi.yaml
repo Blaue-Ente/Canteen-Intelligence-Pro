@@ -248,6 +248,178 @@ paths:
                 items:
                   $ref: "#/components/schemas/GuestOrder"
 
+  /preorder/staff/orders/aggregate:
+    get:
+      operationId: getStaffOrdersAggregate
+      tags: [preorder]
+      summary: Staff aggregate of orders by customer for a given day.
+      parameters:
+        - in: query
+          name: locationCode
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: date
+          required: false
+          description: ISO date YYYY-MM-DD (Europe/Berlin); defaults to today.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Aggregate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderAggregateResponse"
+
+  /preorder/customer/me:
+    get:
+      operationId: getCustomerProfile
+      tags: [preorder]
+      summary: Get the authenticated customer's profile (creates a default 'regular' profile if missing).
+      responses:
+        "200":
+          description: Profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerProfile"
+    patch:
+      operationId: upsertCustomerProfile
+      tags: [preorder]
+      summary: Update profile and optionally request business approval.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertCustomerProfileBody"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerProfile"
+
+  /preorder/customer/orders:
+    get:
+      operationId: listCustomerOrders
+      tags: [preorder]
+      summary: List the authenticated customer's recent orders.
+      responses:
+        "200":
+          description: Orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GuestOrder"
+
+  /preorder/orders/{id}/items:
+    patch:
+      operationId: updateOrderItems
+      tags: [preorder]
+      summary: Customer edits the items / note of their own order before the daily 08:00 cutoff.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrderItemsBody"
+      responses:
+        "200":
+          description: Updated order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestOrder"
+        "409":
+          description: Past cutoff
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /preorder/orders/{id}/cancel:
+    post:
+      operationId: cancelOwnOrder
+      tags: [preorder]
+      summary: Customer cancels their own order before the daily 08:00 cutoff.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestOrder"
+        "409":
+          description: Past cutoff
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /preorder/staff/customers:
+    get:
+      operationId: listStaffCustomers
+      tags: [preorder]
+      summary: Staff lists customer profiles bound to caller's locations, optionally filtered by status.
+      parameters:
+        - in: query
+          name: status
+          required: false
+          schema:
+            $ref: "#/components/schemas/CustomerAccountType"
+      responses:
+        "200":
+          description: Customers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CustomerProfile"
+
+  /preorder/staff/customers/{clerkUserId}:
+    patch:
+      operationId: decideStaffCustomer
+      tags: [preorder]
+      summary: Staff approves or rejects a pending business customer request.
+      parameters:
+        - in: path
+          name: clerkUserId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DecideCustomerBody"
+      responses:
+        "200":
+          description: Updated customer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerProfile"
+
 components:
   schemas:
     HealthStatus:
@@ -491,6 +663,11 @@ components:
           type: string
         guestNote:
           type: ["string", "null"]
+        customerId:
+          type: ["string", "null"]
+        wantedFor:
+          type: ["string", "null"]
+          description: ISO date YYYY-MM-DD when the order is wanted for.
         items:
           type: array
           items:
@@ -503,11 +680,14 @@ components:
           $ref: "#/components/schemas/GuestOrderStatus"
         accessToken:
           type: ["string", "null"]
+        editable:
+          type: boolean
+          description: True if the order can still be edited or cancelled (before 08:00 Europe/Berlin of wantedFor).
         createdAt:
           type: string
         updatedAt:
           type: string
-      required: [id, locationCode, guestName, items, total, currency, status, createdAt, updatedAt]
+      required: [id, locationCode, guestName, items, total, currency, status, editable, createdAt, updatedAt]
 
     CreateOrderBody:
       type: object
@@ -518,6 +698,9 @@ components:
           type: string
         guestNote:
           type: ["string", "null"]
+        wantedFor:
+          type: ["string", "null"]
+          description: ISO date YYYY-MM-DD; defaults to today.
         items:
           type: array
           items:
@@ -530,3 +713,117 @@ components:
         status:
           $ref: "#/components/schemas/GuestOrderStatus"
       required: [status]
+
+    UpdateOrderItemsBody:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+        guestNote:
+          type: ["string", "null"]
+      required: [items]
+
+    CustomerAccountType:
+      type: string
+      enum: [regular, business_pending, business_approved, rejected]
+
+    CustomerProfile:
+      type: object
+      properties:
+        clerkUserId:
+          type: string
+        displayName:
+          type: string
+        email:
+          type: ["string", "null"]
+        homeLocationCode:
+          type: ["string", "null"]
+        accountType:
+          $ref: "#/components/schemas/CustomerAccountType"
+        ownerOrgId:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [clerkUserId, displayName, accountType, createdAt, updatedAt]
+
+    UpsertCustomerProfileBody:
+      type: object
+      properties:
+        displayName:
+          type: string
+        email:
+          type: ["string", "null"]
+        homeLocationCode:
+          type: ["string", "null"]
+        requestBusiness:
+          type: boolean
+          description: If true, sets accountType to business_pending (only valid from regular).
+      required: [displayName]
+
+    DecideCustomerBody:
+      type: object
+      properties:
+        decision:
+          type: string
+          enum: [approve, reject]
+      required: [decision]
+
+    OrderAggregateLine:
+      type: object
+      properties:
+        customerName:
+          type: string
+        customerId:
+          type: ["string", "null"]
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              dishId:
+                type: string
+              name:
+                type: string
+              qty:
+                type: integer
+            required: [dishId, name, qty]
+        total:
+          type: number
+        orderIds:
+          type: array
+          items:
+            type: string
+      required: [customerName, items, total, orderIds]
+
+    OrderAggregateResponse:
+      type: object
+      properties:
+        date:
+          type: string
+        locationCode:
+          type: string
+        currency:
+          type: string
+        totalsByDish:
+          type: array
+          items:
+            type: object
+            properties:
+              dishId:
+                type: string
+              name:
+                type: string
+              qty:
+                type: integer
+            required: [dishId, name, qty]
+        byCustomer:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderAggregateLine"
+        grandTotal:
+          type: number
+      required: [date, locationCode, currency, totalsByDish, byCustomer, grandTotal]
