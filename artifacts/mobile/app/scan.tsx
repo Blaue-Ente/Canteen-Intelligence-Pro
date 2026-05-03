@@ -255,7 +255,7 @@ export default function Scan() {
       };
       dispatch({ type: "addRecipe", recipe });
     });
-    router.replace("/(tabs)/index" as never);
+    router.replace("/(tabs)/menu");
   };
 
   const applyDishToRecipe = () => {
