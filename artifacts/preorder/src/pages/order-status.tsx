@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useRoute, useLocation } from "wouter";
+import { SignedIn } from "@clerk/clerk-react";
 import {
   useGetGuestOrder,
   useCancelOwnOrder,
@@ -153,7 +154,9 @@ export default function OrderStatus() {
             <span className="text-primary">{formatCurrency(order.total, order.currency)}</span>
           </div>
           {(order.editable || order.status === "new" || order.status === "accepted") && (
-            <CancelRow id={order.id} editable={order.editable} token={token} />
+            <SignedIn>
+              <CancelRow id={order.id} editable={order.editable} token={token} />
+            </SignedIn>
           )}
           {order.guestNote && (
             <div className="p-4 bg-amber-500/5 border-t border-amber-500/10 text-sm">

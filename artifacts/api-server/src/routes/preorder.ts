@@ -78,10 +78,23 @@ function cutoffInstantFor(dateISO: string): Date {
   return new Date(utcMs);
 }
 
+// Returns YYYY-MM-DD for the given instant in CUTOFF_TZ.
+function localDateForInstant(d: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: CUTOFF_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+function orderDayLocal(row: typeof guestOrdersTable.$inferSelect): string {
+  return (row.wantedFor as string | null) ?? localDateForInstant(row.createdAt);
+}
+
 function isOrderEditable(row: typeof guestOrdersTable.$inferSelect): boolean {
   if (row.status === "served" || row.status === "cancelled") return false;
-  const day = (row.wantedFor as string | null) ?? row.createdAt.toISOString().slice(0, 10);
-  return Date.now() < cutoffInstantFor(day).getTime();
+  return Date.now() < cutoffInstantFor(orderDayLocal(row)).getTime();
 }
 
 function serializeMenu(row: typeof publishedMenusTable.$inferSelect) {
@@ -721,10 +734,6 @@ router.get("/preorder/staff/customers", requireAuth, async (req: Request, res: R
     .from(publishedMenusTable)
     .where(inArray(publishedMenusTable.ownerOrgId, orgIds));
   const codes = locs.map((l) => l.code);
-  if (codes.length === 0) {
-    res.json([]);
-    return;
-  }
   const rows = await db.select().from(customerProfilesTable);
   const filtered = rows.filter((r) => {
     // Only show customers scoped to caller's locations / orgs:
@@ -852,10 +861,7 @@ router.get(
           ne(guestOrdersTable.status, "cancelled"),
         ),
       );
-    const filtered = orders.filter((o) => {
-      const day = (o.wantedFor as string | null) ?? o.createdAt.toISOString().slice(0, 10);
-      return day === date;
-    });
+    const filtered = orders.filter((o) => orderDayLocal(o) === date);
     const currency = orders[0]?.currency ?? "EUR";
     const byCustomerMap = new Map<
       string,
