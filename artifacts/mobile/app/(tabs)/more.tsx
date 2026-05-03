@@ -37,13 +37,28 @@ export default function More() {
         { icon: "check-square", label: "Tagesabschluss", to: "/sales" },
         { icon: "credit-card", label: t("zettle"), to: "/zettle" },
         { icon: "truck", label: t("orders"), to: "/orders" },
+        { icon: "package", label: t("autoProcurement"), to: "/procurement" },
         { icon: "clipboard", label: t("inventur"), to: "/inventur" },
         { icon: "calendar", label: t("dienstplan"), to: "/dienstplan" },
         { icon: "users", label: t("suppliers"), to: "/suppliers" },
         { icon: "mail", label: t("catering"), to: "/catering" },
         { icon: "dollar-sign", label: t("calculator"), to: "/calculator" },
         { icon: "trash-2", label: t("waste"), to: "/waste" },
+        { icon: "refresh-ccw", label: t("resteRezepte"), to: "/reste" },
       ],
+    },
+    {
+      title: "KI",
+      items: [
+        { icon: "cpu", label: t("forecast"), to: "/forecast" },
+        { icon: "message-square", label: t("handover"), to: "/handover" },
+        { icon: "trending-up", label: t("marginAlerts"), to: "/margin" },
+        { icon: "award", label: t("leaderboard"), to: "/leaderboard" },
+      ],
+    },
+    {
+      title: t("locations"),
+      items: [{ icon: "map-pin", label: t("locations"), to: "/locations" }],
     },
     {
       title: t("legalDocs"),

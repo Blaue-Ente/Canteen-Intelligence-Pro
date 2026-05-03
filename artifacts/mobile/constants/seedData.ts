@@ -1,6 +1,7 @@
 import type {
   AppState,
   InventoryItem,
+  Location,
   Recipe,
   SaleEntry,
   Supplier,
@@ -22,21 +23,21 @@ const addDays = (d: Date, n: number) => {
 const dateKey = (d: Date) => d.toISOString().slice(0, 10);
 
 const inventory: InventoryItem[] = [
-  { id: "i1", name: "Beef chuck", nameDe: "Rindergulasch", unit: "kg", quantity: 4.2, minQuantity: 5, pricePerUnit: 14.5, category: "meat", supplierId: "s1", expiresAt: iso(addDays(today, 3)), location: "Kühlung 1", updatedAt: iso(today) },
-  { id: "i2", name: "Pork loin", nameDe: "Schweinelende", unit: "kg", quantity: 8.1, minQuantity: 4, pricePerUnit: 9.2, category: "meat", supplierId: "s1", expiresAt: iso(addDays(today, 4)), location: "Kühlung 1", updatedAt: iso(today) },
-  { id: "i3", name: "Chicken breast", nameDe: "Hähnchenbrust", unit: "kg", quantity: 6.0, minQuantity: 5, pricePerUnit: 8.9, category: "meat", supplierId: "s1", expiresAt: iso(addDays(today, 2)), location: "Kühlung 1", updatedAt: iso(today) },
-  { id: "i4", name: "Potatoes", nameDe: "Kartoffeln", unit: "kg", quantity: 12, minQuantity: 20, pricePerUnit: 1.4, category: "vegetable", supplierId: "s2", location: "Trocken", updatedAt: iso(today) },
-  { id: "i5", name: "Onions", nameDe: "Zwiebeln", unit: "kg", quantity: 9, minQuantity: 5, pricePerUnit: 1.1, category: "vegetable", supplierId: "s2", location: "Trocken", updatedAt: iso(today) },
-  { id: "i6", name: "Carrots", nameDe: "Karotten", unit: "kg", quantity: 7, minQuantity: 3, pricePerUnit: 1.3, category: "vegetable", supplierId: "s2", updatedAt: iso(today) },
-  { id: "i7", name: "Tomatoes", nameDe: "Tomaten", unit: "kg", quantity: 4.5, minQuantity: 4, pricePerUnit: 2.6, category: "vegetable", supplierId: "s2", expiresAt: iso(addDays(today, 5)), updatedAt: iso(today) },
-  { id: "i8", name: "Cream", nameDe: "Sahne", unit: "l", quantity: 3, minQuantity: 2, pricePerUnit: 2.1, category: "dairy", supplierId: "s3", expiresAt: iso(addDays(today, 7)), updatedAt: iso(today) },
-  { id: "i9", name: "Butter", nameDe: "Butter", unit: "kg", quantity: 2.4, minQuantity: 1, pricePerUnit: 7.8, category: "dairy", supplierId: "s3", updatedAt: iso(today) },
-  { id: "i10", name: "Flour", nameDe: "Mehl", unit: "kg", quantity: 18, minQuantity: 8, pricePerUnit: 0.9, category: "dry", supplierId: "s4", updatedAt: iso(today) },
-  { id: "i11", name: "Lentils", nameDe: "Linsen", unit: "kg", quantity: 5.5, minQuantity: 3, pricePerUnit: 2.4, category: "dry", supplierId: "s4", updatedAt: iso(today) },
-  { id: "i12", name: "Salmon fillet", nameDe: "Lachsfilet", unit: "kg", quantity: 2.8, minQuantity: 2, pricePerUnit: 22, category: "frozen", supplierId: "s5", updatedAt: iso(today) },
-  { id: "i13", name: "Olive oil", nameDe: "Olivenöl", unit: "l", quantity: 6, minQuantity: 3, pricePerUnit: 8.5, category: "dry", supplierId: "s4", updatedAt: iso(today) },
-  { id: "i14", name: "Salt", nameDe: "Salz", unit: "kg", quantity: 4, minQuantity: 1, pricePerUnit: 0.5, category: "spice", updatedAt: iso(today) },
-  { id: "i15", name: "Pepper", nameDe: "Pfeffer", unit: "kg", quantity: 0.4, minQuantity: 0.2, pricePerUnit: 22, category: "spice", updatedAt: iso(today) },
+  { id: "i1", name: "Beef chuck", nameDe: "Rindergulasch", unit: "kg", quantity: 4.2, minQuantity: 5, pricePerUnit: 14.5, category: "meat", supplierId: "s1", expiresAt: iso(addDays(today, 3)), location: "Kühlung 1", updatedAt: iso(today), kcalPer100g: 250, proteinPer100g: 26, carbsPer100g: 0, fatPer100g: 16, co2PerKg: 27, dgeCategory: "red" },
+  { id: "i2", name: "Pork loin", nameDe: "Schweinelende", unit: "kg", quantity: 8.1, minQuantity: 4, pricePerUnit: 9.2, category: "meat", supplierId: "s1", expiresAt: iso(addDays(today, 4)), location: "Kühlung 1", updatedAt: iso(today), kcalPer100g: 240, proteinPer100g: 27, carbsPer100g: 0, fatPer100g: 14, co2PerKg: 7.2, dgeCategory: "yellow" },
+  { id: "i3", name: "Chicken breast", nameDe: "Hähnchenbrust", unit: "kg", quantity: 6.0, minQuantity: 5, pricePerUnit: 8.9, category: "meat", supplierId: "s1", expiresAt: iso(addDays(today, 2)), location: "Kühlung 1", updatedAt: iso(today), kcalPer100g: 165, proteinPer100g: 31, carbsPer100g: 0, fatPer100g: 3.6, co2PerKg: 6.1, dgeCategory: "yellow" },
+  { id: "i4", name: "Potatoes", nameDe: "Kartoffeln", unit: "kg", quantity: 12, minQuantity: 20, pricePerUnit: 1.4, category: "vegetable", supplierId: "s2", location: "Trocken", updatedAt: iso(today), kcalPer100g: 77, proteinPer100g: 2, carbsPer100g: 17, fatPer100g: 0.1, co2PerKg: 0.3, dgeCategory: "green", regional: true },
+  { id: "i5", name: "Onions", nameDe: "Zwiebeln", unit: "kg", quantity: 9, minQuantity: 5, pricePerUnit: 1.1, category: "vegetable", supplierId: "s2", location: "Trocken", updatedAt: iso(today), kcalPer100g: 40, proteinPer100g: 1.1, carbsPer100g: 9.3, fatPer100g: 0.1, co2PerKg: 0.5, dgeCategory: "green", regional: true },
+  { id: "i6", name: "Carrots", nameDe: "Karotten", unit: "kg", quantity: 7, minQuantity: 3, pricePerUnit: 1.3, category: "vegetable", supplierId: "s2", updatedAt: iso(today), kcalPer100g: 41, proteinPer100g: 0.9, carbsPer100g: 9.6, fatPer100g: 0.2, co2PerKg: 0.4, dgeCategory: "green", regional: true },
+  { id: "i7", name: "Tomatoes", nameDe: "Tomaten", unit: "kg", quantity: 4.5, minQuantity: 4, pricePerUnit: 2.6, category: "vegetable", supplierId: "s2", expiresAt: iso(addDays(today, 5)), updatedAt: iso(today), kcalPer100g: 18, proteinPer100g: 0.9, carbsPer100g: 3.9, fatPer100g: 0.2, co2PerKg: 1.1, dgeCategory: "green" },
+  { id: "i8", name: "Cream", nameDe: "Sahne", unit: "l", quantity: 3, minQuantity: 2, pricePerUnit: 2.1, category: "dairy", supplierId: "s3", expiresAt: iso(addDays(today, 7)), updatedAt: iso(today), kcalPer100g: 340, proteinPer100g: 2, carbsPer100g: 3, fatPer100g: 36, co2PerKg: 3.0, dgeCategory: "yellow", allergens: ["milk"] },
+  { id: "i9", name: "Butter", nameDe: "Butter", unit: "kg", quantity: 2.4, minQuantity: 1, pricePerUnit: 7.8, category: "dairy", supplierId: "s3", updatedAt: iso(today), kcalPer100g: 717, proteinPer100g: 0.9, carbsPer100g: 0.1, fatPer100g: 81, co2PerKg: 12.0, dgeCategory: "red", allergens: ["milk"] },
+  { id: "i10", name: "Flour", nameDe: "Mehl", unit: "kg", quantity: 18, minQuantity: 8, pricePerUnit: 0.9, category: "dry", supplierId: "s4", updatedAt: iso(today), kcalPer100g: 364, proteinPer100g: 10, carbsPer100g: 76, fatPer100g: 1, co2PerKg: 0.7, dgeCategory: "green", allergens: ["gluten"] },
+  { id: "i11", name: "Lentils", nameDe: "Linsen", unit: "kg", quantity: 5.5, minQuantity: 3, pricePerUnit: 2.4, category: "dry", supplierId: "s4", updatedAt: iso(today), kcalPer100g: 116, proteinPer100g: 9, carbsPer100g: 20, fatPer100g: 0.4, co2PerKg: 0.9, dgeCategory: "green" },
+  { id: "i12", name: "Salmon fillet", nameDe: "Lachsfilet", unit: "kg", quantity: 2.8, minQuantity: 2, pricePerUnit: 22, category: "frozen", supplierId: "s5", updatedAt: iso(today), kcalPer100g: 208, proteinPer100g: 20, carbsPer100g: 0, fatPer100g: 13, co2PerKg: 5.1, dgeCategory: "yellow", allergens: ["fish"] },
+  { id: "i13", name: "Olive oil", nameDe: "Olivenöl", unit: "l", quantity: 6, minQuantity: 3, pricePerUnit: 8.5, category: "dry", supplierId: "s4", updatedAt: iso(today), kcalPer100g: 884, proteinPer100g: 0, carbsPer100g: 0, fatPer100g: 100, co2PerKg: 6.0, dgeCategory: "yellow" },
+  { id: "i14", name: "Salt", nameDe: "Salz", unit: "kg", quantity: 4, minQuantity: 1, pricePerUnit: 0.5, category: "spice", updatedAt: iso(today), co2PerKg: 0.2, dgeCategory: "green" },
+  { id: "i15", name: "Pepper", nameDe: "Pfeffer", unit: "kg", quantity: 0.4, minQuantity: 0.2, pricePerUnit: 22, category: "spice", updatedAt: iso(today), co2PerKg: 1.2, dgeCategory: "green" },
 ];
 
 const recipes: Recipe[] = [
@@ -134,6 +135,12 @@ const notificationPrefs: NotificationPrefs = {
   haccpTime: "08:30",
 };
 
+const locations: Location[] = [
+  { id: "loc1", name: "Mitte", code: "MTE", address: "Friedrichstr. 100, 10117 Berlin", lat: 52.52, lng: 13.39, avgGuestsPerDay: 180, isPrimary: true, createdAt: iso(today) },
+  { id: "loc2", name: "Kreuzberg", code: "KRZ", address: "Bergmannstr. 22, 10961 Berlin", lat: 52.49, lng: 13.40, avgGuestsPerDay: 140, createdAt: iso(today) },
+  { id: "loc3", name: "Spandau", code: "SPN", address: "Carl-Schurz-Str. 5, 13597 Berlin", lat: 52.54, lng: 13.20, avgGuestsPerDay: 95, createdAt: iso(today) },
+];
+
 export const seedState: AppState = {
   locale: "de",
   inventory,
@@ -151,4 +158,10 @@ export const seedState: AppState = {
   employees,
   shifts: [],
   notificationPrefs,
+  locations,
+  currentLocationId: undefined,
+  handovers: [],
+  deliveries: [],
+  priceHistory: [],
+  forecasts: [],
 };

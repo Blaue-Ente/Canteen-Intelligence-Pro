@@ -202,6 +202,38 @@ export default function Inventory() {
               <Feather name="camera" size={18} color={c.foreground} />
             </Pressable>
             <Pressable
+              onPress={() => router.push("/reste")}
+              style={({ pressed }) => [
+                {
+                  width: 38,
+                  height: 38,
+                  borderRadius: 12,
+                  backgroundColor: c.muted,
+                  alignItems: "center",
+                  justifyContent: "center",
+                },
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Feather name="refresh-ccw" size={18} color={c.foreground} />
+            </Pressable>
+            <Pressable
+              onPress={() => router.push("/procurement")}
+              style={({ pressed }) => [
+                {
+                  width: 38,
+                  height: 38,
+                  borderRadius: 12,
+                  backgroundColor: c.muted,
+                  alignItems: "center",
+                  justifyContent: "center",
+                },
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Feather name="truck" size={18} color={c.foreground} />
+            </Pressable>
+            <Pressable
               onPress={() => {
                 setEditItem(null);
                 setModalOpen(true);

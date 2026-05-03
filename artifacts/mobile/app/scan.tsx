@@ -8,10 +8,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Badge, Button, Card, Chip, EmptyState } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
-import { analyzePhoto, parseReceiptImage, type ParsedReceipt } from "@/lib/ai";
+import { analyzePhoto, aiTrayReturn, parseReceiptImage, type ParsedReceipt, type TrayReturnAnalysis } from "@/lib/ai";
 import type { InventoryItem } from "@/types";
 
-type Mode = "receipt" | "delivery" | "nutrition";
+type Mode = "receipt" | "delivery" | "nutrition" | "tray";
 
 const NUTRITION_PROMPT =
   "Identify the dish in the photo. Estimate per-portion nutrition (kcal, protein g, carbs g, fat g) and list likely allergens (LMIV). Return as concise German bullet list.";
@@ -48,6 +48,7 @@ export default function Scan() {
   const [busy, setBusy] = useState(false);
   const [textResult, setTextResult] = useState<string | null>(null);
   const [parsed, setParsed] = useState<ParsedReceipt | null>(null);
+  const [tray, setTray] = useState<TrayReturnAnalysis | null>(null);
   const [picked, setPicked] = useState<Record<number, boolean>>({});
   const [error, setError] = useState<string | null>(null);
 
@@ -56,6 +57,7 @@ export default function Scan() {
     setB64(null);
     setTextResult(null);
     setParsed(null);
+    setTray(null);
     setPicked({});
     setError(null);
   };
@@ -102,6 +104,9 @@ export default function Scan() {
         const lang = state.locale === "de" ? "Antworte auf Deutsch." : "Reply in English.";
         const text = await analyzePhoto(b64, NUTRITION_PROMPT + " " + lang);
         setTextResult(text);
+      } else if (mode === "tray") {
+        const r = await aiTrayReturn({ base64: b64, locale: state.locale });
+        setTray(r);
       } else {
         const data = await parseReceiptImage(b64);
         setParsed(data);
@@ -148,15 +153,24 @@ export default function Scan() {
     <View style={{ flex: 1, backgroundColor: c.background }}>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: insets.bottom + 30 }}>
         <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-          {(["receipt", "delivery", "nutrition"] as Mode[]).map((m) => (
+          {(["receipt", "delivery", "nutrition", "tray"] as Mode[]).map((m) => (
             <Chip
               key={m}
-              label={m === "receipt" ? "Rechnung" : m === "delivery" ? "Lieferschein" : "Nährwerte"}
+              label={
+                m === "receipt"
+                  ? "Rechnung"
+                  : m === "delivery"
+                    ? "Lieferschein"
+                    : m === "nutrition"
+                      ? "Nährwerte"
+                      : t("trayReturn")
+              }
               active={mode === m}
               onPress={() => {
                 setMode(m);
                 setTextResult(null);
                 setParsed(null);
+                setTray(null);
               }}
             />
           ))}
@@ -220,6 +234,24 @@ export default function Scan() {
             </View>
             <Text style={{ color: c.foreground, fontFamily: "Inter_400Regular", fontSize: 14, lineHeight: 21 }}>
               {textResult}
+            </Text>
+          </Card>
+        ) : null}
+
+        {tray ? (
+          <Card>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <Feather name="trash-2" size={16} color={c.warning} />
+              <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 15, flex: 1 }}>
+                {tray.dishGuess}
+              </Text>
+              <Badge label={`${tray.leftoverPct}%`} tone={tray.leftoverPct > 30 ? "destructive" : "warning"} />
+            </View>
+            <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 12 }}>
+              ≈ {tray.estimatedGrams} g
+            </Text>
+            <Text style={{ color: c.foreground, fontFamily: "Inter_400Regular", fontSize: 13, marginTop: 8, lineHeight: 19, fontStyle: "italic" }}>
+              {tray.reasonHypothesis}
             </Text>
           </Card>
         ) : null}

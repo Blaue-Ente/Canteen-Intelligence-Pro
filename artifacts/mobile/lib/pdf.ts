@@ -124,6 +124,55 @@ export function cateringOfferHtml(
   return baseHtml(labels.title, body);
 }
 
+export function aushangHtml(
+  recipe: Recipe,
+  data: {
+    nutrition: { kcal: number; protein: number; carbs: number; fat: number };
+    co2: number;
+    dge: "green" | "yellow" | "red";
+    allergens: string[];
+  },
+  locale: Locale,
+): string {
+  const labels =
+    locale === "de"
+      ? { title: "LMIV-Aushang", per: "pro Portion", allergens: "Allergene", none: "Keine bekannt", co2: "CO₂-Fußabdruck", dge: "DGE-Empfehlung", green: "Empfohlen", yellow: "Akzeptabel", red: "Eingeschränkt" }
+      : { title: "LMIV poster", per: "per portion", allergens: "Allergens", none: "None known", co2: "CO₂ footprint", dge: "DGE recommendation", green: "Recommended", yellow: "Acceptable", red: "Limited" };
+  const dgeLabel = data.dge === "green" ? labels.green : data.dge === "yellow" ? labels.yellow : labels.red;
+  const dgeColor = data.dge === "green" ? "#16a34a" : data.dge === "yellow" ? "#ca8a04" : "#dc2626";
+  const allergensHtml =
+    data.allergens.length === 0
+      ? `<span class="muted">${labels.none}</span>`
+      : data.allergens.map((a) => `<span class="badge">${escapeHtml(a)}</span>`).join("");
+  const body = `
+    <div class="header">
+      <div>
+        <div class="brand">KITCHENOS</div>
+        <h1>${labels.title}</h1>
+      </div>
+    </div>
+    <h1 style="font-size:32px;margin:24px 0 8px">${escapeHtml(locale === "de" ? recipe.nameDe : recipe.name)}</h1>
+    <div style="color:${dgeColor};font-weight:700;font-size:14px;letter-spacing:.06em;text-transform:uppercase">
+      ● ${labels.dge}: ${dgeLabel}
+    </div>
+    <h2>${locale === "de" ? "Nährwerte" : "Nutrition"} (${labels.per})</h2>
+    <table>
+      <tbody>
+        <tr><td>kcal</td><td class="right">${Math.round(data.nutrition.kcal)}</td></tr>
+        <tr><td>${locale === "de" ? "Eiweiß" : "Protein"}</td><td class="right">${data.nutrition.protein.toFixed(1)} g</td></tr>
+        <tr><td>${locale === "de" ? "Kohlenhydrate" : "Carbs"}</td><td class="right">${data.nutrition.carbs.toFixed(1)} g</td></tr>
+        <tr><td>${locale === "de" ? "Fett" : "Fat"}</td><td class="right">${data.nutrition.fat.toFixed(1)} g</td></tr>
+      </tbody>
+    </table>
+    <h2>${labels.co2}</h2>
+    <div style="font-size:32px;font-weight:700">${data.co2.toFixed(2)} <span style="font-size:14px;color:#78716c">kg CO₂e ${labels.per}</span></div>
+    <h2>${labels.allergens}</h2>
+    <div>${allergensHtml}</div>
+    <div class="footer">KitchenOS · ${labels.title} · ${escapeHtml(recipe.id.slice(0, 8))}</div>
+  `;
+  return baseHtml(labels.title, body);
+}
+
 export async function sharePdf(html: string, filename: string): Promise<void> {
   if (Platform.OS === "web") {
     const blob = new Blob([html], { type: "text/html" });

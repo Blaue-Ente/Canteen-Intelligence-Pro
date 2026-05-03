@@ -14,10 +14,14 @@ import type {
   ChatMessage,
   ComplaintDraft,
   Employee,
+  ForecastDay,
   HaccpLog,
+  HandoverNote,
+  IngredientPriceHistory,
   InventoryItem,
   InventurSession,
   Locale,
+  Location,
   MenuDayEntry,
   NotificationPrefs,
   OrderDraft,
@@ -25,6 +29,7 @@ import type {
   SaleEntry,
   ShiftEntry,
   Supplier,
+  SupplierDelivery,
   WasteEntry,
 } from "@/types";
 import { seedState } from "@/constants/seedData";
@@ -64,7 +69,17 @@ type Action =
   | { type: "addShift"; shift: ShiftEntry }
   | { type: "updateShift"; shift: ShiftEntry }
   | { type: "removeShift"; id: string }
-  | { type: "setNotificationPrefs"; prefs: NotificationPrefs };
+  | { type: "setNotificationPrefs"; prefs: NotificationPrefs }
+  // ---- Phase 6A ----
+  | { type: "addLocation"; location: Location }
+  | { type: "updateLocation"; location: Location }
+  | { type: "removeLocation"; id: string }
+  | { type: "setCurrentLocation"; id: string | undefined }
+  | { type: "addHandover"; note: HandoverNote }
+  | { type: "addDelivery"; delivery: SupplierDelivery }
+  | { type: "updateDelivery"; delivery: SupplierDelivery }
+  | { type: "addPriceHistory"; entry: IngredientPriceHistory }
+  | { type: "upsertForecast"; forecast: ForecastDay };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -74,13 +89,29 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, locale: action.locale };
     case "addInventory":
       return { ...state, inventory: [action.item, ...state.inventory] };
-    case "updateInventory":
+    case "updateInventory": {
+      const prev = state.inventory.find((x) => x.id === action.item.id);
+      const newPriceHistory: IngredientPriceHistory[] =
+        prev && prev.pricePerUnit !== action.item.pricePerUnit
+          ? [
+              {
+                id: uid(),
+                inventoryId: action.item.id,
+                supplierId: action.item.supplierId,
+                price: action.item.pricePerUnit,
+                date: new Date().toISOString(),
+              },
+              ...state.priceHistory,
+            ].slice(0, 500)
+          : state.priceHistory;
       return {
         ...state,
         inventory: state.inventory.map((x) =>
           x.id === action.item.id ? action.item : x,
         ),
+        priceHistory: newPriceHistory,
       };
+    }
     case "removeInventory":
       return { ...state, inventory: state.inventory.filter((x) => x.id !== action.id) };
     case "addRecipe":
@@ -173,6 +204,46 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, shifts: state.shifts.filter((sh) => sh.id !== action.id) };
     case "setNotificationPrefs":
       return { ...state, notificationPrefs: action.prefs };
+    case "addLocation":
+      return { ...state, locations: [...state.locations, action.location] };
+    case "updateLocation":
+      return {
+        ...state,
+        locations: state.locations.map((l) =>
+          l.id === action.location.id ? action.location : l,
+        ),
+      };
+    case "removeLocation":
+      return {
+        ...state,
+        locations: state.locations.filter((l) => l.id !== action.id),
+        currentLocationId:
+          state.currentLocationId === action.id ? undefined : state.currentLocationId,
+      };
+    case "setCurrentLocation":
+      return { ...state, currentLocationId: action.id };
+    case "addHandover":
+      return { ...state, handovers: [action.note, ...state.handovers].slice(0, 200) };
+    case "addDelivery":
+      return { ...state, deliveries: [action.delivery, ...state.deliveries] };
+    case "updateDelivery":
+      return {
+        ...state,
+        deliveries: state.deliveries.map((d) =>
+          d.id === action.delivery.id ? action.delivery : d,
+        ),
+      };
+    case "addPriceHistory":
+      return {
+        ...state,
+        priceHistory: [action.entry, ...state.priceHistory].slice(0, 500),
+      };
+    case "upsertForecast": {
+      const key = (f: ForecastDay) => `${f.locationId ?? ""}:${f.date}`;
+      const k = key(action.forecast);
+      const others = state.forecasts.filter((f) => key(f) !== k);
+      return { ...state, forecasts: [action.forecast, ...others].slice(0, 60) };
+    }
     default:
       return state;
   }
@@ -183,6 +254,8 @@ interface Ctx {
   ready: boolean;
   dispatch: React.Dispatch<Action>;
   newId: () => string;
+  /** Current active location object (or null when "All filiale"). */
+  currentLocation: import("@/types").Location | null;
 }
 
 const AppCtx = createContext<Ctx | null>(null);
@@ -215,6 +288,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           employees: pick("employees"),
           shifts: pick("shifts"),
           notificationPrefs: pick("notificationPrefs"),
+          locations: pick("locations"),
+          currentLocationId: pick("currentLocationId"),
+          handovers: pick("handovers"),
+          deliveries: pick("deliveries"),
+          priceHistory: pick("priceHistory"),
+          forecasts: pick("forecasts"),
         };
         dispatch({ type: "hydrate", state: merged });
       }
@@ -229,9 +308,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (ready) void saveState(state);
   }, [state, ready]);
 
+  const currentLocation = useMemo(
+    () =>
+      state.currentLocationId
+        ? state.locations.find((l) => l.id === state.currentLocationId) ?? null
+        : null,
+    [state.locations, state.currentLocationId],
+  );
+
   const value = useMemo<Ctx>(
-    () => ({ state, ready, dispatch, newId: uid }),
-    [state, ready],
+    () => ({ state, ready, dispatch, newId: uid, currentLocation }),
+    [state, ready, currentLocation],
   );
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;

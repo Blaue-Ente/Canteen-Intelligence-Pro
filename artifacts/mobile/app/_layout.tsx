@@ -53,6 +53,14 @@ function RootLayoutNav() {
       <Stack.Screen name="recipe/[id]" options={{ title: "Rezept" }} />
       <Stack.Screen name="supplier/[id]" options={{ title: "Lieferant" }} />
       <Stack.Screen name="suppliers/discover" options={{ title: "Lieferanten finden" }} />
+      <Stack.Screen name="locations" options={{ title: "Filialen" }} />
+      <Stack.Screen name="forecast" options={{ title: "KI-Prognose" }} />
+      <Stack.Screen name="procurement" options={{ title: "Auto-Bestellung" }} />
+      <Stack.Screen name="handover" options={{ title: "Schichtübergabe" }} />
+      <Stack.Screen name="reste" options={{ title: "Reste-Rezepte" }} />
+      <Stack.Screen name="leaderboard" options={{ title: "Bestenliste" }} />
+      <Stack.Screen name="margin" options={{ title: "Margen" }} />
+      <Stack.Screen name="aushang/[id]" options={{ title: "LMIV-Aushang" }} />
       <Stack.Screen name="+not-found" />
     </Stack>
   );

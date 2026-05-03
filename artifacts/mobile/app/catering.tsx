@@ -221,8 +221,30 @@ export default function Catering() {
                   />
                 ) : null}
               </View>
+              {(() => {
+                const perPersonCents = req.parsed.reduce((sum, b) => {
+                  return sum + b.recipeIds.reduce((s, rid) => {
+                    const r = state.recipes.find((x) => x.id === rid);
+                    return s + (r ? Math.round(r.sellPrice * 100) : 0);
+                  }, 0);
+                }, 0);
+                const total = (perPersonCents * (req.guests || 1)) / 100;
+                return (
+                  <View style={{ marginTop: 10, padding: 10, backgroundColor: c.muted, borderRadius: c.radius }}>
+                    <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 11 }}>
+                      {t("perPerson")}
+                    </Text>
+                    <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 18, marginTop: 2 }}>
+                      €{(perPersonCents / 100).toFixed(2)}
+                    </Text>
+                    <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 11, marginTop: 4 }}>
+                      = €{total.toFixed(2)} ({req.guests} × )
+                    </Text>
+                  </View>
+                );
+              })()}
               <Button
-                label={t("cateringOffer") + " · PDF"}
+                label={t("generateOffer") + " · PDF"}
                 icon="share-2"
                 variant="secondary"
                 style={{ marginTop: 8 }}

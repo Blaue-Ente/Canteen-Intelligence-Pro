@@ -7,6 +7,7 @@ import { Badge, Button, Card, Chip, EmptyState, Field, SectionHeader, Stat } fro
 import { useApp, useT } from "@/contexts/AppContext";
 import { useAuthor } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { dgeCategory, recipeCo2Kg, recipeNutrition } from "@/lib/computations";
 import type { Allergen } from "@/types";
 
 const ALL_ALLERGENS: { key: Allergen; tKey: string }[] = [
@@ -69,6 +70,9 @@ export default function RecipeDetail() {
 
   const margin = recipe.sellPrice - cost;
   const marginPct = recipe.sellPrice > 0 ? (margin / recipe.sellPrice) * 100 : 0;
+  const nutrition = recipeNutrition(recipe, state.inventory);
+  const co2 = recipeCo2Kg(recipe, state.inventory);
+  const dge = dgeCategory(recipe, state.inventory);
 
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
@@ -174,6 +178,30 @@ export default function RecipeDetail() {
               </Text>
             </View>
           ))}
+        </Card>
+
+        <Card>
+          <SectionHeader title={`LMIV · CO₂ · DGE`} />
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+            <Badge
+              label={dge === "green" ? t("dgeGreen") : dge === "yellow" ? t("dgeYellow") : t("dgeRed")}
+              tone={dge === "green" ? "success" : dge === "yellow" ? "warning" : "destructive"}
+            />
+            <Badge label={`${co2.toFixed(2)} kg CO₂e`} tone="accent" />
+          </View>
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <Stat label="kcal" value={String(Math.round(nutrition.kcal))} icon="zap" />
+            <Stat label="P" value={`${nutrition.protein.toFixed(0)}g`} icon="activity" />
+            <Stat label="KH" value={`${nutrition.carbs.toFixed(0)}g`} icon="circle" />
+            <Stat label="F" value={`${nutrition.fat.toFixed(0)}g`} icon="droplet" />
+          </View>
+          <Button
+            label={t("aushangCreate")}
+            icon="printer"
+            variant="secondary"
+            style={{ marginTop: 12 }}
+            onPress={() => router.push(`/aushang/${recipe.id}`)}
+          />
         </Card>
 
         <Button

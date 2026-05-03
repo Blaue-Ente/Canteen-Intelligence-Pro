@@ -31,7 +31,20 @@ export interface InventoryItem {
   category: "meat" | "dairy" | "vegetable" | "fruit" | "dry" | "spice" | "drink" | "frozen" | "other";
   expiresAt?: string;
   location?: string;
+  locationId?: string;
   updatedAt: string;
+  // --- Phase 6A: nutrition + sustainability ---
+  allergens?: Allergen[];
+  kcalPer100g?: number;
+  proteinPer100g?: number;
+  carbsPer100g?: number;
+  fatPer100g?: number;
+  /** kg CO₂-eq per kg of ingredient (cradle-to-gate). */
+  co2PerKg?: number;
+  /** "DGE-bewertet" category for nutrition compliance. */
+  dgeCategory?: "green" | "yellow" | "red";
+  bio?: boolean;
+  regional?: boolean;
 }
 
 export interface Ingredient {
@@ -62,13 +75,17 @@ export interface Recipe {
 export interface MenuDayEntry {
   date: string;
   recipeIds: string[];
+  locationId?: string;
   /** Per-recipe portion override (grams) for this day. */
   portionOverrides?: Record<string, number>;
+  /** Per-recipe planned cooked count for forecast/procurement. */
+  plannedCount?: Record<string, number>;
 }
 
 export interface AuditFields {
   createdBy?: string;
   createdByName?: string;
+  locationId?: string;
 }
 
 export interface SaleEntry extends AuditFields {
@@ -146,6 +163,8 @@ export interface CateringRequest extends AuditFields {
   dietary?: string;
   parsed: { recipeIds: string[]; notes: string }[];
   status: "new" | "draft" | "confirmed" | "rejected";
+  /** AI-generated quote in cents per person (after Phase 6A "Angebot generieren"). */
+  perPersonCents?: number;
 }
 
 export interface OrderDraftItem {
@@ -217,6 +236,64 @@ export interface NotificationPrefs {
   haccpTime: string; // HH:mm
 }
 
+// ---------- Phase 6A entities ----------
+
+export interface Location {
+  id: string;
+  name: string;
+  address?: string;
+  phone?: string;
+  /** Free-form internal code (e.g. "MTE", "SPN"). */
+  code?: string;
+  /** Geo coords for forecast weather. */
+  lat?: number;
+  lng?: number;
+  /** Average daily guest count, used as forecast baseline. */
+  avgGuestsPerDay?: number;
+  isPrimary?: boolean;
+  createdAt: string;
+}
+
+export interface HandoverNote extends AuditFields {
+  id: string;
+  date: string; // ISO
+  shift: "morning" | "evening" | "night";
+  transcript: string;
+  summary: string;
+  actions: string[];
+}
+
+export interface SupplierDelivery extends AuditFields {
+  id: string;
+  supplierId: string;
+  expectedDate: string; // YYYY-MM-DD
+  actualDate?: string;
+  expectedQty?: number;
+  actualQty?: number;
+  unit?: string;
+  hadIssue: boolean;
+  issueNote?: string;
+}
+
+export interface IngredientPriceHistory {
+  id: string;
+  inventoryId: string;
+  supplierId?: string;
+  price: number;
+  date: string; // ISO
+}
+
+export interface ForecastDay {
+  date: string; // YYYY-MM-DD
+  locationId?: string;
+  weather?: { tempC: number; rainMm: number; condition: string };
+  expectedGuests: number;
+  /** recipeId -> recommended portions */
+  recommendations: Record<string, number>;
+  rationale?: string;
+  generatedAt: string;
+}
+
 export interface AppState {
   locale: Locale;
   inventory: InventoryItem[];
@@ -234,4 +311,11 @@ export interface AppState {
   employees: Employee[];
   shifts: ShiftEntry[];
   notificationPrefs: NotificationPrefs;
+  // ---- Phase 6A ----
+  locations: Location[];
+  currentLocationId?: string;
+  handovers: HandoverNote[];
+  deliveries: SupplierDelivery[];
+  priceHistory: IngredientPriceHistory[];
+  forecasts: ForecastDay[];
 }

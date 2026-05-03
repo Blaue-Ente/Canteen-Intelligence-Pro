@@ -8,13 +8,20 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Badge, Card, EmptyState, SectionHeader, Stat } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
+import { recipeMargin } from "@/lib/computations";
 
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function tomorrowKey() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 export default function Home() {
-  const { state } = useApp();
+  const { state, dispatch, currentLocation } = useApp();
   const t = useT();
   const c = useColors();
   const router = useRouter();
@@ -35,6 +42,18 @@ export default function Home() {
   const lowStock = useMemo(
     () => state.inventory.filter((i) => i.quantity < i.minQuantity),
     [state.inventory],
+  );
+
+  const tomorrowForecast = state.forecasts.find(
+    (f) => f.date === tomorrowKey() && (f.locationId ?? "") === (state.currentLocationId ?? ""),
+  );
+  const lastHandover = state.handovers[0];
+  const marginAlerts = useMemo(
+    () =>
+      state.recipes
+        .map((r) => ({ recipe: r, m: recipeMargin(r, state.inventory, state.priceHistory) }))
+        .filter((x) => x.m.marginPct < 35 || x.m.trend === "up"),
+    [state.recipes, state.inventory, state.priceHistory],
   );
 
   const expiringSoon = useMemo(() => {
@@ -70,6 +89,71 @@ export default function Home() {
         }}
         showsVerticalScrollIndicator={false}
       >
+        {/* Location switcher */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+          <Pressable
+            onPress={() => dispatch({ type: "setCurrentLocation", id: undefined })}
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 7,
+              borderRadius: 999,
+              backgroundColor: !state.currentLocationId ? c.primary : c.muted,
+              borderWidth: 1,
+              borderColor: !state.currentLocationId ? c.primary : c.border,
+            }}
+          >
+            <Text
+              style={{
+                color: !state.currentLocationId ? c.primaryForeground : c.foreground,
+                fontFamily: "Inter_500Medium",
+                fontSize: 12,
+              }}
+            >
+              ⌂ {t("allLocations")}
+            </Text>
+          </Pressable>
+          {state.locations.map((loc) => {
+            const active = state.currentLocationId === loc.id;
+            return (
+              <Pressable
+                key={loc.id}
+                onPress={() => dispatch({ type: "setCurrentLocation", id: loc.id })}
+                style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 7,
+                  borderRadius: 999,
+                  backgroundColor: active ? c.primary : c.muted,
+                  borderWidth: 1,
+                  borderColor: active ? c.primary : c.border,
+                }}
+              >
+                <Text
+                  style={{
+                    color: active ? c.primaryForeground : c.foreground,
+                    fontFamily: "Inter_500Medium",
+                    fontSize: 12,
+                  }}
+                >
+                  {loc.code ?? loc.name}
+                </Text>
+              </Pressable>
+            );
+          })}
+          <Pressable
+            onPress={() => router.push("/locations")}
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 7,
+              borderRadius: 999,
+              backgroundColor: c.muted,
+              borderWidth: 1,
+              borderColor: c.border,
+            }}
+          >
+            <Feather name="settings" size={12} color={c.mutedForeground} />
+          </Pressable>
+        </ScrollView>
+
         {/* AI Hero */}
         <Pressable onPress={() => router.push("/chat")}>
           <LinearGradient
@@ -162,27 +246,77 @@ export default function Home() {
 
         {/* Quick actions */}
         <View style={{ flexDirection: "row", gap: 10 }}>
-          <QuickAction
-            icon="camera"
-            label={t("scan")}
-            onPress={() => router.push("/scan")}
-          />
-          <QuickAction
-            icon="message-circle"
-            label={t("chat")}
-            onPress={() => router.push("/chat")}
-          />
-          <QuickAction
-            icon="dollar-sign"
-            label={t("calculator")}
-            onPress={() => router.push("/calculator")}
-          />
-          <QuickAction
-            icon="thermometer"
-            label="HACCP"
-            onPress={() => router.push("/haccp")}
-          />
+          <QuickAction icon="camera" label={t("scan")} onPress={() => router.push("/scan")} />
+          <QuickAction icon="cpu" label={t("forecast")} onPress={() => router.push("/forecast")} />
+          <QuickAction icon="message-square" label={t("handover")} onPress={() => router.push("/handover")} />
+          <QuickAction icon="thermometer" label="HACCP" onPress={() => router.push("/haccp")} />
         </View>
+
+        {/* Forecast widget */}
+        <Card onPress={() => router.push("/forecast")}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <View
+              style={{
+                width: 38, height: 38, borderRadius: 10,
+                backgroundColor: c.accent, alignItems: "center", justifyContent: "center",
+              }}
+            >
+              <Feather name="cpu" size={18} color={c.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 14 }}>
+                {t("forecastTomorrow")}
+              </Text>
+              {tomorrowForecast ? (
+                <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 12, marginTop: 2 }}>
+                  {tomorrowForecast.expectedGuests} {t("expectedGuests").toLowerCase()}
+                  {tomorrowForecast.weather ? ` · ${tomorrowForecast.weather.tempC.toFixed(0)}° ${tomorrowForecast.weather.condition}` : ""}
+                </Text>
+              ) : (
+                <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 2 }}>
+                  {state.locale === "de" ? "Tippen, um KI-Prognose zu generieren" : "Tap to generate AI forecast"}
+                </Text>
+              )}
+            </View>
+            <Feather name="chevron-right" size={18} color={c.mutedForeground} />
+          </View>
+        </Card>
+
+        {/* Margin alerts */}
+        {marginAlerts.length > 0 && (
+          <Card onPress={() => router.push("/margin")} style={{ borderColor: c.warning + "55" }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Feather name="alert-triangle" size={18} color={c.warning} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 14 }}>
+                  {marginAlerts.length} {t("marginAlerts")}
+                </Text>
+                <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 2 }}>
+                  {marginAlerts.slice(0, 2).map((x) => state.locale === "de" ? x.recipe.nameDe : x.recipe.name).join(" · ")}
+                </Text>
+              </View>
+              <Feather name="chevron-right" size={18} color={c.mutedForeground} />
+            </View>
+          </Card>
+        )}
+
+        {/* Last handover */}
+        {lastHandover && (
+          <Card onPress={() => router.push("/handover")}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Feather name="message-square" size={14} color={c.primary} />
+              <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 13, flex: 1 }}>
+                {t("handover")}
+              </Text>
+              <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 11 }}>
+                {new Date(lastHandover.date).toLocaleDateString(state.locale === "de" ? "de-DE" : "en-GB")}
+              </Text>
+            </View>
+            <Text numberOfLines={2} style={{ color: c.foreground, fontFamily: "Inter_400Regular", fontSize: 13, marginTop: 8, lineHeight: 19 }}>
+              {lastHandover.summary}
+            </Text>
+          </Card>
+        )}
 
         {/* Today's menu */}
         <View>

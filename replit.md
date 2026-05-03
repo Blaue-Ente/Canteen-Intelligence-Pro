@@ -31,6 +31,28 @@ AI-driven kitchen operations app for German restaurants, canteens, and hotels. B
 - **Attribution**: every `dispatch` that creates a record now spreads `...author` (= `{ createdBy, createdByName }`) sourced from `useAuthor()` so the UI can show "von <name>" on cards. Wired in: `sales`, `haccp`, `waste`, `inventur`, `(tabs)/inventory` (orders), `dienstplan` (shifts), `catering`, `supplier/[id]` (complaints), `zettle`, `recipe/[id]`.
 - **Required env vars**: `CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` (server), `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` (mobile, set automatically from `CLERK_PUBLISHABLE_KEY` in the dev script). Optional: `GOOGLE_PLACES_API_KEY` for richer supplier metadata.
 
+## Phase 6A — 11 client-side AI features (no DB changes)
+
+All client-side; new server routes intentionally skipped — Phase 6A reuses existing `/api/ai/json` and `/api/ai/vision`. Phase 6B (server persistence + native voice/maps/notifications) is deferred.
+
+- **Multi-location** — `Location[]` in `AppState` with `currentLocationId`, header chip switcher on home, dedicated `/locations` screen with rollup (today's revenue, low-stock count, weekly waste). New entities (sales, waste, etc.) carry `locationId`.
+- **AI demand forecast** — `/forecast` screen + `lib/ai.ts::aiForecast` consumes weather (Open-Meteo via `expo/fetch`, no key needed), recent sales (14d window), weekday, expected guests; outputs `expectedGuests` + per-recipe `recommendations` + rationale. "Apply to menu" patches the day's `MenuDayEntry.plannedCount`.
+- **Auto-procurement** — `/procurement` screen + `lib/computations.ts::computeShortages` joins menu × portions × inventory across N days (3/5/7/14), groups shortages per supplier (preferred → category fallback), one-tap creates `OrderDraft`s.
+- **Shift handover** — `/handover` screen with web Speech API voice input (graceful fallback on native) → `aiHandover` summarises + extracts action items → stored as `HandoverNote[]`.
+- **Reste-Rezepte** — `/reste` screen picks expiring inventory → `aiResteRezepte` returns 3 recipes with match score, ingredients, steps. Quick button on Lager tab.
+- **LMIV poster** — `/aushang/[id]` screen + `lib/pdf.ts::aushangHtml` exports brand-styled A4 poster with nutrition (kcal/P/KH/F), CO₂e per portion, allergens, DGE colour. Recipe detail has new "LMIV · CO₂ · DGE" card with `aushangCreate` button.
+- **Margin alerts** — `/margin` screen sorts recipes by margin %, flags `<35%` or rising-cost trend (computed from `IngredientPriceHistory` deltas). Home widget surfaces alert count. `recipeMargin()` records each price change automatically when `updateInventory` detects a change.
+- **Supplier scorecard** — Supplier detail page now shows score (0-100), on-time %, accuracy %, complaint count using `supplierScore(deliveries, complaints)`; A/B/C badge.
+- **Tray-return analysis** — `/scan` gains "Tablett" mode → `aiTrayReturn` (vision) returns dish guess, leftover %, estimated grams, hypothesis why.
+- **Catering offer** — `/catering` cards now show per-person price + total (× guests) computed from selected recipe blocks.
+- **Team leaderboard** — `/leaderboard` ranks employees by combined score (sales × 1, HACCP × 2, low-waste bonus); medal styling for top 3.
+
+New types (`types.ts`): `Location`, `HandoverNote`, `SupplierDelivery`, `IngredientPriceHistory`, `ForecastDay`, plus `kcalPer100g/proteinPer100g/carbsPer100g/fatPer100g/co2PerKg/dgeCategory/bio/regional/locationId` on `InventoryItem` and `portionOverrides/plannedCount` on `MenuDayEntry`.
+
+New AppContext actions: `setCurrentLocation`, `addLocation`, `updateLocation`, `removeLocation`, `addHandover`, `addDelivery`, `updateDelivery`, `addPriceHistory`, `upsertForecast`. Hydration merges all new arrays defensively.
+
+New helpers (`lib/computations.ts`): `recipeCost`, `recipeMargin` (with trend), `supplierScore`, `recipeCo2Kg`, `recipeNutrition`, `recipeAllergens`, `dgeCategory`, `computeShortages`, `leaderboard`, `fetchWeather` (Open-Meteo).
+
 ## Mobile structure
 
 - `app/(tabs)/` — Home, Lager (inventory), Karte (menu), Statistik, Mehr.

@@ -5,10 +5,11 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState } from "react";
 import { Alert, Image, Platform, Pressable, ScrollView, Text, View } from "react-native";
 
-import { Badge, Button, Card, Field, SectionHeader } from "@/components/ui";
+import { Badge, Button, Card, Field, SectionHeader, Stat } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useAuthor } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { supplierScore } from "@/lib/computations";
 import type { Supplier } from "@/types";
 
 export default function SupplierDetail() {
@@ -122,6 +123,35 @@ export default function SupplierDetail() {
         ) : null}
 
         <Button label={t("save")} icon="check" onPress={save} />
+
+        {existing ? (() => {
+          const cmpCount = state.complaints.filter((cp) => cp.supplierId === existing.id).length;
+          const score = supplierScore(existing.id, state.deliveries, cmpCount);
+          const tone = score.score >= 80 ? "success" : score.score >= 60 ? "warning" : "destructive";
+          return (
+            <Card>
+              <SectionHeader title={t("supplierScore")} />
+              <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8, marginBottom: 10 }}>
+                <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 36 }}>
+                  {score.score}
+                </Text>
+                <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 13 }}>
+                  / 100
+                </Text>
+                <View style={{ flex: 1 }} />
+                <Badge label={tone === "success" ? "A" : tone === "warning" ? "B" : "C"} tone={tone} />
+              </View>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <Stat label={t("onTime")} value={`${score.onTimePct.toFixed(0)}%`} icon="clock" />
+                <Stat label={t("accuracy")} value={`${score.accuracyPct.toFixed(0)}%`} icon="target" />
+                <Stat label={t("complaints")} value={String(score.complaints)} icon="alert-triangle" tone={score.complaints > 0 ? "warning" : "default"} />
+              </View>
+              <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 11, marginTop: 8 }}>
+                {score.deliveries} {t("deliveries")}
+              </Text>
+            </Card>
+          );
+        })() : null}
 
         {existing ? (
           <Card>

@@ -200,6 +200,124 @@ export interface DistributedOrderResult {
   orders: DistributedOrder[];
 }
 
+// ---- Phase 6A helpers ----
+
+export interface ForecastResult {
+  expectedGuests: number;
+  recommendations: { recipeId: string; portions: number }[];
+  rationale: string;
+}
+
+export async function aiForecast(args: {
+  date: string;
+  weather?: { tempC: number; rainMm: number; condition: string };
+  avgGuestsPerDay: number;
+  recentSales: { recipeId: string; recipeName: string; avgSold: number }[];
+  isWeekend: boolean;
+  locale: "de" | "en";
+}): Promise<ForecastResult> {
+  const lang = args.locale === "de" ? "Deutsch" : "English";
+  const sales = args.recentSales
+    .map((s) => `${s.recipeId}: ${s.recipeName} — Ø ${s.avgSold.toFixed(1)} verkauft/Tag`)
+    .join("\n");
+  const weather = args.weather
+    ? `${args.weather.condition}, ${args.weather.tempC.toFixed(0)}°C, ${args.weather.rainMm.toFixed(0)}mm Regen`
+    : "unbekannt";
+  return generateJson<ForecastResult>(
+    [
+      `Du bist KitchenOS Forecast-KI für eine deutsche Kantine. Antworte rationale auf ${lang}.`,
+      `Datum: ${args.date} (${args.isWeekend ? "Wochenende" : "Werktag"}). Wetter: ${weather}. Ø Gäste/Tag: ${args.avgGuestsPerDay}.`,
+      `Letzte 14 Tage Verkäufe pro Gericht:\n${sales}`,
+      `Aufgabe: schätze Gäste-Anzahl morgen (regen/wochenende anpassen) und empfohlene Kochmenge pro Gericht (ganze Portionen).`,
+      `Regel: bei Regen +20% Suppe, -15% Salat. Wochenende -25% gesamt. Vermeide Überproduktion: Empfehlung ≤ 1.1× Ø verkauft.`,
+    ].join("\n\n"),
+    '{"expectedGuests":number,"recommendations":[{"recipeId":"string","portions":number}],"rationale":"string"}',
+  );
+}
+
+export interface HandoverSummary {
+  summary: string;
+  actions: string[];
+}
+
+export async function aiHandover(args: {
+  transcript: string;
+  locale: "de" | "en";
+}): Promise<HandoverSummary> {
+  const lang = args.locale === "de" ? "Deutsch" : "English";
+  return generateJson<HandoverSummary>(
+    [
+      `Du bist KitchenOS Schichtübergabe-Assistent. Antworte auf ${lang}.`,
+      `Fasse das gesprochene Übergabeprotokoll in 3-6 prägnanten Bullet-Points zusammen ("summary") und extrahiere konkrete Aufgaben für die nächste Schicht ("actions" — kurze Imperative wie "Techniker für Kühlung 3 anrufen").`,
+      `Transkript:\n"""${args.transcript}"""`,
+    ].join("\n\n"),
+    '{"summary":"string","actions":["string"]}',
+  );
+}
+
+export interface ResteSuggestion {
+  recipes: { name: string; ingredients: string[]; steps: string[]; matchScore: number }[];
+}
+
+export async function aiResteRezepte(args: {
+  leftovers: { name: string; quantity: number; unit: string }[];
+  locale: "de" | "en";
+}): Promise<ResteSuggestion> {
+  const lang = args.locale === "de" ? "Deutsch" : "English";
+  const list = args.leftovers
+    .map((l) => `- ${l.quantity} ${l.unit} ${l.name}`)
+    .join("\n");
+  return generateJson<ResteSuggestion>(
+    [
+      `Du bist KitchenOS Reste-Koch. Antworte auf ${lang}.`,
+      `Aus diesen Resten der Kantine, schlage 3 schnelle Rezepte vor, die maximal Reste verwerten. Pro Rezept: Name, Zutatenliste, 3-5 Schritte, matchScore 0-100 (wie viel der Reste verwendet wird).`,
+      `Reste:\n${list}`,
+    ].join("\n\n"),
+    '{"recipes":[{"name":"string","ingredients":["string"],"steps":["string"],"matchScore":number}]}',
+  );
+}
+
+export interface IngredientEnrichment {
+  allergens: string[];
+  kcalPer100g: number;
+  proteinPer100g: number;
+  carbsPer100g: number;
+  fatPer100g: number;
+  co2PerKg: number;
+  dgeCategory: "green" | "yellow" | "red";
+}
+
+export async function aiEnrichIngredient(args: {
+  name: string;
+  category: string;
+}): Promise<IngredientEnrichment> {
+  return generateJson<IngredientEnrichment>(
+    [
+      `Du bist Lebensmittelchemiker. Liefere für die folgende Zutat (deutsche Kantine) realistische Schätzwerte:`,
+      `Zutat: ${args.name} (Kategorie: ${args.category})`,
+      `LMIV-Allergene aus dieser Liste auswählen: gluten, milk, egg, nuts, soy, fish, shellfish, celery, mustard, sesame, sulphite, lupin, mollusc, peanut.`,
+      `Nährwerte pro 100g, CO₂ in kg/kg (cradle-to-gate, EU-Schnitt). dgeCategory: green = häufig, yellow = mäßig, red = selten.`,
+    ].join("\n\n"),
+    '{"allergens":["string"],"kcalPer100g":number,"proteinPer100g":number,"carbsPer100g":number,"fatPer100g":number,"co2PerKg":number,"dgeCategory":"green|yellow|red"}',
+  );
+}
+
+export interface TrayReturnAnalysis {
+  dishGuess: string;
+  leftoverPct: number;
+  estimatedGrams: number;
+  reasonHypothesis: string;
+}
+
+export async function aiTrayReturn(args: { base64: string; locale: "de" | "en" }): Promise<TrayReturnAnalysis> {
+  const lang = args.locale === "de" ? "Deutsch" : "English";
+  return generateJson<TrayReturnAnalysis>(
+    `Du bist KitchenOS Tablett-Analyse. Schau dir das zurückgebrachte Tablett an und liefere: erkanntes Gericht (dishGuess), Restanteil 0-100% (leftoverPct), geschätzte verbleibende Gramm (estimatedGrams), kurze Hypothese warum nicht aufgegessen (reasonHypothesis). Antworte auf ${lang}.`,
+    '{"dishGuess":"string","leftoverPct":number,"estimatedGrams":number,"reasonHypothesis":"string"}',
+    args.base64,
+  );
+}
+
 export async function distributeOrder(args: {
   shortages: {
     inventoryId: string;
