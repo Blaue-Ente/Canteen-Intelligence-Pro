@@ -2,6 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Modal,
@@ -17,7 +18,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Badge, Button, Card, Chip, Field } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
-import type { InventoryItem } from "@/types";
+import { distributeOrder } from "@/lib/ai";
+import type { InventoryItem, OrderDraft } from "@/types";
 
 const CATS = ["all", "meat", "dairy", "vegetable", "fruit", "dry", "spice", "frozen"] as const;
 
@@ -31,6 +33,112 @@ export default function Inventory() {
   const [cat, setCat] = useState<(typeof CATS)[number]>("all");
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<InventoryItem | null>(null);
+  const [orderBusy, setOrderBusy] = useState(false);
+
+  const shortages = useMemo(
+    () => state.inventory.filter((i) => i.quantity < i.minQuantity),
+    [state.inventory],
+  );
+
+  const createOrders = async () => {
+    if (shortages.length === 0) return;
+    if (state.suppliers.length === 0) {
+      Alert.alert(
+        state.locale === "de" ? "Keine Lieferanten" : "No suppliers",
+        state.locale === "de"
+          ? "Bitte zuerst mindestens einen Lieferanten anlegen."
+          : "Please add at least one supplier first.",
+        [{ text: "OK", onPress: () => router.push("/supplier/new") }],
+      );
+      return;
+    }
+    setOrderBusy(true);
+    try {
+      const result = await distributeOrder({
+        locale: state.locale,
+        suppliers: state.suppliers.map((s) => ({ id: s.id, name: s.name, categories: s.category })),
+        shortages: shortages.map((i) => ({
+          inventoryId: i.id,
+          name: state.locale === "de" ? i.nameDe : i.name,
+          needed: Math.max(i.minQuantity - i.quantity, i.minQuantity * 0.5),
+          unit: i.unit,
+          category: i.category,
+          pricePerUnit: i.pricePerUnit,
+          preferredSupplierId: i.supplierId,
+        })),
+      });
+
+      // Group items by resolved supplier id, falling back gracefully so nothing is dropped.
+      const byId = new Map<string, OrderDraft>();
+      const ensure = (supplier: typeof state.suppliers[number], reason?: string): OrderDraft => {
+        let d = byId.get(supplier.id);
+        if (!d) {
+          d = {
+            id: newId(),
+            supplierId: supplier.id,
+            supplierName: supplier.name,
+            supplierEmail: supplier.email,
+            items: [],
+            total: 0,
+            status: "draft",
+            createdAt: new Date().toISOString(),
+            notes: reason,
+          };
+          byId.set(supplier.id, d);
+        } else if (reason && !d.notes) {
+          d.notes = reason;
+        }
+        return d;
+      };
+
+      const resolveSupplier = (
+        rawId: string | undefined,
+        fallbackInventoryId?: string,
+      ): typeof state.suppliers[number] => {
+        if (rawId) {
+          const direct = state.suppliers.find((s) => s.id === rawId);
+          if (direct) return direct;
+        }
+        if (fallbackInventoryId) {
+          const inv = state.inventory.find((i) => i.id === fallbackInventoryId);
+          if (inv?.supplierId) {
+            const pref = state.suppliers.find((s) => s.id === inv.supplierId);
+            if (pref) return pref;
+            const cat = state.suppliers.find((s) => s.category.includes(inv.category));
+            if (cat) return cat;
+          }
+        }
+        return state.suppliers[0]!;
+      };
+
+      result.orders.forEach((o) => {
+        const supplier = resolveSupplier(o.supplierId, o.items[0]?.inventoryId);
+        const draft = ensure(supplier, o.reason);
+        o.items.forEach((it) => {
+          draft.items.push({
+            name: it.name,
+            quantity: it.quantity,
+            unit: it.unit,
+            inventoryId: it.inventoryId,
+            estimatedPrice: it.estimatedPrice,
+          });
+          draft.total = (draft.total ?? 0) + (it.estimatedPrice ?? 0) * it.quantity;
+        });
+      });
+
+      const drafts = Array.from(byId.values()).filter((d) => d.items.length > 0);
+      if (drafts.length === 0) {
+        Alert.alert("KI", state.locale === "de" ? "Keine Bestellungen erzeugt." : "No orders generated.");
+        return;
+      }
+      drafts.forEach((d) => dispatch({ type: "addOrder", order: d }));
+      router.push("/orders");
+    } catch (e) {
+      Alert.alert("KI", e instanceof Error ? e.message : "Fehler");
+    } finally {
+      setOrderBusy(false);
+    }
+  };
 
   const items = useMemo(() => {
     return state.inventory.filter((i) => {
@@ -150,6 +258,55 @@ export default function Inventory() {
       <FlatList
         data={items}
         keyExtractor={(i) => i.id}
+        ListHeaderComponent={
+          shortages.length > 0 ? (
+            <Pressable
+              onPress={createOrders}
+              disabled={orderBusy}
+              style={({ pressed }) => [
+                {
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: 14,
+                  borderRadius: c.radius,
+                  backgroundColor: c.warning + "1a",
+                  borderWidth: 1,
+                  borderColor: c.warning + "55",
+                  marginBottom: 10,
+                  opacity: orderBusy ? 0.6 : 1,
+                },
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <View
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 10,
+                  backgroundColor: c.warning,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {orderBusy ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Feather name="truck" size={18} color="#fff" />
+                )}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 14 }}>
+                  {t("createOrder")} ({shortages.length})
+                </Text>
+                <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 2 }}>
+                  {t("autoDistribute")}
+                </Text>
+              </View>
+              <Feather name="chevron-right" size={18} color={c.mutedForeground} />
+            </Pressable>
+          ) : null
+        }
         contentContainerStyle={{
           padding: 16,
           paddingBottom: insets.bottom + 110,

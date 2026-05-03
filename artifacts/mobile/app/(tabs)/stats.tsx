@@ -90,6 +90,20 @@ export default function Stats() {
 
   const maxBest = bySold[0]?.v ?? 1;
 
+  // Per-recipe cooked vs sold (Phase 3 requirement)
+  const perDish = useMemo(() => {
+    const m = new Map<string, { cooked: number; sold: number }>();
+    sales.forEach((s) => {
+      const prev = m.get(s.recipeId) ?? { cooked: 0, sold: 0 };
+      m.set(s.recipeId, { cooked: prev.cooked + s.cooked, sold: prev.sold + s.sold });
+    });
+    return Array.from(m.entries())
+      .map(([id, v]) => ({ id, ...v }))
+      .sort((a, b) => b.cooked - a.cooked)
+      .slice(0, 8);
+  }, [sales]);
+  const maxPerDish = perDish.reduce((m, x) => Math.max(m, x.cooked, x.sold), 1);
+
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
       <ScrollView
@@ -134,6 +148,46 @@ export default function Stats() {
             <Legend color={c.chartA} label={t("sold")} />
             <Legend color={c.chartD} label={t("cooked")} />
           </View>
+        </Card>
+
+        <Card>
+          <SectionHeader title={t("perDish")} />
+          {perDish.length === 0 ? (
+            <Text style={{ color: c.mutedForeground, textAlign: "center", padding: 12, fontFamily: "Inter_400Regular" }}>
+              Keine Daten
+            </Text>
+          ) : (
+            perDish.map((p) => {
+              const r = state.recipes.find((x) => x.id === p.id);
+              if (!r) return null;
+              const waste = p.cooked > 0 ? Math.round(((p.cooked - p.sold) / p.cooked) * 100) : 0;
+              return (
+                <View key={p.id} style={{ marginBottom: 12 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <Text
+                      numberOfLines={1}
+                      style={{ flex: 1, color: c.foreground, fontFamily: "Inter_600SemiBold", fontSize: 13 }}
+                    >
+                      {state.locale === "de" ? r.nameDe : r.name}
+                    </Text>
+                    <Text
+                      style={{
+                        color: waste > 15 ? c.destructive : waste > 8 ? c.warning : c.success,
+                        fontFamily: "Inter_700Bold",
+                        fontSize: 12,
+                      }}
+                    >
+                      {waste}% Verlust
+                    </Text>
+                  </View>
+                  <View style={{ gap: 3 }}>
+                    <HBar label={t("cooked")} value={p.cooked} max={maxPerDish} />
+                    <HBar label={t("sold")} value={p.sold} max={maxPerDish} />
+                  </View>
+                </View>
+              );
+            })
+          )}
         </Card>
 
         <Card>

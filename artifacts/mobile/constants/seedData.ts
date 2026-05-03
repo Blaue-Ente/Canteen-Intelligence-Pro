@@ -126,5 +126,6 @@ export const seedState: AppState = {
   haccp,
   waste,
   catering,
+  orders: [],
   chat: [],
 };

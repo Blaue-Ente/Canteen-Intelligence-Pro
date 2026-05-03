@@ -62,6 +62,8 @@ export interface Recipe {
 export interface MenuDayEntry {
   date: string;
   recipeIds: string[];
+  /** Per-recipe portion override (grams) for this day. */
+  portionOverrides?: Record<string, number>;
 }
 
 export interface SaleEntry {
@@ -71,6 +73,9 @@ export interface SaleEntry {
   cooked: number;
   sold: number;
   revenue: number;
+  /** Actual portion size served (grams). Defaults to recipe.portionGrams when absent. */
+  portionGrams?: number;
+  source?: "manual" | "zettle" | "ai";
 }
 
 export interface Supplier {
@@ -133,8 +138,30 @@ export interface CateringRequest {
   body: string;
   guests: number;
   date: string;
+  dietary?: string;
   parsed: { recipeIds: string[]; notes: string }[];
   status: "new" | "draft" | "confirmed" | "rejected";
+}
+
+export interface OrderDraftItem {
+  name: string;
+  quantity: number;
+  unit: string;
+  estimatedPrice?: number;
+  inventoryId?: string;
+  reason?: string;
+}
+
+export interface OrderDraft {
+  id: string;
+  supplierId: string;
+  supplierName: string;
+  supplierEmail?: string;
+  items: OrderDraftItem[];
+  total?: number;
+  status: "draft" | "sent" | "received";
+  createdAt: string;
+  notes?: string;
 }
 
 export interface AppState {
@@ -148,5 +175,6 @@ export interface AppState {
   haccp: HaccpLog[];
   waste: WasteEntry[];
   catering: CateringRequest[];
+  orders: OrderDraft[];
   chat: ChatMessage[];
 }

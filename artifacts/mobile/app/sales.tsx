@@ -17,7 +17,7 @@ export default function Sales() {
   const c = useColors();
   const router = useRouter();
   const [date, setDate] = useState(dateKey(new Date()));
-  const [drafts, setDrafts] = useState<Record<string, { cooked: string; sold: string }>>({});
+  const [drafts, setDrafts] = useState<Record<string, { cooked: string; sold: string; portion: string }>>({});
 
   const todaysMenu = state.menu.find((m) => m.date === date);
   const candidateIds = useMemo(() => {
@@ -55,6 +55,7 @@ export default function Sales() {
       if (!r) return;
       const d = drafts[rid];
       if (!d || (!d.cooked && !d.sold)) return;
+      const portion = Number(d.portion) || r.portionGrams;
       dispatch({
         type: "addSale",
         sale: {
@@ -64,8 +65,13 @@ export default function Sales() {
           cooked: Number(d.cooked) || 0,
           sold: Number(d.sold) || 0,
           revenue: (Number(d.sold) || 0) * r.sellPrice,
+          portionGrams: portion,
+          source: "manual",
         },
       });
+      if (portion !== r.portionGrams) {
+        dispatch({ type: "updateRecipe", recipe: { ...r, portionGrams: portion } });
+      }
     });
     setDrafts({});
     if (router.canGoBack()) router.back();
@@ -98,7 +104,7 @@ export default function Sales() {
           candidateIds.map((rid) => {
             const r = state.recipes.find((x) => x.id === rid);
             if (!r) return null;
-            const d = drafts[rid] ?? { cooked: "", sold: "" };
+            const d = drafts[rid] ?? { cooked: "", sold: "", portion: "" };
             return (
               <Card key={rid}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -119,7 +125,7 @@ export default function Sales() {
                       {state.locale === "de" ? r.nameDe : r.name}
                     </Text>
                     <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12 }}>
-                      €{r.sellPrice.toFixed(2)} · {r.portionGrams}g
+                      €{r.sellPrice.toFixed(2)} · Standard {r.portionGrams}g
                     </Text>
                   </View>
                   <Badge label={t(r.category)} />
@@ -134,6 +140,13 @@ export default function Sales() {
                     label={t("sold")}
                     value={d.sold}
                     onChange={(v) => setDrafts((s) => ({ ...s, [rid]: { ...d, sold: v } }))}
+                  />
+                  <NumField
+                    label={t("portion") + " g"}
+                    value={d.portion}
+                    placeholder={String(r.portionGrams)}
+                    step={10}
+                    onChange={(v) => setDrafts((s) => ({ ...s, [rid]: { ...d, portion: v } }))}
                   />
                 </View>
               </Card>
@@ -151,10 +164,14 @@ function NumField({
   label,
   value,
   onChange,
+  placeholder,
+  step = 1,
 }: {
   label: string;
   value: string;
   onChange: (s: string) => void;
+  placeholder?: string;
+  step?: number;
 }) {
   const c = useColors();
   const n = Number(value) || 0;
@@ -163,7 +180,7 @@ function NumField({
       <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 11 }}>{label}</Text>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
         <Pressable
-          onPress={() => onChange(String(Math.max(0, n - 1)))}
+          onPress={() => onChange(String(Math.max(0, n - step)))}
           style={({ pressed }) => [
             { width: 28, height: 28, borderRadius: 8, backgroundColor: c.card, alignItems: "center", justifyContent: "center" },
             pressed && { opacity: 0.7 },
@@ -175,7 +192,7 @@ function NumField({
           value={value}
           onChangeText={onChange}
           keyboardType="numeric"
-          placeholder="0"
+          placeholder={placeholder ?? "0"}
           placeholderTextColor={c.mutedForeground}
           style={{
             flex: 1,
@@ -187,7 +204,7 @@ function NumField({
           }}
         />
         <Pressable
-          onPress={() => onChange(String(n + 1))}
+          onPress={() => onChange(String(n + step))}
           style={({ pressed }) => [
             { width: 28, height: 28, borderRadius: 8, backgroundColor: c.card, alignItems: "center", justifyContent: "center" },
             pressed && { opacity: 0.7 },

@@ -10,12 +10,14 @@ import React, {
 
 import type {
   AppState,
+  CateringRequest,
   ChatMessage,
   ComplaintDraft,
   HaccpLog,
   InventoryItem,
   Locale,
   MenuDayEntry,
+  OrderDraft,
   Recipe,
   SaleEntry,
   Supplier,
@@ -41,6 +43,11 @@ type Action =
   | { type: "addComplaint"; complaint: ComplaintDraft }
   | { type: "addHaccp"; log: HaccpLog }
   | { type: "addWaste"; entry: WasteEntry }
+  | { type: "addCatering"; request: CateringRequest }
+  | { type: "updateCatering"; request: CateringRequest }
+  | { type: "addOrder"; order: OrderDraft }
+  | { type: "updateOrder"; order: OrderDraft }
+  | { type: "removeOrder"; id: string }
   | { type: "addChat"; message: ChatMessage }
   | { type: "updateLastChat"; content: string }
   | { type: "clearChat" };
@@ -92,6 +99,22 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, haccp: [action.log, ...state.haccp] };
     case "addWaste":
       return { ...state, waste: [action.entry, ...state.waste] };
+    case "addCatering":
+      return { ...state, catering: [action.request, ...state.catering] };
+    case "updateCatering":
+      return {
+        ...state,
+        catering: state.catering.map((c) => (c.id === action.request.id ? action.request : c)),
+      };
+    case "addOrder":
+      return { ...state, orders: [action.order, ...state.orders] };
+    case "updateOrder":
+      return {
+        ...state,
+        orders: state.orders.map((o) => (o.id === action.order.id ? action.order : o)),
+      };
+    case "removeOrder":
+      return { ...state, orders: state.orders.filter((o) => o.id !== action.id) };
     case "addChat":
       return { ...state, chat: [...state.chat, action.message] };
     case "updateLastChat": {
@@ -126,7 +149,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     void (async () => {
       const loaded = await loadState();
       if (mounted && loaded) {
-        // Merge: respect explicit empty arrays from saved state; only fall back to seed when key is missing.
         const pick = <K extends keyof AppState>(k: K): AppState[K] =>
           (loaded[k] !== undefined ? loaded[k] : seedState[k]) as AppState[K];
         const merged: AppState = {
@@ -140,6 +162,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           haccp: pick("haccp"),
           waste: pick("waste"),
           catering: pick("catering"),
+          orders: pick("orders"),
           chat: pick("chat"),
         };
         dispatch({ type: "hydrate", state: merged });

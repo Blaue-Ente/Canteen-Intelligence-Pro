@@ -131,3 +131,105 @@ export async function generateWeekMenu(args: {
     '{"days":[{"date":"YYYY-MM-DD","recipeIds":["string"],"rationale":"string"}]}',
   );
 }
+
+// ---- Phase 3 helpers ----
+
+export interface ParsedCatering {
+  fromEmail?: string;
+  customer?: string;
+  subject?: string;
+  guests: number;
+  date?: string;
+  dietary?: string;
+  blocks: { recipeIds: string[]; notes: string }[];
+  confidence?: number;
+}
+
+export async function parseCateringEmail(args: {
+  body: string;
+  recipes: { id: string; name: string; category: string }[];
+  locale: "de" | "en";
+}): Promise<ParsedCatering> {
+  const lang = args.locale === "de" ? "Deutsch" : "English";
+  const list = args.recipes.map((r) => `${r.id}: ${r.name} (${r.category})`).join("\n");
+  return generateJson<ParsedCatering>(
+    [
+      `You are KitchenOS, parsing an inbound German catering enquiry. Reply notes in ${lang}.`,
+      `Extract: customer/company, sender email, intended date (ISO YYYY-MM-DD if derivable), guest count (integer), dietary requirements (free text in ${lang}), and group dishes into 1-3 menu BLOCKS (e.g. "vegetarian", "meat", "kids"). For each block list recipe IDs that best match using ONLY ids from the catalogue below.`,
+      `Catalogue:\n${list}`,
+      `Email body:\n"""${args.body}"""`,
+    ].join("\n\n"),
+    '{"customer":"string","fromEmail":"string","subject":"string","guests":number,"date":"YYYY-MM-DD","dietary":"string","blocks":[{"recipeIds":["string"],"notes":"string"}],"confidence":number}',
+  );
+}
+
+export interface ParsedZettleItem {
+  name: string;
+  recipeId?: string;
+  soldCount: number;
+  revenue?: number;
+}
+export interface ParsedZettleReport {
+  date?: string;
+  total?: number;
+  items: ParsedZettleItem[];
+}
+
+export async function parseZettleReport(args: {
+  base64: string;
+  recipes: { id: string; name: string }[];
+}): Promise<ParsedZettleReport> {
+  const list = args.recipes.map((r) => `${r.id}: ${r.name}`).join("\n");
+  return generateJson<ParsedZettleReport>(
+    [
+      "You are reading a Zettle / iZettle Z-report (Tagesabschluss) screenshot or printout from a German restaurant POS.",
+      "Extract every sold item line with its name, quantity sold and revenue in EUR. Match each item to a recipe id from the catalogue when reasonably similar (case-insensitive German match), otherwise leave recipeId empty.",
+      `Catalogue:\n${list}`,
+    ].join("\n\n"),
+    '{"date":"YYYY-MM-DD","total":number,"items":[{"name":"string","recipeId":"string","soldCount":number,"revenue":number}]}',
+    args.base64,
+  );
+}
+
+export interface DistributedOrder {
+  supplierId: string;
+  reason?: string;
+  items: { name: string; quantity: number; unit: string; inventoryId?: string; estimatedPrice?: number }[];
+}
+export interface DistributedOrderResult {
+  orders: DistributedOrder[];
+}
+
+export async function distributeOrder(args: {
+  shortages: {
+    inventoryId: string;
+    name: string;
+    needed: number;
+    unit: string;
+    category: string;
+    pricePerUnit: number;
+    preferredSupplierId?: string;
+  }[];
+  suppliers: { id: string; name: string; categories: string[] }[];
+  locale: "de" | "en";
+}): Promise<DistributedOrderResult> {
+  const lang = args.locale === "de" ? "Deutsch" : "English";
+  const supplierList = args.suppliers
+    .map((s) => `${s.id}: ${s.name} [${s.categories.join(",")}]`)
+    .join("\n");
+  const itemList = args.shortages
+    .map(
+      (i) =>
+        `${i.inventoryId}: ${i.name} – brauche ${i.needed}${i.unit} (Kategorie: ${i.category}, €${i.pricePerUnit}/${i.unit}, bevorzugt: ${i.preferredSupplierId ?? "—"})`,
+    )
+    .join("\n");
+  return generateJson<DistributedOrderResult>(
+    [
+      `You are KitchenOS auto-purchasing assistant. Group the following shortage list into one order per supplier, choosing the best matching supplier by category (or honour preferredSupplierId when present). Reply notes in ${lang}.`,
+      `Suppliers:\n${supplierList}`,
+      `Shortages (round up to a sensible whole-pack order quantity ≥ needed):\n${itemList}`,
+      "Each order MUST list: supplierId, items (name, quantity, unit, inventoryId, estimatedPrice). Add a short reason field describing why this supplier was chosen.",
+    ].join("\n\n"),
+    '{"orders":[{"supplierId":"string","reason":"string","items":[{"name":"string","quantity":number,"unit":"string","inventoryId":"string","estimatedPrice":number}]}]}',
+  );
+}
