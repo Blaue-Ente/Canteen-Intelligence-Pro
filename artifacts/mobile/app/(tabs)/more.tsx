@@ -34,6 +34,7 @@ export default function More() {
     {
       title: "Operations",
       items: [
+        { icon: "check-square", label: "Tagesabschluss", to: "/sales" },
         { icon: "users", label: t("suppliers"), to: "/suppliers" },
         { icon: "mail", label: t("catering"), to: "/catering" },
         { icon: "dollar-sign", label: t("calculator"), to: "/calculator" },

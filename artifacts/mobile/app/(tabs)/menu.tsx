@@ -1,12 +1,13 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
-import { Alert, Modal, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Badge, Button, Card, Chip, EmptyState, SectionHeader } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
+import { generateWeekMenu } from "@/lib/ai";
 
 const DAYS_DE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const DAYS_EN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -35,31 +36,52 @@ export default function Menu() {
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [picker, setPicker] = useState(false);
   const [filter, setFilter] = useState<string>("all");
+  const [generating, setGenerating] = useState(false);
 
   const selectedDate = dateKey(days[selectedIdx]!);
   const entry = state.menu.find((m) => m.date === selectedDate) ?? { date: selectedDate, recipeIds: [] };
   const dayRecipes = entry.recipeIds.map((id) => state.recipes.find((r) => r.id === id)).filter(Boolean);
 
   const labelDays = state.locale === "de" ? DAYS_DE : DAYS_EN;
-
   const filteredRecipes = state.recipes.filter((r) => filter === "all" || r.category === filter || r.type === filter);
+
+  const aiGenerate = async () => {
+    setGenerating(true);
+    try {
+      const lowStock = state.inventory
+        .filter((i) => i.quantity < i.minQuantity)
+        .map((i) => i.nameDe);
+      const result = await generateWeekMenu({
+        recipes: state.recipes.map((r) => ({
+          id: r.id,
+          name: state.locale === "de" ? r.nameDe : r.name,
+          type: r.type,
+          category: r.category,
+          meat: r.meat,
+        })),
+        startDate: dateKey(days[0]!),
+        lowStockNames: lowStock,
+        locale: state.locale,
+      });
+      const validIds = new Set(state.recipes.map((r) => r.id));
+      (result.days ?? []).forEach((d) => {
+        const ids = (d.recipeIds ?? []).filter((id) => validIds.has(id));
+        if (ids.length > 0) {
+          dispatch({ type: "setMenu", entry: { date: d.date, recipeIds: ids } });
+        }
+      });
+      Alert.alert("KI", "Wochenkarte aktualisiert.");
+    } catch (e) {
+      Alert.alert("Fehler", e instanceof Error ? e.message : "KI nicht verfügbar");
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
-      <View
-        style={{
-          paddingTop: topPad + 8,
-          paddingHorizontal: 16,
-          paddingBottom: 12,
-        }}
-      >
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
+      <View style={{ paddingTop: topPad + 8, paddingHorizontal: 16, paddingBottom: 12 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <View>
             <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 22 }}>
               {t("weeklyMenu")}
@@ -77,21 +99,15 @@ export default function Menu() {
                 ]);
               }}
               style={({ pressed }) => [
-                {
-                  width: 38,
-                  height: 38,
-                  borderRadius: 12,
-                  backgroundColor: c.muted,
-                  alignItems: "center",
-                  justifyContent: "center",
-                },
+                { width: 38, height: 38, borderRadius: 12, backgroundColor: c.muted, alignItems: "center", justifyContent: "center" },
                 pressed && { opacity: 0.7 },
               ]}
             >
               <Feather name="refresh-cw" size={16} color={c.foreground} />
             </Pressable>
             <Pressable
-              onPress={() => router.push("/chat")}
+              onPress={aiGenerate}
+              disabled={generating}
               style={({ pressed }) => [
                 {
                   flexDirection: "row",
@@ -101,11 +117,16 @@ export default function Menu() {
                   borderRadius: 12,
                   paddingHorizontal: 12,
                   height: 38,
+                  opacity: generating ? 0.6 : 1,
                 },
                 pressed && { opacity: 0.8 },
               ]}
             >
-              <Feather name="cpu" size={14} color={c.primaryForeground} />
+              {generating ? (
+                <ActivityIndicator size="small" color={c.primaryForeground} />
+              ) : (
+                <Feather name="cpu" size={14} color={c.primaryForeground} />
+              )}
               <Text style={{ color: c.primaryForeground, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
                 {t("generate")}
               </Text>
@@ -114,7 +135,6 @@ export default function Menu() {
         </View>
       </View>
 
-      {/* Day strip */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -139,23 +159,10 @@ export default function Menu() {
                 pressed && { opacity: 0.8 },
               ]}
             >
-              <Text
-                style={{
-                  color: active ? c.primaryForeground : c.mutedForeground,
-                  fontFamily: "Inter_500Medium",
-                  fontSize: 11,
-                }}
-              >
+              <Text style={{ color: active ? c.primaryForeground : c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 11 }}>
                 {labelDays[d.getDay() === 0 ? 6 : d.getDay() - 1]}
               </Text>
-              <Text
-                style={{
-                  color: active ? c.primaryForeground : c.foreground,
-                  fontFamily: "Inter_700Bold",
-                  fontSize: 18,
-                  marginTop: 2,
-                }}
-              >
+              <Text style={{ color: active ? c.primaryForeground : c.foreground, fontFamily: "Inter_700Bold", fontSize: 18, marginTop: 2 }}>
                 {d.getDate()}
               </Text>
             </Pressable>
@@ -163,9 +170,7 @@ export default function Menu() {
         })}
       </ScrollView>
 
-      <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 110, gap: 14 }}
-      >
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 110, gap: 14 }}>
         <SectionHeader title={t("today") + " · " + t("menu")} action="+ " onAction={() => setPicker(true)} />
         {dayRecipes.length === 0 ? (
           <Card>
@@ -238,13 +243,9 @@ export default function Menu() {
             }}
           >
             <Pressable onPress={() => setPicker(false)}>
-              <Text style={{ color: c.primary, fontFamily: "Inter_500Medium", fontSize: 15 }}>
-                {t("close")}
-              </Text>
+              <Text style={{ color: c.primary, fontFamily: "Inter_500Medium", fontSize: 15 }}>{t("close")}</Text>
             </Pressable>
-            <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 17 }}>
-              {t("recipes")}
-            </Text>
+            <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 17 }}>{t("recipes")}</Text>
             <View style={{ width: 60 }} />
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ padding: 12, gap: 8 }}>

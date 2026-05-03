@@ -1,7 +1,8 @@
 import { Feather } from "@expo/vector-icons";
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Platform,
   Pressable,
@@ -16,6 +17,14 @@ import { Button } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { streamChat, type AiChatMessage } from "@/lib/ai";
+import {
+  isTtsSupported,
+  isVoiceSupported,
+  speak,
+  startVoice,
+  stopSpeaking,
+  type VoiceSession,
+} from "@/lib/voice";
 import type { ChatMessage } from "@/types";
 
 function buildSystemPrompt(state: ReturnType<typeof useApp>["state"]): string {
@@ -42,7 +51,18 @@ export default function Chat() {
   const insets = useSafeAreaInsets();
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [autoSpeak, setAutoSpeak] = useState(false);
+  const voiceRef = useRef<VoiceSession | null>(null);
   const listRef = useRef<FlatList>(null);
+  const lastSpokenRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      voiceRef.current?.stop();
+      stopSpeaking();
+    };
+  }, []);
 
   const send = useCallback(
     async (text: string) => {
@@ -63,44 +83,112 @@ export default function Chat() {
       dispatch({ type: "addChat", message: assistantMsg });
       setInput("");
       setBusy(true);
+      let final = "";
       try {
         const sys: AiChatMessage = { role: "system", content: buildSystemPrompt(state) };
         const history: AiChatMessage[] = state.chat.map((m) => ({
           role: m.role,
           content: m.content,
         }));
-        await streamChat(
+        final = await streamChat(
           [sys, ...history, { role: "user", content: text.trim() }],
           (delta) => dispatch({ type: "updateLastChat", content: delta }),
         );
       } catch (e) {
-        dispatch({
-          type: "updateLastChat",
-          content:
-            "\n⚠️ " +
-            (e instanceof Error ? e.message : "Verbindungsfehler") +
-            ". Bitte später erneut versuchen.",
-        });
+        const err = "\n⚠️ " + (e instanceof Error ? e.message : "Verbindungsfehler") + ".";
+        dispatch({ type: "updateLastChat", content: err });
       } finally {
         setBusy(false);
+        if (autoSpeak && final && lastSpokenRef.current !== final) {
+          lastSpokenRef.current = final;
+          speak(final, state.locale);
+        }
       }
     },
-    [busy, dispatch, newId, state],
+    [autoSpeak, busy, dispatch, newId, state],
   );
 
-  const suggestions = state.locale === "de"
-    ? [
-        "Was sollte ich heute bestellen?",
-        "Wochenkarte vorschlagen",
-        "Allergene für Schnitzel",
-        "HACCP Kontrolle Kühlung",
-      ]
-    : [
-        "What should I order today?",
-        "Suggest a weekly menu",
-        "Allergens in schnitzel",
-        "HACCP fridge check",
-      ];
+  const toggleVoice = () => {
+    if (listening) {
+      voiceRef.current?.stop();
+      voiceRef.current = null;
+      setListening(false);
+      return;
+    }
+    if (!isVoiceSupported()) {
+      Alert.alert(
+        "Sprache",
+        Platform.OS === "web"
+          ? "Browser unterstützt keine Spracheingabe (Chrome/Edge empfohlen)."
+          : "Spracheingabe ist im Web verfügbar – mobile Unterstützung kommt bald.",
+      );
+      return;
+    }
+    let lastTranscript = "";
+    const session = startVoice({
+      locale: state.locale,
+      onPartial: (txt) => {
+        lastTranscript = txt;
+        setInput(txt);
+      },
+      onFinal: (txt) => {
+        lastTranscript = txt;
+        setInput(txt);
+      },
+      onEnd: () => {
+        setListening(false);
+        voiceRef.current = null;
+        if (lastTranscript.trim()) {
+          // Auto-send after speech finishes.
+          setTimeout(() => {
+            void send(lastTranscript.trim());
+          }, 50);
+        }
+      },
+      onError: (err) => {
+        setListening(false);
+        voiceRef.current = null;
+        if (err !== "no-speech" && err !== "aborted") {
+          Alert.alert("Sprache", err);
+        }
+      },
+    });
+    if (session) {
+      voiceRef.current = session;
+      setListening(true);
+    }
+  };
+
+  const toggleAutoSpeak = () => {
+    if (!isTtsSupported()) {
+      Alert.alert(
+        "Vorlesen",
+        Platform.OS === "web"
+          ? "Browser unterstützt keine Sprachausgabe."
+          : "Sprachausgabe ist im Web verfügbar – mobile Unterstützung kommt bald.",
+      );
+      return;
+    }
+    setAutoSpeak((v) => {
+      if (v) stopSpeaking();
+      return !v;
+    });
+  };
+
+  const suggestions =
+    state.locale === "de"
+      ? [
+          "Was sollte ich heute bestellen?",
+          "Wochenkarte vorschlagen",
+          "Allergene für Schnitzel",
+          "HACCP Kontrolle Kühlung",
+        ]
+      : [
+          "What should I order today?",
+          "Suggest a weekly menu",
+          "Allergens in schnitzel",
+          "HACCP fridge check",
+        ];
 
   const messages = state.chat;
 
@@ -110,6 +198,75 @@ export default function Chat() {
       style={{ flex: 1, backgroundColor: c.background }}
       keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
     >
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+          paddingHorizontal: 12,
+          paddingVertical: 8,
+          borderBottomWidth: 1,
+          borderColor: c.border,
+          backgroundColor: c.background,
+        }}
+      >
+        <Pressable
+          onPress={toggleAutoSpeak}
+          style={({ pressed }) => [
+            {
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 999,
+              backgroundColor: autoSpeak ? c.accent : c.muted,
+            },
+            pressed && { opacity: 0.7 },
+          ]}
+        >
+          <Feather
+            name={autoSpeak ? "volume-2" : "volume-x"}
+            size={12}
+            color={autoSpeak ? c.primary : c.mutedForeground}
+          />
+          <Text
+            style={{
+              color: autoSpeak ? c.primary : c.mutedForeground,
+              fontFamily: "Inter_500Medium",
+              fontSize: 11,
+            }}
+          >
+            Vorlesen
+          </Text>
+        </Pressable>
+        {messages.length > 0 ? (
+          <Pressable
+            onPress={() => {
+              stopSpeaking();
+              dispatch({ type: "clearChat" });
+            }}
+            style={({ pressed }) => [
+              {
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 999,
+                backgroundColor: c.muted,
+              },
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Feather name="trash-2" size={12} color={c.mutedForeground} />
+            <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 11 }}>
+              Verlauf löschen
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+
       <FlatList
         ref={listRef}
         data={[...messages].reverse()}
@@ -204,10 +361,26 @@ export default function Chat() {
           gap: 8,
         }}
       >
+        <Pressable
+          onPress={toggleVoice}
+          style={({ pressed }) => [
+            {
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: listening ? c.destructive : c.muted,
+              alignItems: "center",
+              justifyContent: "center",
+            },
+            pressed && { opacity: 0.7 },
+          ]}
+        >
+          <Feather name={listening ? "square" : "mic"} size={18} color={listening ? "#fff" : c.foreground} />
+        </Pressable>
         <TextInput
           value={input}
           onChangeText={setInput}
-          placeholder={t("askAi")}
+          placeholder={listening ? t("listening") : t("askAi")}
           placeholderTextColor={c.mutedForeground}
           multiline
           style={{
@@ -230,14 +403,10 @@ export default function Chat() {
 
 function Bubble({ msg }: { msg: ChatMessage }) {
   const c = useColors();
+  const { state } = useApp();
   const isUser = msg.role === "user";
   return (
-    <View
-      style={{
-        flexDirection: "row",
-        justifyContent: isUser ? "flex-end" : "flex-start",
-      }}
-    >
+    <View style={{ flexDirection: "row", justifyContent: isUser ? "flex-end" : "flex-start" }}>
       <View
         style={{
           maxWidth: "85%",
@@ -261,6 +430,18 @@ function Bubble({ msg }: { msg: ChatMessage }) {
         >
           {msg.content || "…"}
         </Text>
+        {!isUser && msg.content && isTtsSupported() ? (
+          <Pressable
+            onPress={() => speak(msg.content, state.locale)}
+            style={({ pressed }) => [
+              { alignSelf: "flex-end", marginTop: 6, padding: 4 },
+              pressed && { opacity: 0.6 },
+            ]}
+            hitSlop={6}
+          >
+            <Feather name="volume-2" size={12} color={c.mutedForeground} />
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );

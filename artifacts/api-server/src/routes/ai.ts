@@ -88,4 +88,59 @@ router.post("/ai/vision", async (req: Request, res: Response) => {
   }
 });
 
+interface JsonBody {
+  prompt: string;
+  schemaHint?: string;
+  base64?: string;
+}
+
+// Generic JSON-mode endpoint: returns parsed JSON object.
+router.post("/ai/json", async (req: Request, res: Response) => {
+  const body = req.body as JsonBody;
+  if (!body?.prompt) {
+    res.status(400).json({ error: "prompt required" });
+    return;
+  }
+  try {
+    const userContent: Array<
+      | { type: "text"; text: string }
+      | { type: "image_url"; image_url: { url: string } }
+    > = [
+      {
+        type: "text",
+        text:
+          body.prompt +
+          (body.schemaHint
+            ? "\n\nReturn ONLY valid minified JSON matching: " + body.schemaHint
+            : "\n\nReturn ONLY valid minified JSON."),
+      },
+    ];
+    if (body.base64) {
+      userContent.push({
+        type: "image_url",
+        image_url: { url: `data:image/jpeg;base64,${body.base64}` },
+      });
+    }
+    const completion = await openai.chat.completions.create({
+      model: "gpt-5.4",
+      max_completion_tokens: 4096,
+      response_format: { type: "json_object" },
+      messages: [{ role: "user", content: userContent }],
+    });
+    const text = completion.choices[0]?.message?.content ?? "{}";
+    let parsed: unknown = {};
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = { raw: text };
+    }
+    res.json({ data: parsed });
+  } catch (err) {
+    req.log.error({ err }, "ai json error");
+    res
+      .status(500)
+      .json({ error: err instanceof Error ? err.message : "unknown" });
+  }
+});
+
 export default router;
