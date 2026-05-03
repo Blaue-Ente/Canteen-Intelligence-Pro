@@ -5,6 +5,7 @@ import meRouter from "./me";
 import suppliersDiscoverRouter from "./suppliersDiscover";
 import preorderRouter from "./preorder";
 import rollupRouter from "./rollup";
+import mailRouter from "./mail";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(meRouter);
 router.use(suppliersDiscoverRouter);
 router.use(preorderRouter);
 router.use(rollupRouter);
+router.use(mailRouter);
 
 export default router;
