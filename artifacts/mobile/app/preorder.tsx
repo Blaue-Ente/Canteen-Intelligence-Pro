@@ -18,6 +18,12 @@ interface PreorderDish {
   type?: string | null;
   allergens: string[];
   imageUrl?: string | null;
+  kcal?: number | null;
+  proteinG?: number | null;
+  carbsG?: number | null;
+  fatG?: number | null;
+  dge?: "green" | "amber" | "red" | null;
+  co2eG?: number | null;
 }
 
 interface PublishedMenu {
@@ -88,15 +94,34 @@ export default function PreorderScreen() {
     return recipeIds
       .map((rid) => state.recipes.find((r) => r.id === rid))
       .filter((r): r is NonNullable<typeof r> => Boolean(r))
-      .map((r) => ({
-        id: r.id,
-        name: r.nameDe || r.name,
-        description: r.steps[0] ?? r.stepsDe[0] ?? null,
-        price: r.sellPrice || r.basePrice * 2.8,
-        type: r.type,
-        allergens: r.allergens,
-        imageUrl: r.imageUrl ?? null,
-      }));
+      .map((r) => {
+        const kcal = r.kcalPerPortion ?? null;
+        // Naive macro split from kcal when not present (40% carbs, 30% protein, 30% fat).
+        const proteinG = kcal ? Math.round((kcal * 0.3) / 4) : null;
+        const carbsG = kcal ? Math.round((kcal * 0.4) / 4) : null;
+        const fatG = kcal ? Math.round((kcal * 0.3) / 9) : null;
+        const dge: "green" | "amber" | "red" =
+          r.category === "vegan" || r.category === "vegetarian"
+            ? "green"
+            : r.meat === "beef" || r.meat === "lamb"
+              ? "red"
+              : "amber";
+        return {
+          id: r.id,
+          name: r.nameDe || r.name,
+          description: r.steps[0] ?? r.stepsDe[0] ?? null,
+          price: r.sellPrice || r.basePrice * 2.8,
+          type: r.type,
+          allergens: r.allergens,
+          imageUrl: r.imageUrl ?? null,
+          kcal,
+          proteinG,
+          carbsG,
+          fatG,
+          dge,
+          co2eG: null,
+        };
+      });
   }, [state.menu, state.recipes]);
 
   const guestUrl = useMemo(() => {

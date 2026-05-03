@@ -46,6 +46,7 @@ export default function More() {
         { icon: "trash-2", label: t("waste"), to: "/waste" },
         { icon: "refresh-ccw", label: t("resteRezepte"), to: "/reste" },
         { icon: "smartphone", label: t("preorder"), to: "/preorder" },
+        { icon: "bar-chart-2", label: t("multiLocationRollup"), to: "/rollup" },
       ],
     },
     {

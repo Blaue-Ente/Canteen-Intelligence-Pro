@@ -17,12 +17,18 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  CreateFeedbackBody,
   CreateOrderBody,
   ErrorResponse,
+  FeedbackSummary,
   GetGuestOrderParams,
+  GetLocationRollupParams,
+  GuestFeedback,
   GuestOrder,
   HealthStatus,
+  ListStaffFeedbackParams,
   ListStaffOrdersParams,
+  LocationRollup,
   PublishMenuBody,
   PublishedMenu,
   UpdateOrderStatusBody,
@@ -569,6 +575,286 @@ export const useUpdateOrderStatus = <
 > => {
   return useMutation(getUpdateOrderStatusMutationOptions(options));
 };
+
+/**
+ * @summary Guest submits multi-criteria feedback for a location (no auth).
+ */
+export const getCreateFeedbackUrl = () => {
+  return `/api/preorder/feedback`;
+};
+
+export const createFeedback = async (
+  createFeedbackBody: CreateFeedbackBody,
+  options?: RequestInit,
+): Promise<GuestFeedback> => {
+  return customFetch<GuestFeedback>(getCreateFeedbackUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createFeedbackBody),
+  });
+};
+
+export const getCreateFeedbackMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createFeedback>>,
+    TError,
+    { data: BodyType<CreateFeedbackBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createFeedback>>,
+  TError,
+  { data: BodyType<CreateFeedbackBody> },
+  TContext
+> => {
+  const mutationKey = ["createFeedback"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createFeedback>>,
+    { data: BodyType<CreateFeedbackBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createFeedback(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateFeedbackMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createFeedback>>
+>;
+export type CreateFeedbackMutationBody = BodyType<CreateFeedbackBody>;
+export type CreateFeedbackMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Guest submits multi-criteria feedback for a location (no auth).
+ */
+export const useCreateFeedback = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createFeedback>>,
+    TError,
+    { data: BodyType<CreateFeedbackBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createFeedback>>,
+  TError,
+  { data: BodyType<CreateFeedbackBody> },
+  TContext
+> => {
+  return useMutation(getCreateFeedbackMutationOptions(options));
+};
+
+/**
+ * @summary Staff lists recent feedback for a location with aggregate (requires auth).
+ */
+export const getListStaffFeedbackUrl = (params: ListStaffFeedbackParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/preorder/staff/feedback?${stringifiedParams}`
+    : `/api/preorder/staff/feedback`;
+};
+
+export const listStaffFeedback = async (
+  params: ListStaffFeedbackParams,
+  options?: RequestInit,
+): Promise<FeedbackSummary> => {
+  return customFetch<FeedbackSummary>(getListStaffFeedbackUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListStaffFeedbackQueryKey = (
+  params?: ListStaffFeedbackParams,
+) => {
+  return [`/api/preorder/staff/feedback`, ...(params ? [params] : [])] as const;
+};
+
+export const getListStaffFeedbackQueryOptions = <
+  TData = Awaited<ReturnType<typeof listStaffFeedback>>,
+  TError = ErrorType<unknown>,
+>(
+  params: ListStaffFeedbackParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listStaffFeedback>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListStaffFeedbackQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listStaffFeedback>>
+  > = ({ signal }) => listStaffFeedback(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listStaffFeedback>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListStaffFeedbackQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listStaffFeedback>>
+>;
+export type ListStaffFeedbackQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Staff lists recent feedback for a location with aggregate (requires auth).
+ */
+
+export function useListStaffFeedback<
+  TData = Awaited<ReturnType<typeof listStaffFeedback>>,
+  TError = ErrorType<unknown>,
+>(
+  params: ListStaffFeedbackParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listStaffFeedback>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListStaffFeedbackQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Aggregate orders + feedback across all of the caller's locations (requires auth).
+ */
+export const getGetLocationRollupUrl = (params?: GetLocationRollupParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/rollup/locations?${stringifiedParams}`
+    : `/api/rollup/locations`;
+};
+
+export const getLocationRollup = async (
+  params?: GetLocationRollupParams,
+  options?: RequestInit,
+): Promise<LocationRollup[]> => {
+  return customFetch<LocationRollup[]>(getGetLocationRollupUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetLocationRollupQueryKey = (
+  params?: GetLocationRollupParams,
+) => {
+  return [`/api/rollup/locations`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetLocationRollupQueryOptions = <
+  TData = Awaited<ReturnType<typeof getLocationRollup>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetLocationRollupParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getLocationRollup>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetLocationRollupQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getLocationRollup>>
+  > = ({ signal }) => getLocationRollup(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getLocationRollup>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetLocationRollupQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getLocationRollup>>
+>;
+export type GetLocationRollupQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Aggregate orders + feedback across all of the caller's locations (requires auth).
+ */
+
+export function useGetLocationRollup<
+  TData = Awaited<ReturnType<typeof getLocationRollup>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetLocationRollupParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getLocationRollup>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetLocationRollupQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Staff lists pending/active orders for a location (requires auth).

@@ -3,7 +3,7 @@ import { useGetPublishedMenu, PreorderDish } from "@workspace/api-client-react";
 import { useCart } from "@/hooks/use-cart";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/currency";
-import { Plus, Minus, ChevronRight, AlertCircle } from "lucide-react";
+import { Plus, Minus, ChevronRight, AlertCircle, Star, Leaf, Flame } from "lucide-react";
 
 export default function Menu() {
   const [, params] = useRoute("/menu/:locationCode");
@@ -80,6 +80,46 @@ export default function Menu() {
                     <p className="text-xs text-muted-foreground/70 mt-2 truncate">Allergene: {dish.allergens.join(", ")}</p>
                   )}
 
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {dish.kcal != null ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full">
+                        <Flame className="w-3 h-3" />
+                        {Math.round(dish.kcal)} kcal
+                      </span>
+                    ) : null}
+                    {dish.proteinG != null ? (
+                      <span className="text-[10px] font-medium uppercase tracking-wide bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full">
+                        {Math.round(dish.proteinG)} P
+                      </span>
+                    ) : null}
+                    {dish.carbsG != null ? (
+                      <span className="text-[10px] font-medium uppercase tracking-wide bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full">
+                        {Math.round(dish.carbsG)} KH
+                      </span>
+                    ) : null}
+                    {dish.fatG != null ? (
+                      <span className="text-[10px] font-medium uppercase tracking-wide bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full">
+                        {Math.round(dish.fatG)} F
+                      </span>
+                    ) : null}
+                    {dish.dge ? (
+                      <span
+                        className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full text-white"
+                        style={{
+                          backgroundColor:
+                            dish.dge === "green"
+                              ? "#16a34a"
+                              : dish.dge === "amber"
+                                ? "#eab308"
+                                : "#dc2626",
+                        }}
+                      >
+                        <Leaf className="w-3 h-3" />
+                        DGE {dish.dge}
+                      </span>
+                    ) : null}
+                  </div>
+
                   <div className="mt-auto pt-3 flex items-center justify-end">
                     {qty > 0 ? (
                       <div className="flex items-center gap-3 bg-secondary rounded-full p-1">
@@ -117,6 +157,18 @@ export default function Menu() {
             );
           })
         )}
+
+        <div className="pt-4">
+          <Button
+            variant="outline"
+            className="w-full h-12 rounded-2xl"
+            onClick={() => setLocation(`/feedback/${locationCode}`)}
+            data-testid="button-feedback"
+          >
+            <Star className="w-4 h-4 mr-2" />
+            Bewertung abgeben <span className="opacity-50 font-normal ml-1 text-xs">/ Leave a review</span>
+          </Button>
+        </div>
       </main>
 
       {count > 0 && (

@@ -8,6 +8,7 @@ import Landing from "@/pages/landing";
 import Menu from "@/pages/menu";
 import Checkout from "@/pages/checkout";
 import OrderStatus from "@/pages/order-status";
+import Feedback from "@/pages/feedback";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,6 +26,7 @@ function Router() {
       <Route path="/menu/:locationCode" component={Menu} />
       <Route path="/checkout/:locationCode" component={Checkout} />
       <Route path="/order/:id" component={OrderStatus} />
+      <Route path="/feedback/:locationCode" component={Feedback} />
       <Route component={NotFound} />
     </Switch>
   );

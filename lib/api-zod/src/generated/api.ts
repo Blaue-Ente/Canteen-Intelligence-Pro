@@ -35,6 +35,19 @@ export const GetPublishedMenuResponse = zod.object({
       type: zod.string().nullish(),
       allergens: zod.array(zod.string()),
       imageUrl: zod.string().nullish(),
+      kcal: zod.number().nullish(),
+      proteinG: zod.number().nullish(),
+      carbsG: zod.number().nullish(),
+      fatG: zod.number().nullish(),
+      dge: zod
+        .union([
+          zod.literal("green"),
+          zod.literal("amber"),
+          zod.literal("red"),
+          zod.literal(null),
+        ])
+        .nullish(),
+      co2eG: zod.number().nullish(),
     }),
   ),
   publishedAt: zod.string(),
@@ -56,6 +69,19 @@ export const PublishMenuBody = zod.object({
       type: zod.string().nullish(),
       allergens: zod.array(zod.string()),
       imageUrl: zod.string().nullish(),
+      kcal: zod.number().nullish(),
+      proteinG: zod.number().nullish(),
+      carbsG: zod.number().nullish(),
+      fatG: zod.number().nullish(),
+      dge: zod
+        .union([
+          zod.literal("green"),
+          zod.literal("amber"),
+          zod.literal("red"),
+          zod.literal(null),
+        ])
+        .nullish(),
+      co2eG: zod.number().nullish(),
     }),
   ),
 });
@@ -73,6 +99,19 @@ export const PublishMenuResponse = zod.object({
       type: zod.string().nullish(),
       allergens: zod.array(zod.string()),
       imageUrl: zod.string().nullish(),
+      kcal: zod.number().nullish(),
+      proteinG: zod.number().nullish(),
+      carbsG: zod.number().nullish(),
+      fatG: zod.number().nullish(),
+      dge: zod
+        .union([
+          zod.literal("green"),
+          zod.literal("amber"),
+          zod.literal("red"),
+          zod.literal(null),
+        ])
+        .nullish(),
+      co2eG: zod.number().nullish(),
     }),
   ),
   publishedAt: zod.string(),
@@ -179,6 +218,151 @@ export const UpdateOrderStatusResponse = zod.object({
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
+
+/**
+ * @summary Guest submits multi-criteria feedback for a location (no auth).
+ */
+export const createFeedbackBodyLocationCodeMax = 32;
+
+export const createFeedbackBodyRatingsFoodQualityMax = 5;
+
+export const createFeedbackBodyRatingsServiceMax = 5;
+
+export const createFeedbackBodyRatingsVarietyMax = 5;
+
+export const createFeedbackBodyRatingsValueMax = 5;
+
+export const createFeedbackBodyRatingsCleanlinessMax = 5;
+
+export const createFeedbackBodyRatingsAmbienceMax = 5;
+
+export const createFeedbackBodyCommentMax = 500;
+
+export const createFeedbackBodyGuestNameMax = 60;
+
+export const CreateFeedbackBody = zod.object({
+  locationCode: zod.string().min(1).max(createFeedbackBodyLocationCodeMax),
+  ratings: zod.object({
+    foodQuality: zod
+      .number()
+      .min(1)
+      .max(createFeedbackBodyRatingsFoodQualityMax),
+    service: zod.number().min(1).max(createFeedbackBodyRatingsServiceMax),
+    variety: zod.number().min(1).max(createFeedbackBodyRatingsVarietyMax),
+    value: zod.number().min(1).max(createFeedbackBodyRatingsValueMax),
+    cleanliness: zod
+      .number()
+      .min(1)
+      .max(createFeedbackBodyRatingsCleanlinessMax),
+    ambience: zod.number().min(1).max(createFeedbackBodyRatingsAmbienceMax),
+  }),
+  comment: zod.string().max(createFeedbackBodyCommentMax).nullish(),
+  guestName: zod.string().max(createFeedbackBodyGuestNameMax).nullish(),
+});
+
+/**
+ * @summary Staff lists recent feedback for a location with aggregate (requires auth).
+ */
+export const listStaffFeedbackQueryDaysDefault = 30;
+
+export const ListStaffFeedbackQueryParams = zod.object({
+  locationCode: zod.coerce.string(),
+  days: zod.coerce.number().default(listStaffFeedbackQueryDaysDefault),
+});
+
+export const listStaffFeedbackResponseRecentItemRatingsFoodQualityMax = 5;
+
+export const listStaffFeedbackResponseRecentItemRatingsServiceMax = 5;
+
+export const listStaffFeedbackResponseRecentItemRatingsVarietyMax = 5;
+
+export const listStaffFeedbackResponseRecentItemRatingsValueMax = 5;
+
+export const listStaffFeedbackResponseRecentItemRatingsCleanlinessMax = 5;
+
+export const listStaffFeedbackResponseRecentItemRatingsAmbienceMax = 5;
+
+export const ListStaffFeedbackResponse = zod.object({
+  aggregate: zod.object({
+    count: zod.number(),
+    avgFoodQuality: zod.number(),
+    avgService: zod.number(),
+    avgVariety: zod.number(),
+    avgValue: zod.number(),
+    avgCleanliness: zod.number(),
+    avgAmbience: zod.number(),
+    avgOverall: zod.number(),
+  }),
+  recent: zod.array(
+    zod.object({
+      id: zod.string(),
+      locationCode: zod.string(),
+      ratings: zod.object({
+        foodQuality: zod
+          .number()
+          .min(1)
+          .max(listStaffFeedbackResponseRecentItemRatingsFoodQualityMax),
+        service: zod
+          .number()
+          .min(1)
+          .max(listStaffFeedbackResponseRecentItemRatingsServiceMax),
+        variety: zod
+          .number()
+          .min(1)
+          .max(listStaffFeedbackResponseRecentItemRatingsVarietyMax),
+        value: zod
+          .number()
+          .min(1)
+          .max(listStaffFeedbackResponseRecentItemRatingsValueMax),
+        cleanliness: zod
+          .number()
+          .min(1)
+          .max(listStaffFeedbackResponseRecentItemRatingsCleanlinessMax),
+        ambience: zod
+          .number()
+          .min(1)
+          .max(listStaffFeedbackResponseRecentItemRatingsAmbienceMax),
+      }),
+      overall: zod.number(),
+      comment: zod.string().nullish(),
+      guestName: zod.string().nullish(),
+      createdAt: zod.string(),
+    }),
+  ),
+});
+
+/**
+ * @summary Aggregate orders + feedback across all of the caller's locations (requires auth).
+ */
+export const getLocationRollupQueryDaysDefault = 7;
+
+export const GetLocationRollupQueryParams = zod.object({
+  days: zod.coerce.number().default(getLocationRollupQueryDaysDefault),
+});
+
+export const GetLocationRollupResponseItem = zod.object({
+  locationCode: zod.string(),
+  locationName: zod.string(),
+  currency: zod.string(),
+  ordersCount: zod.number(),
+  revenue: zod.number(),
+  avgTicket: zod.number(),
+  statusBreakdown: zod.record(zod.string(), zod.number()),
+  feedback: zod.object({
+    count: zod.number(),
+    avgFoodQuality: zod.number(),
+    avgService: zod.number(),
+    avgVariety: zod.number(),
+    avgValue: zod.number(),
+    avgCleanliness: zod.number(),
+    avgAmbience: zod.number(),
+    avgOverall: zod.number(),
+  }),
+  publishedAt: zod.string().nullish(),
+});
+export const GetLocationRollupResponse = zod.array(
+  GetLocationRollupResponseItem,
+);
 
 /**
  * @summary Staff lists pending/active orders for a location (requires auth).

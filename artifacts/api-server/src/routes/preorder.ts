@@ -1,6 +1,12 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, publishedMenusTable, guestOrdersTable, memberships } from "@workspace/db";
-import { and, desc, eq, inArray, ne } from "drizzle-orm";
+import {
+  db,
+  publishedMenusTable,
+  guestOrdersTable,
+  guestFeedbackTable,
+  memberships,
+} from "@workspace/db";
+import { and, desc, eq, gte, inArray, ne } from "drizzle-orm";
 import { schemas } from "@workspace/api-zod";
 import { requireAuth, type AuthedRequest } from "../lib/auth";
 import { randomBytes } from "crypto";
@@ -257,6 +263,161 @@ router.get("/preorder/staff/orders", requireAuth, async (req: Request, res: Resp
     .orderBy(desc(guestOrdersTable.createdAt))
     .limit(100);
   res.json(orders.map((o) => serializeOrder(o, { includeToken: false })));
+});
+
+// Tiny in-memory rate limit (per-IP) for unauthenticated feedback submissions.
+const FEEDBACK_RL_WINDOW_MS = 60_000;
+const FEEDBACK_RL_MAX = 5;
+const feedbackHits = new Map<string, number[]>();
+
+function feedbackRateLimit(req: Request, res: Response): boolean {
+  const ip =
+    (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ||
+    req.ip ||
+    req.socket.remoteAddress ||
+    "unknown";
+  const now = Date.now();
+  const arr = (feedbackHits.get(ip) ?? []).filter((t) => now - t < FEEDBACK_RL_WINDOW_MS);
+  if (arr.length >= FEEDBACK_RL_MAX) {
+    res.status(429).json({ error: "Too many feedback submissions, please slow down." });
+    return false;
+  }
+  arr.push(now);
+  feedbackHits.set(ip, arr);
+  // Opportunistic GC to prevent unbounded growth.
+  if (feedbackHits.size > 5000) {
+    for (const [k, v] of feedbackHits) {
+      const fresh = v.filter((t) => now - t < FEEDBACK_RL_WINDOW_MS);
+      if (fresh.length === 0) feedbackHits.delete(k);
+      else feedbackHits.set(k, fresh);
+    }
+  }
+  return true;
+}
+
+// POST /preorder/feedback (public)
+router.post("/preorder/feedback", async (req: Request, res: Response) => {
+  if (!feedbackRateLimit(req, res)) return;
+  const parsed = schemas.CreateFeedbackBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const body = parsed.data;
+  const menuRows = await db
+    .select()
+    .from(publishedMenusTable)
+    .where(eq(publishedMenusTable.locationCode, body.locationCode))
+    .limit(1);
+  if (menuRows.length === 0) {
+    res.status(404).json({ error: "Location not found" });
+    return;
+  }
+  const r = body.ratings;
+  const overall = Math.round(
+    (r.foodQuality + r.service + r.variety + r.value + r.cleanliness + r.ambience) / 6,
+  );
+  const inserted = await db
+    .insert(guestFeedbackTable)
+    .values({
+      locationCode: body.locationCode,
+      ownerOrgId: menuRows[0]!.ownerOrgId,
+      ratings: r,
+      overall,
+      comment: body.comment ?? null,
+      guestName: body.guestName ?? null,
+    })
+    .returning();
+  const row = inserted[0]!;
+  res.status(201).json({
+    id: row.id,
+    locationCode: row.locationCode,
+    ratings: row.ratings,
+    overall: row.overall,
+    comment: row.comment,
+    guestName: row.guestName,
+    createdAt: row.createdAt.toISOString(),
+  });
+});
+
+// GET /preorder/staff/feedback?locationCode=&days= (auth)
+router.get("/preorder/staff/feedback", requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as AuthedRequest).userId;
+  const code = String(req.query.locationCode ?? "").trim();
+  const days = Math.max(1, Math.min(365, Number(req.query.days ?? 30)));
+  if (!code) {
+    res.status(400).json({ error: "locationCode required" });
+    return;
+  }
+  const orgIds = await userOrgIds(userId);
+  if (orgIds.length === 0) {
+    res.status(403).json({ error: "No organisation membership" });
+    return;
+  }
+  const since = new Date(Date.now() - days * 86400000);
+  const rows = await db
+    .select()
+    .from(guestFeedbackTable)
+    .where(
+      and(
+        eq(guestFeedbackTable.locationCode, code),
+        inArray(guestFeedbackTable.ownerOrgId, orgIds),
+        gte(guestFeedbackTable.createdAt, since),
+      ),
+    )
+    .orderBy(desc(guestFeedbackTable.createdAt))
+    .limit(100);
+
+  let agg = {
+    count: 0,
+    avgFoodQuality: 0,
+    avgService: 0,
+    avgVariety: 0,
+    avgValue: 0,
+    avgCleanliness: 0,
+    avgAmbience: 0,
+    avgOverall: 0,
+  };
+  if (rows.length > 0) {
+    const s = rows.reduce(
+      (acc, f) => {
+        acc.foodQuality += f.ratings.foodQuality;
+        acc.service += f.ratings.service;
+        acc.variety += f.ratings.variety;
+        acc.value += f.ratings.value;
+        acc.cleanliness += f.ratings.cleanliness;
+        acc.ambience += f.ratings.ambience;
+        acc.overall += f.overall;
+        return acc;
+      },
+      { foodQuality: 0, service: 0, variety: 0, value: 0, cleanliness: 0, ambience: 0, overall: 0 },
+    );
+    const n = rows.length;
+    const r2 = (x: number) => Math.round((x / n) * 100) / 100;
+    agg = {
+      count: n,
+      avgFoodQuality: r2(s.foodQuality),
+      avgService: r2(s.service),
+      avgVariety: r2(s.variety),
+      avgValue: r2(s.value),
+      avgCleanliness: r2(s.cleanliness),
+      avgAmbience: r2(s.ambience),
+      avgOverall: r2(s.overall),
+    };
+  }
+
+  res.json({
+    aggregate: agg,
+    recent: rows.map((row) => ({
+      id: row.id,
+      locationCode: row.locationCode,
+      ratings: row.ratings,
+      overall: row.overall,
+      comment: row.comment,
+      guestName: row.guestName,
+      createdAt: row.createdAt.toISOString(),
+    })),
+  });
 });
 
 export default router;

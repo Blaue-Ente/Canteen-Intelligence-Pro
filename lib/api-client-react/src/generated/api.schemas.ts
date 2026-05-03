@@ -13,6 +13,19 @@ export interface ErrorResponse {
   error: string;
 }
 
+/**
+ * @nullable
+ */
+export type PreorderDishDge =
+  | (typeof PreorderDishDge)[keyof typeof PreorderDishDge]
+  | null;
+
+export const PreorderDishDge = {
+  green: "green",
+  amber: "amber",
+  red: "red",
+} as const;
+
 export interface PreorderDish {
   id: string;
   name: string;
@@ -24,6 +37,113 @@ export interface PreorderDish {
   allergens: string[];
   /** @nullable */
   imageUrl?: string | null;
+  /** @nullable */
+  kcal?: number | null;
+  /** @nullable */
+  proteinG?: number | null;
+  /** @nullable */
+  carbsG?: number | null;
+  /** @nullable */
+  fatG?: number | null;
+  /** @nullable */
+  dge?: PreorderDishDge;
+  /** @nullable */
+  co2eG?: number | null;
+}
+
+export interface FeedbackRatings {
+  /**
+   * @minimum 1
+   * @maximum 5
+   */
+  foodQuality: number;
+  /**
+   * @minimum 1
+   * @maximum 5
+   */
+  service: number;
+  /**
+   * @minimum 1
+   * @maximum 5
+   */
+  variety: number;
+  /**
+   * @minimum 1
+   * @maximum 5
+   */
+  value: number;
+  /**
+   * @minimum 1
+   * @maximum 5
+   */
+  cleanliness: number;
+  /**
+   * @minimum 1
+   * @maximum 5
+   */
+  ambience: number;
+}
+
+export interface GuestFeedback {
+  id: string;
+  locationCode: string;
+  ratings: FeedbackRatings;
+  overall: number;
+  /** @nullable */
+  comment?: string | null;
+  /** @nullable */
+  guestName?: string | null;
+  createdAt: string;
+}
+
+export interface CreateFeedbackBody {
+  /**
+   * @minLength 1
+   * @maxLength 32
+   */
+  locationCode: string;
+  ratings: FeedbackRatings;
+  /**
+   * @maxLength 500
+   * @nullable
+   */
+  comment?: string | null;
+  /**
+   * @maxLength 60
+   * @nullable
+   */
+  guestName?: string | null;
+}
+
+export interface FeedbackAggregate {
+  count: number;
+  avgFoodQuality: number;
+  avgService: number;
+  avgVariety: number;
+  avgValue: number;
+  avgCleanliness: number;
+  avgAmbience: number;
+  avgOverall: number;
+}
+
+export interface FeedbackSummary {
+  aggregate: FeedbackAggregate;
+  recent: GuestFeedback[];
+}
+
+export type LocationRollupStatusBreakdown = { [key: string]: number };
+
+export interface LocationRollup {
+  locationCode: string;
+  locationName: string;
+  currency: string;
+  ordersCount: number;
+  revenue: number;
+  avgTicket: number;
+  statusBreakdown: LocationRollupStatusBreakdown;
+  feedback: FeedbackAggregate;
+  /** @nullable */
+  publishedAt?: string | null;
 }
 
 export interface PublishedMenu {
@@ -90,6 +210,15 @@ export interface UpdateOrderStatusBody {
 
 export type GetGuestOrderParams = {
   token: string;
+};
+
+export type ListStaffFeedbackParams = {
+  locationCode: string;
+  days?: number;
+};
+
+export type GetLocationRollupParams = {
+  days?: number;
 };
 
 export type ListStaffOrdersParams = {

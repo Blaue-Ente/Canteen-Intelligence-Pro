@@ -161,3 +161,21 @@ End-to-end flow: kitchen publishes today's menu → guests scan QR / open link �
 - **Web app** (`artifacts/preorder/`) — Vite, warm amber/orange palette, Outfit/Playfair fonts, 4 pages (canteen-code entry → menu+cart → checkout → order status with Framer-Motion celebration on `ready`), bilingual DE/EN, `useCart` + `useActiveOrder` localStorage hooks. Preview path `/preorder/`.
 - **Mobile** (`artifacts/mobile/app/preorder.tsx`) — Reachable from More → Operations. Derives today's dishes from `state.menu` × `state.recipes` (fallback: first 6 recipes), POSTs to `/preorder/menu/publish`, renders QR (react-native-qrcode-svg) pointing to `https://$EXPO_PUBLIC_DOMAIN/preorder/?loc=<code>`, polls staff orders every 8s, status advance buttons cycle `new → accepted → preparing → ready → served`.
 - **Seed** — `DEMO` location with 5 dishes (Schnitzel, Linsensuppe, Curry, Caesar, Apfelstrudel) for instant demo without publish.
+
+### #2 Multi-location server-side rollup + #3 Guest feedback / multi-criteria ratings (DONE)
+
+- **OpenAPI** — `POST /preorder/feedback` (public; 6-criteria ratings + optional comment/name), `GET /preorder/staff/feedback?locationCode=&days=` (auth), `GET /rollup/locations?days=` (auth, 1–90, default 7). New schemas: `PreorderDish` extended with `kcal/proteinG/carbsG/fatG/dge/co2eG`, `FeedbackRatings`, `GuestFeedback`, `CreateFeedbackBody`, `FeedbackAggregate`, `FeedbackSummary`, `LocationRollup`.
+- **DB** — `guest_feedback` (uuid PK, location_code, owner_org_id NOT NULL [denormalised at insert from menu's owner_org_id], ratings JSONB, overall INT, comment, guest_name, created_at). Dishes JSONB type now `PreorderDishRow[]` with optional nutrition fields.
+- **Server**:
+  - `routes/rollup.ts` — for caller's `userOrgIds`, joins `published_menus` ∪ `guest_orders` ∪ `guest_feedback` filtered by `owner_org_id ∈ orgs` and `created_at ≥ now-Nd`, returns one row per `location_code` with `revenue` (cancelled excluded), `avgTicket`, `statusBreakdown`, `feedback` aggregate (avg of all 6 criteria + overall), `publishedAt`. Sorted by revenue desc.
+  - `routes/preorder.ts` — feedback POST validates with `schemas.CreateFeedbackBody`, looks up menu to derive `owner_org_id` (404 if menu missing), computes `overall = round(mean(6 criteria))`. Staff feedback GET authorises by `owner_org_id ∈ userOrgIds` and returns `{aggregate, recent[≤100]}`.
+- **Web** (`artifacts/preorder/`):
+  - `pages/feedback.tsx` — 6 star-rating rows (Essensqualität/Service/Auswahl/Preis-Leistung/Sauberkeit/Ambiente), name + 500-char comment, framer-motion thank-you screen, bilingual DE/EN. Submit button disabled until all 6 criteria filled.
+  - `pages/menu.tsx` — nutrition badges (kcal • P • KH • F • DGE traffic-light) under allergens, "Bewertung abgeben / Leave a review" CTA at end of dish list linking to `/feedback/:loc`.
+  - Route registered in `App.tsx`.
+- **Mobile** (`artifacts/mobile/`):
+  - `app/rollup.tsx` — Locations rollup screen with 1d/7d/30d/90d range chips, per-location KPI cards (revenue, orders, avg ticket, status breakdown chips, ratings progress bars per criterion). Uses `apiFetch` against `/api/rollup/locations`.
+  - `app/preorder.tsx` — `publish()` now sends nutrition fields per dish: `kcal = recipe.kcalPerPortion`, naive macro split when only kcal known (P 30%/4, KH 40%/4, F 30%/9), `dge` derived from category (vegan/vegetarian → green, beef/lamb → red, else amber).
+  - `more.tsx` link added under Operations; new i18n keys (`multiLocationRollup`, `multiLocationRollupDesc`, `totals`, `ordersCount`, `avgTicket`, `ratings`, `foodQuality`, `variety`, `value`, `cleanliness`, `ambience`, `noLocationsYet`, `noRatings`, `loading`).
+
+**Phase 6B #2/#3 security hardening** — Public `POST /preorder/feedback` is rate-limited to 5 req/min per IP (in-memory `Map<ip, timestamp[]>` with opportunistic GC at 5k entries) and the body is bounded server-side via OpenAPI/Zod (`locationCode` 1–32, `comment` ≤500, `guestName` ≤60).

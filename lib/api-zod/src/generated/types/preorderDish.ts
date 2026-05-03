@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { PreorderDishDge } from "./preorderDishDge";
 
 export interface PreorderDish {
   id: string;
@@ -17,4 +18,16 @@ export interface PreorderDish {
   allergens: string[];
   /** @nullable */
   imageUrl?: string | null;
+  /** @nullable */
+  kcal?: number | null;
+  /** @nullable */
+  proteinG?: number | null;
+  /** @nullable */
+  carbsG?: number | null;
+  /** @nullable */
+  fatG?: number | null;
+  /** @nullable */
+  dge?: PreorderDishDge;
+  /** @nullable */
+  co2eG?: number | null;
 }
