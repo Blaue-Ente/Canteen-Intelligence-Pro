@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "name": "KitchenOS",
+    "slug": "kitchenos",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "kitchenos",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.replit.kitchenos",
+      "infoPlist": {
+        "NSCameraUsageDescription": "KitchenOS uses the camera to scan invoices, delivery notes and dishes.",
+        "NSPhotoLibraryUsageDescription": "KitchenOS uses your library to attach photos to complaints and orders.",
+        "NSLocationWhenInUseUsageDescription": "KitchenOS uses your location to find nearby suppliers."
+      }
+    },
+    "android": {
+      "package": "com.replit.kitchenos",
+      "permissions": ["CAMERA", "ACCESS_FINE_LOCATION"]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow KitchenOS to access your camera to scan invoices, delivery notes and dishes.",
+          "photosPermission": "Allow KitchenOS to access your photos to attach to complaints."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow KitchenOS to find nearby suppliers."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

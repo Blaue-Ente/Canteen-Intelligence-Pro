@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "junJ6FmJqiPRB4jwb9vu-"
+uri = "file://artifacts/mobile/assets/images/icon.png"
+type = "image"
+title = "kitchenos icon"
