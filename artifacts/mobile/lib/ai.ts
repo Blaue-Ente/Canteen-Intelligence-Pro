@@ -333,6 +333,29 @@ export interface ParsedMenu {
   items: ParsedMenuItem[];
 }
 
+export async function parseMenuPdf(args: {
+  base64: string;
+  locale: "de" | "en";
+}): Promise<ParsedMenu> {
+  const res = await expoFetch(`${API_BASE}/api/ai/parse-menu-pdf`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ base64: args.base64, locale: args.locale }),
+  });
+  if (!res.ok) {
+    let msg = `PDF parse failed: ${res.status}`;
+    try {
+      const j = (await res.json()) as { error?: string };
+      if (j?.error) msg = j.error;
+    } catch {
+      // ignore
+    }
+    throw new Error(msg);
+  }
+  const json = (await res.json()) as { data: ParsedMenu };
+  return json.data;
+}
+
 export async function parseMenuImage(args: {
   base64: string;
   locale: "de" | "en";

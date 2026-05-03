@@ -1,4 +1,6 @@
 import { Feather } from "@expo/vector-icons";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState } from "react";
@@ -12,6 +14,7 @@ import {
   aiDishVision,
   aiTrayReturn,
   parseMenuImage,
+  parseMenuPdf,
   parseReceiptImage,
   type DishVisionResult,
   type ParsedMenu,
@@ -117,6 +120,36 @@ export default function Scan() {
         setUri(r.assets[0].uri);
         setB64(r.assets[0].base64 ?? null);
       }
+    }
+  };
+
+  const pickPdfMenu = async () => {
+    setError(null);
+    setMenuParsed(null);
+    setPicked({});
+    try {
+      const r = await DocumentPicker.getDocumentAsync({
+        type: "application/pdf",
+        copyToCacheDirectory: true,
+      });
+      if (r.canceled || !r.assets[0]) return;
+      const asset = r.assets[0];
+      setBusy(true);
+      const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const data = await parseMenuPdf({ base64, locale: state.locale });
+      setMode("menu");
+      setMenuParsed(data);
+      const initialPicked: Record<number, boolean> = {};
+      (data.items ?? []).forEach((_, i) => {
+        initialPicked[i] = true;
+      });
+      setPicked(initialPicked);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "PDF-Fehler");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -298,6 +331,15 @@ export default function Scan() {
                 <Button label="Kamera" icon="camera" onPress={() => pickFrom("camera")} style={{ flex: 1 }} />
                 <Button label="Galerie" icon="image" variant="secondary" onPress={() => pickFrom("library")} style={{ flex: 1 }} />
               </View>
+              {mode === "menu" ? (
+                <Button
+                  label={busy ? t("parsingPdf") : t("pickPdf")}
+                  icon="file-text"
+                  variant="ghost"
+                  onPress={pickPdfMenu}
+                  loading={busy}
+                />
+              ) : null}
             </View>
           )}
         </Card>

@@ -61,3 +61,13 @@ The mobile application features a charcoal and amber theme (`#0a0a0b` / `#f59e0b
 The AI menu-scanner already existed in `app/scan.tsx` (mode `menu` → `parseMenuImage` → import dishes as recipes), but it was only reachable via the Home QuickAction, the Inventory toolbar, and Mehr → Scan. Users on the Menu tab couldn't find it.
 - `app/(tabs)/menu.tsx` — added a camera icon next to the rotate/AI buttons in the toolbar that pushes `/scan?mode=menu`. Also added a prominent "Speisekarte scannen" secondary button to the empty-state card so a fresh day immediately shows the option.
 - `app/scan.tsx` — now reads `?mode=` via `useLocalSearchParams` (`menu | nutrition | tray | delivery`) so deep-links open in the requested mode (default still `receipt`).
+
+### PDF menu support (Phase 6B #5)
+
+The menu scanner now also accepts PDF menus, not only photos.
+- **Server** (`artifacts/api-server/src/routes/ai.ts`): new `POST /api/ai/parse-menu-pdf` accepts `{base64, locale}`, extracts text via `pdf-parse@1.1.1` (imported from `pdf-parse/lib/pdf-parse.js` to skip its broken `index.js` self-test), truncates to 24k chars, sends to OpenAI in JSON mode with the same dish-extraction prompt as the image path. Returns `{data: ParsedMenu}`. Caps PDF at 15 MB; rejects scanned/imageonly PDFs with 422 (no extractable text).
+- **Mobile** (`artifacts/mobile/lib/ai.ts`): added `parseMenuPdf()` helper.
+- **Mobile** (`artifacts/mobile/app/scan.tsx`): in menu mode, the picker card now shows an extra `PDF wählen / Pick PDF` button that uses `expo-document-picker` (PDF only) → `expo-file-system/legacy` to read base64 → `parseMenuPdf` → same dish-picker UI as the image flow.
+- **Mobile** (`artifacts/mobile/metro.config.js`): added `resolver.blockList` regex to ignore `pdf-parse` and its install-time `pdf-parse_tmp_*` dirs (those vanish during `pnpm install` and crash Metro's file watcher).
+- **Deps**: added `pdf-parse@1.1.1` + `@types/pdf-parse` to api-server (v2 needs `@napi-rs/canvas` + DOM polyfills for pdfjs — overkill for text-only); added `expo-document-picker` and `expo-file-system` to mobile.
+- i18n keys: `pickPdf`, `parsingPdf` (DE + EN).
