@@ -140,11 +140,16 @@ export async function generateWeekMenu(args: {
       CHEF_PERSONA,
       `Plan a 7-day weekly menu for a German canteen. Reply rationale in ${lang}.`,
       `Available recipes:\n${list}`,
-      `Each day MUST contain 3 recipe IDs from the list: 1 starter/soup or salad, 1 main, 1 dessert/side – pick the closest matching types if exact missing.`,
-      `Balance over the week: at least 2 vegan/vegetarian mains, no two consecutive days with the same meat type, prefer using these low-stock items first: ${args.lowStockNames.join(", ") || "(none)"}.`,
+      `Each day MUST contain EXACTLY 4 recipe IDs from the list, in this fixed order:`,
+      `  1) SOUP — type='soup' (Suppe).`,
+      `  2) VEGETARIAN MAIN — type='main' AND category in {vegan, vegetarian}.`,
+      `  3) MEAT MAIN — type='main' AND category in {meat, fish}.`,
+      `  4) HEALTHY SURPRISE — a delightful, light, nutritious option that varies day-to-day: a fresh salad bowl, a vegan grain bowl, a fish dish, a colorful side, or a light dessert (yogurt/fruit). Should feel like a pleasant change of pace and complement the other three. Avoid heavy fried/creamy dishes for this slot.`,
+      `If an EXACT type/category match is missing in the available recipes, pick the closest matching one rather than skipping the slot — every day must have 4 IDs.`,
+      `Balance over the week: rotate cuisines (German, Italian, Asian, etc.); no two consecutive days with the same meat type for slot 3; vary the surprise slot across the 7 days. Prefer using these low-stock items first: ${args.lowStockNames.join(", ") || "(none)"}.`,
       `Start date: ${args.startDate}. Return 7 consecutive days.`,
     ].join("\n"),
-    '{"days":[{"date":"YYYY-MM-DD","recipeIds":["string"],"rationale":"string"}]}',
+    '{"days":[{"date":"YYYY-MM-DD","recipeIds":["string","string","string","string"],"rationale":"string"}]}',
   );
 }
 

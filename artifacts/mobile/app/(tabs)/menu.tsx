@@ -207,7 +207,9 @@ export default function Menu() {
           dispatch({ type: "setMenu", entry: { date: d.date, recipeIds: ids } });
         }
       });
-      Alert.alert("KI", "Wochenkarte aktualisiert.");
+      Alert.alert("KI", state.locale === "de"
+        ? "Wochenkarte erstellt: 1 Suppe + 1 Vegetarisch + 1 Fleisch + 1 gesunde Überraschung pro Tag."
+        : "Weekly menu created: 1 soup + 1 vegetarian + 1 meat + 1 healthy surprise per day.");
     } catch (e) {
       Alert.alert("Fehler", e instanceof Error ? e.message : "KI nicht verfügbar");
     } finally {
@@ -455,8 +457,25 @@ export default function Menu() {
                     <View style={{ flexDirection: "row", gap: 6, marginTop: 4 }}>
                       <Badge label={t(r.type)} />
                       <Badge label={t(r.category)} tone="accent" />
+                      {((state.locale === "de" ? r.stepsDe : r.steps)?.length ?? 0) > 0 ? (
+                        <Badge label={`${(state.locale === "de" ? r.stepsDe : r.steps).length} ${t("steps")}`} tone="success" />
+                      ) : null}
                     </View>
                   </View>
+                  <Pressable
+                    onPress={() => {
+                      setPicker(false);
+                      router.push(`/recipe/${r.id}`);
+                    }}
+                    hitSlop={10}
+                    style={({ pressed }) => [
+                      { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: c.muted },
+                      pressed && { opacity: 0.7 },
+                    ]}
+                    accessibilityLabel={t("viewRecipe")}
+                  >
+                    <Feather name="info" size={16} color={c.foreground} />
+                  </Pressable>
                   <Feather name={inMenu ? "check-circle" : "plus-circle"} size={20} color={inMenu ? c.success : c.primary} />
                 </Card>
               );
