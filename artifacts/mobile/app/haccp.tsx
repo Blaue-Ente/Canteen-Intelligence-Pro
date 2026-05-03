@@ -4,6 +4,7 @@ import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 
 import { Badge, Button, Card, Chip, EmptyState, Field, SectionHeader } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
+import { useAuthor } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import type { HaccpLog } from "@/types";
 
@@ -44,6 +45,7 @@ export default function Haccp() {
   const [loc, setLoc] = useState("");
   const [temp, setTemp] = useState("");
   const [note, setNote] = useState("");
+  const author = useAuthor();
 
   const addLog = () => {
     const ok = (() => {
@@ -65,6 +67,7 @@ export default function Haccp() {
         temperature: temp ? Number(temp) : undefined,
         note: note || undefined,
         ok,
+        ...author,
       },
     });
     if (!ok) Alert.alert("⚠️ Grenzwert überschritten", "Sofortmaßnahme erforderlich.");

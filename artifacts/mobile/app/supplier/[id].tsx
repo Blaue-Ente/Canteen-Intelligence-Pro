@@ -7,6 +7,7 @@ import { Alert, Image, Platform, Pressable, ScrollView, Text, View } from "react
 
 import { Badge, Button, Card, Field, SectionHeader } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
+import { useAuthor } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import type { Supplier } from "@/types";
 
@@ -27,6 +28,7 @@ export default function SupplierDetail() {
   const [addr, setAddr] = useState(existing?.address ?? "");
   const [showComplaint, setShowComplaint] = useState(false);
   const [reason, setReason] = useState("");
+  const author = useAuthor();
   const [amount, setAmount] = useState("");
   const [invoice, setInvoice] = useState("");
   const [photoUri, setPhotoUri] = useState<string | null>(null);
@@ -70,6 +72,7 @@ export default function SupplierDetail() {
         invoiceNo: invoice,
         photoUri: photoUri ?? undefined,
         status: "sent",
+        ...author,
       },
     });
     const url = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;

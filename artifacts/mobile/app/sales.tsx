@@ -5,6 +5,7 @@ import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import { Badge, Button, Card, Chip, EmptyState, SectionHeader, Stat } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
+import { useAuthor } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
 function dateKey(d: Date) {
@@ -49,6 +50,7 @@ export default function Sales() {
     return { cooked, sold, revenue };
   }, [drafts, candidateIds, state.recipes]);
 
+  const author = useAuthor();
   const submit = () => {
     candidateIds.forEach((rid) => {
       const r = state.recipes.find((x) => x.id === rid);
@@ -67,6 +69,7 @@ export default function Sales() {
           revenue: (Number(d.sold) || 0) * r.sellPrice,
           portionGrams: portion,
           source: "manual",
+          ...author,
         },
       });
       if (portion !== r.portionGrams) {

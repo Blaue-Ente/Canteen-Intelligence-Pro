@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Badge, Button, Card, EmptyState, SectionHeader, Stat } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
+import { useAuthor } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { parseZettleReport, type ParsedZettleReport } from "@/lib/ai";
 
@@ -21,6 +22,7 @@ export default function Zettle() {
   const [busy, setBusy] = useState(false);
   const [parsed, setParsed] = useState<ParsedZettleReport | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const author = useAuthor();
 
   const pick = async (source: "camera" | "library") => {
     setErr(null);
@@ -92,6 +94,7 @@ export default function Zettle() {
           cooked: sold,
           sold,
           revenue: it.revenue ?? sold * recipe.sellPrice,
+          ...author,
           source: "zettle",
         },
       });

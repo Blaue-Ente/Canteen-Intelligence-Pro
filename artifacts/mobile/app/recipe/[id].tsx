@@ -5,6 +5,7 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 
 import { Badge, Button, Card, Chip, EmptyState, Field, SectionHeader, Stat } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
+import { useAuthor } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import type { Allergen } from "@/types";
 
@@ -35,6 +36,7 @@ export default function RecipeDetail() {
   const recipe = state.recipes.find((r) => r.id === id);
   const [portion, setPortion] = useState(String(recipe?.portionGrams ?? 350));
   const [editAllergens, setEditAllergens] = useState(false);
+  const author = useAuthor();
 
   const toggleAllergen = (a: Allergen) => {
     if (!recipe) return;
@@ -187,6 +189,7 @@ export default function RecipeDetail() {
                 cooked: 1,
                 sold: 1,
                 revenue: recipe.sellPrice,
+                ...author,
               },
             });
             router.back();

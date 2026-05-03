@@ -12,6 +12,7 @@ import {
 
 import { Badge, Button, Card, Chip, EmptyState, Field, SectionHeader } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
+import { useAuthor } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import type { Employee, ShiftEntry } from "@/types";
 
@@ -261,8 +262,9 @@ function ShiftModal({ employeeId, date, onClose }: { employeeId: string; date: s
   const [start, setStart] = useState("09:00");
   const [end, setEnd] = useState("17:00");
 
+  const author = useAuthor();
   const add = () => {
-    const sh: ShiftEntry = { id: newId(), employeeId, date, start, end };
+    const sh: ShiftEntry = { id: newId(), employeeId, date, start, end, ...author };
     dispatch({ type: "addShift", shift: sh });
     onClose();
   };

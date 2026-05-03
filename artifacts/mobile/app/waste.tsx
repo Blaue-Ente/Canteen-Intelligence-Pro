@@ -4,6 +4,7 @@ import { ScrollView, Text, View } from "react-native";
 
 import { Badge, Button, Card, Chip, EmptyState, Field, SectionHeader, Stat } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
+import { useAuthor } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import type { WasteEntry } from "@/types";
 
@@ -16,6 +17,7 @@ export default function Waste() {
   const [grams, setGrams] = useState("");
   const [reason, setReason] = useState<WasteEntry["reason"]>("spoilage");
   const [cost, setCost] = useState("");
+  const author = useAuthor();
 
   const total = state.waste.reduce((s, w) => s + w.cost, 0);
   const totalGrams = state.waste.reduce((s, w) => s + w.grams, 0);
@@ -51,6 +53,7 @@ export default function Waste() {
                   grams: Number(grams) || 0,
                   reason,
                   cost: Number(cost) || 0,
+                  ...author,
                 },
               });
               setGrams("");

@@ -1,8 +1,12 @@
 import React, { useState } from "react";
 import { Alert, Platform, ScrollView, Switch, Text, TextInput, View } from "react-native";
 
+import { useRouter } from "expo-router";
+import { useAuth } from "@clerk/expo";
+
 import { Button, Card, Chip, Row, SectionHeader } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
+import { useAuthCtx } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { ensurePermissions, rescheduleAll } from "@/lib/notifications";
 import { resetState } from "@/lib/storage";
@@ -11,6 +15,9 @@ export default function Settings() {
   const { state, dispatch } = useApp();
   const t = useT();
   const c = useColors();
+  const router = useRouter();
+  const { currentMembership } = useAuthCtx();
+  const { signOut } = useAuth();
   const prefs = state.notificationPrefs;
   const [busy, setBusy] = useState(false);
 
@@ -149,10 +156,25 @@ export default function Settings() {
         </Card>
 
         <Card style={{ padding: 0 }}>
+          <Row
+            icon="users"
+            onPress={() => router.push("/team")}
+            left={
+              <View>
+                <Text style={labelStyle}>Team & Mitarbeiter</Text>
+                {currentMembership && (
+                  <Text style={subStyle}>{currentMembership.orgName} · {currentMembership.role}</Text>
+                )}
+              </View>
+            }
+            right={<Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular" }}>›</Text>}
+          />
           <Row icon="moon" left={<Text style={labelStyle}>Erscheinung</Text>} right={<Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular" }}>System</Text>} />
           <Row icon="link" left={<Text style={labelStyle}>Zettle Integration</Text>} right={<Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular" }}>Bald</Text>} />
           <Row icon="map-pin" left={<Text style={labelStyle}>Standort</Text>} right={<Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular" }}>1 Standort</Text>} />
         </Card>
+
+        <Button label="Abmelden" icon="log-out" variant="ghost" onPress={() => signOut()} />
 
         <Button
           label="Daten zurücksetzen"

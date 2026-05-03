@@ -6,6 +6,7 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ClerkProvider } from "@clerk/expo";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
@@ -16,10 +17,13 @@ import { StatusBar } from "expo-status-bar";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppProvider } from "@/contexts/AppContext";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { tokenCache } from "@/lib/clerkTokenCache";
 
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
+const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "";
 
 function RootLayoutNav() {
   return (
@@ -29,6 +33,8 @@ function RootLayoutNav() {
         headerTitleStyle: { fontFamily: "Inter_600SemiBold" },
       }}
     >
+      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+      <Stack.Screen name="onboarding" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="chat" options={{ presentation: "modal", title: "KI" }} />
       <Stack.Screen name="scan" options={{ presentation: "modal", title: "Scannen" }} />
@@ -38,6 +44,7 @@ function RootLayoutNav() {
       <Stack.Screen name="catering" options={{ title: "Catering" }} />
       <Stack.Screen name="waste" options={{ title: "Verschwendung" }} />
       <Stack.Screen name="settings" options={{ title: "Einstellungen" }} />
+      <Stack.Screen name="team" options={{ title: "Team" }} />
       <Stack.Screen name="sales" options={{ title: "Tagesabschluss" }} />
       <Stack.Screen name="zettle" options={{ title: "Zettle" }} />
       <Stack.Screen name="orders" options={{ title: "Bestellungen" }} />
@@ -45,6 +52,7 @@ function RootLayoutNav() {
       <Stack.Screen name="dienstplan" options={{ title: "Dienstplan" }} />
       <Stack.Screen name="recipe/[id]" options={{ title: "Rezept" }} />
       <Stack.Screen name="supplier/[id]" options={{ title: "Lieferant" }} />
+      <Stack.Screen name="suppliers/discover" options={{ title: "Lieferanten finden" }} />
       <Stack.Screen name="+not-found" />
     </Stack>
   );
@@ -69,16 +77,20 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <KeyboardProvider>
-              <AppProvider>
-                <StatusBar style="auto" />
-                <RootLayoutNav />
-              </AppProvider>
-            </KeyboardProvider>
-          </GestureHandlerRootView>
-        </QueryClientProvider>
+        <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+          <QueryClientProvider client={queryClient}>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+              <KeyboardProvider>
+                <AuthProvider>
+                  <AppProvider>
+                    <StatusBar style="auto" />
+                    <RootLayoutNav />
+                  </AppProvider>
+                </AuthProvider>
+              </KeyboardProvider>
+            </GestureHandlerRootView>
+          </QueryClientProvider>
+        </ClerkProvider>
       </ErrorBoundary>
     </SafeAreaProvider>
   );

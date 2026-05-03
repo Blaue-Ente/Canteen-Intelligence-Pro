@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Badge, Button, Card, EmptyState, SectionHeader } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
+import { useAuthor } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { parseCateringEmail, type ParsedCatering } from "@/lib/ai";
 import { cateringOfferHtml, sharePdf } from "@/lib/pdf";
@@ -42,6 +43,7 @@ export default function Catering() {
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<ParsedCatering | null>(null);
+  const author = useAuthor();
 
   const reset = () => {
     setOpen(false);
@@ -83,6 +85,7 @@ export default function Catering() {
       dietary: preview.dietary,
       parsed: preview.blocks ?? [],
       status: "new",
+      ...author,
     };
     dispatch({ type: "addCatering", request: req });
     reset();

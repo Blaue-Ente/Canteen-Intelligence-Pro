@@ -4,6 +4,7 @@ import { Alert, ScrollView, Text, TextInput, View } from "react-native";
 
 import { Badge, Button, Card, EmptyState, SectionHeader, Stat } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
+import { useAuthor } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import type { InventurCount, InventurSession } from "@/types";
 
@@ -21,6 +22,7 @@ export default function Inventur() {
     [state.inventurs],
   );
 
+  const author = useAuthor();
   const start = () => {
     const session: InventurSession = {
       id: newId(),
@@ -32,6 +34,7 @@ export default function Inventur() {
         unit: i.unit,
         pricePerUnit: i.pricePerUnit,
       })),
+      ...author,
     };
     dispatch({ type: "addInventur", session });
   };

@@ -66,7 +66,12 @@ export interface MenuDayEntry {
   portionOverrides?: Record<string, number>;
 }
 
-export interface SaleEntry {
+export interface AuditFields {
+  createdBy?: string;
+  createdByName?: string;
+}
+
+export interface SaleEntry extends AuditFields {
   id: string;
   date: string;
   recipeId: string;
@@ -92,7 +97,7 @@ export interface Supplier {
   notes?: string;
 }
 
-export interface ComplaintDraft {
+export interface ComplaintDraft extends AuditFields {
   id: string;
   supplierId: string;
   date: string;
@@ -110,7 +115,7 @@ export interface ChatMessage {
   createdAt: string;
 }
 
-export interface HaccpLog {
+export interface HaccpLog extends AuditFields {
   id: string;
   date: string;
   type: "fridge" | "freezer" | "delivery" | "cleaning" | "cooking";
@@ -120,7 +125,7 @@ export interface HaccpLog {
   ok: boolean;
 }
 
-export interface WasteEntry {
+export interface WasteEntry extends AuditFields {
   id: string;
   date: string;
   recipeId?: string;
@@ -130,7 +135,7 @@ export interface WasteEntry {
   cost: number;
 }
 
-export interface CateringRequest {
+export interface CateringRequest extends AuditFields {
   id: string;
   receivedAt: string;
   fromEmail: string;
@@ -152,7 +157,7 @@ export interface OrderDraftItem {
   reason?: string;
 }
 
-export interface OrderDraft {
+export interface OrderDraft extends AuditFields {
   id: string;
   supplierId: string;
   supplierName: string;
@@ -172,7 +177,7 @@ export interface InventurCount {
   pricePerUnit: number;
 }
 
-export interface InventurSession {
+export interface InventurSession extends AuditFields {
   id: string;
   startedAt: string;
   closedAt?: string;
@@ -192,7 +197,7 @@ export interface Employee {
   phone?: string;
 }
 
-export interface ShiftEntry {
+export interface ShiftEntry extends AuditFields {
   id: string;
   employeeId: string;
   date: string; // YYYY-MM-DD

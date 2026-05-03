@@ -9,6 +9,28 @@ AI-driven kitchen operations app for German restaurants, canteens, and hotels. B
 - `artifacts/mockup-sandbox/` — design canvas (untouched template).
 - `lib/integrations-openai-ai-server` — OpenAI client used by the api-server.
 
+## Phase 5 — Multi-tenant accounts + supplier discovery
+
+- **Auth**: Clerk (`@clerk/expo` v3, imported via `@clerk/expo/legacy` for the classic `useSignIn` / `useSignUp` API). `ClerkProvider` wraps the app in `_layout.tsx`; `AuthProvider` (in `contexts/AuthContext.tsx`) bridges Clerk's user/token to a local `me` + `currentMembership` snapshot, plus an `activeEmployee` selector. `AuthGate` redirects unauth users to `(auth)/sign-in`, signed-in users without a membership to `/onboarding`.
+- **Token cache**: `lib/clerkTokenCache.ts` uses `expo-secure-store` on native, undefined on web (browser session storage handles it).
+- **Server**: Express app uses `clerkProxyMiddleware` (handles Clerk's frontend API proxy in production) → `cors` → `express.json` → `clerkMiddleware` from `@clerk/express`. `requireAuth` in `lib/auth.ts` extracts `userId` via `getAuth()`.
+- **DB schema**:
+  - `lib/db/src/schema/orgs.ts` — `organizations`, `memberships` (role: owner/manager/staff + free-form `employeeRole` like Koch/Service), `invites` (one-time codes).
+  - `lib/db/src/schema/supplierDirectory.ts` — Berlin/Brandenburg supplier cache with `osmId`, `googlePlaceId`, `category`, `lat`/`lon`, contact info, `productGroups` (jsonb).
+- **Routes** (under `/api`):
+  - `GET /me` — returns user + memberships.
+  - `POST /orgs` — creates organization; caller becomes owner+manager.
+  - `GET /orgs/:orgId/members`, `POST /orgs/:orgId/invites`, `DELETE /orgs/:orgId/invites/:code`, `DELETE /orgs/:orgId/members/:userId`.
+  - `POST /invites/accept` — joins by 6-char code.
+  - `GET /suppliers/discover?bbox=&q=&category=` — Overpass query (food shops in BBL bbox), 7-day cache in `supplier_directory`, optional Google Places enrichment when `GOOGLE_PLACES_API_KEY` is set.
+- **Mobile screens**:
+  - `app/(auth)/sign-in.tsx`, `sign-up.tsx` — email/password with email-code verification.
+  - `app/onboarding.tsx` — "Restaurant erstellen" or "Team beitreten (Code)".
+  - `app/team.tsx` — list members, invite by email, copy code; reachable from Settings.
+  - `app/suppliers/discover.tsx` — category chips (Fleisch / Fisch / Bäckerei / Käse / Getränke / Großhandel / Obst&Gemüse) + free-text search; "Save" adds to local supplier list.
+- **Attribution**: every `dispatch` that creates a record now spreads `...author` (= `{ createdBy, createdByName }`) sourced from `useAuthor()` so the UI can show "von <name>" on cards. Wired in: `sales`, `haccp`, `waste`, `inventur`, `(tabs)/inventory` (orders), `dienstplan` (shifts), `catering`, `supplier/[id]` (complaints), `zettle`, `recipe/[id]`.
+- **Required env vars**: `CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` (server), `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` (mobile, set automatically from `CLERK_PUBLISHABLE_KEY` in the dev script). Optional: `GOOGLE_PLACES_API_KEY` for richer supplier metadata.
+
 ## Mobile structure
 
 - `app/(tabs)/` — Home, Lager (inventory), Karte (menu), Statistik, Mehr.

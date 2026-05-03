@@ -111,6 +111,11 @@ export default function Suppliers() {
           })
         )}
 
+        <Button
+          label="Lieferanten in Berlin/Brandenburg finden"
+          icon="search"
+          onPress={() => router.push("/suppliers/discover")}
+        />
         <Button label={t("addSupplier")} icon="plus" variant="ghost" onPress={() => router.push("/supplier/new")} />
       </ScrollView>
     </View>

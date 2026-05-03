@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Badge, Button, Card, Chip, Field } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
+import { useAuthor } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { distributeOrder } from "@/lib/ai";
 import type { InventoryItem, OrderDraft } from "@/types";
@@ -34,6 +35,7 @@ export default function Inventory() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<InventoryItem | null>(null);
   const [orderBusy, setOrderBusy] = useState(false);
+  const author = useAuthor();
 
   const shortages = useMemo(
     () => state.inventory.filter((i) => i.quantity < i.minQuantity),
@@ -83,6 +85,7 @@ export default function Inventory() {
             status: "draft",
             createdAt: new Date().toISOString(),
             notes: reason,
+            ...author,
           };
           byId.set(supplier.id, d);
         } else if (reason && !d.notes) {
