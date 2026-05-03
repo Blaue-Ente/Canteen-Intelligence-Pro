@@ -14,3 +14,204 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * @summary Public menu lookup by short location code (used by guest QR app).
+ */
+export const GetPublishedMenuParams = zod.object({
+  locationCode: zod.coerce.string(),
+});
+
+export const GetPublishedMenuResponse = zod.object({
+  locationCode: zod.string(),
+  locationName: zod.string(),
+  currency: zod.string(),
+  dishes: zod.array(
+    zod.object({
+      id: zod.string(),
+      name: zod.string(),
+      description: zod.string().nullish(),
+      price: zod.number(),
+      type: zod.string().nullish(),
+      allergens: zod.array(zod.string()),
+      imageUrl: zod.string().nullish(),
+    }),
+  ),
+  publishedAt: zod.string(),
+});
+
+/**
+ * @summary Staff pushes the current menu for a location (requires auth).
+ */
+export const PublishMenuBody = zod.object({
+  locationCode: zod.string(),
+  locationName: zod.string(),
+  currency: zod.string().optional(),
+  dishes: zod.array(
+    zod.object({
+      id: zod.string(),
+      name: zod.string(),
+      description: zod.string().nullish(),
+      price: zod.number(),
+      type: zod.string().nullish(),
+      allergens: zod.array(zod.string()),
+      imageUrl: zod.string().nullish(),
+    }),
+  ),
+});
+
+export const PublishMenuResponse = zod.object({
+  locationCode: zod.string(),
+  locationName: zod.string(),
+  currency: zod.string(),
+  dishes: zod.array(
+    zod.object({
+      id: zod.string(),
+      name: zod.string(),
+      description: zod.string().nullish(),
+      price: zod.number(),
+      type: zod.string().nullish(),
+      allergens: zod.array(zod.string()),
+      imageUrl: zod.string().nullish(),
+    }),
+  ),
+  publishedAt: zod.string(),
+});
+
+/**
+ * @summary Guest creates an order (no auth, returns access token for status polling).
+ */
+export const CreateGuestOrderBody = zod.object({
+  locationCode: zod.string(),
+  guestName: zod.string(),
+  guestNote: zod.string().nullish(),
+  items: zod.array(
+    zod.object({
+      dishId: zod.string(),
+      name: zod.string(),
+      qty: zod.number(),
+      price: zod.number(),
+    }),
+  ),
+});
+
+/**
+ * @summary Public order status lookup using id + access token.
+ */
+export const GetGuestOrderParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GetGuestOrderQueryParams = zod.object({
+  token: zod.coerce.string(),
+});
+
+export const GetGuestOrderResponse = zod.object({
+  id: zod.string(),
+  locationCode: zod.string(),
+  guestName: zod.string(),
+  guestNote: zod.string().nullish(),
+  items: zod.array(
+    zod.object({
+      dishId: zod.string(),
+      name: zod.string(),
+      qty: zod.number(),
+      price: zod.number(),
+    }),
+  ),
+  total: zod.number(),
+  currency: zod.string(),
+  status: zod.enum([
+    "new",
+    "accepted",
+    "preparing",
+    "ready",
+    "served",
+    "cancelled",
+  ]),
+  accessToken: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Staff transitions an order's status (requires auth).
+ */
+export const UpdateOrderStatusParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const UpdateOrderStatusBody = zod.object({
+  status: zod.enum([
+    "new",
+    "accepted",
+    "preparing",
+    "ready",
+    "served",
+    "cancelled",
+  ]),
+});
+
+export const UpdateOrderStatusResponse = zod.object({
+  id: zod.string(),
+  locationCode: zod.string(),
+  guestName: zod.string(),
+  guestNote: zod.string().nullish(),
+  items: zod.array(
+    zod.object({
+      dishId: zod.string(),
+      name: zod.string(),
+      qty: zod.number(),
+      price: zod.number(),
+    }),
+  ),
+  total: zod.number(),
+  currency: zod.string(),
+  status: zod.enum([
+    "new",
+    "accepted",
+    "preparing",
+    "ready",
+    "served",
+    "cancelled",
+  ]),
+  accessToken: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Staff lists pending/active orders for a location (requires auth).
+ */
+export const ListStaffOrdersQueryParams = zod.object({
+  locationCode: zod.coerce.string(),
+});
+
+export const ListStaffOrdersResponseItem = zod.object({
+  id: zod.string(),
+  locationCode: zod.string(),
+  guestName: zod.string(),
+  guestNote: zod.string().nullish(),
+  items: zod.array(
+    zod.object({
+      dishId: zod.string(),
+      name: zod.string(),
+      qty: zod.number(),
+      price: zod.number(),
+    }),
+  ),
+  total: zod.number(),
+  currency: zod.string(),
+  status: zod.enum([
+    "new",
+    "accepted",
+    "preparing",
+    "ready",
+    "served",
+    "cancelled",
+  ]),
+  accessToken: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListStaffOrdersResponse = zod.array(ListStaffOrdersResponseItem);

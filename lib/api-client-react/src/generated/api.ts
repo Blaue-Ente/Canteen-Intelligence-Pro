@@ -5,18 +5,31 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  CreateOrderBody,
+  ErrorResponse,
+  GetGuestOrderParams,
+  GuestOrder,
+  HealthStatus,
+  ListStaffOrdersParams,
+  PublishMenuBody,
+  PublishedMenu,
+  UpdateOrderStatusBody,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -92,6 +105,557 @@ export function useHealthCheck<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getHealthCheckQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Public menu lookup by short location code (used by guest QR app).
+ */
+export const getGetPublishedMenuUrl = (locationCode: string) => {
+  return `/api/preorder/menu/${locationCode}`;
+};
+
+export const getPublishedMenu = async (
+  locationCode: string,
+  options?: RequestInit,
+): Promise<PublishedMenu> => {
+  return customFetch<PublishedMenu>(getGetPublishedMenuUrl(locationCode), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPublishedMenuQueryKey = (locationCode: string) => {
+  return [`/api/preorder/menu/${locationCode}`] as const;
+};
+
+export const getGetPublishedMenuQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPublishedMenu>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  locationCode: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPublishedMenu>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetPublishedMenuQueryKey(locationCode);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getPublishedMenu>>
+  > = ({ signal }) =>
+    getPublishedMenu(locationCode, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!locationCode,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPublishedMenu>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPublishedMenuQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPublishedMenu>>
+>;
+export type GetPublishedMenuQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Public menu lookup by short location code (used by guest QR app).
+ */
+
+export function useGetPublishedMenu<
+  TData = Awaited<ReturnType<typeof getPublishedMenu>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  locationCode: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPublishedMenu>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPublishedMenuQueryOptions(locationCode, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Staff pushes the current menu for a location (requires auth).
+ */
+export const getPublishMenuUrl = () => {
+  return `/api/preorder/menu/publish`;
+};
+
+export const publishMenu = async (
+  publishMenuBody: PublishMenuBody,
+  options?: RequestInit,
+): Promise<PublishedMenu> => {
+  return customFetch<PublishedMenu>(getPublishMenuUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(publishMenuBody),
+  });
+};
+
+export const getPublishMenuMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof publishMenu>>,
+    TError,
+    { data: BodyType<PublishMenuBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof publishMenu>>,
+  TError,
+  { data: BodyType<PublishMenuBody> },
+  TContext
+> => {
+  const mutationKey = ["publishMenu"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof publishMenu>>,
+    { data: BodyType<PublishMenuBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return publishMenu(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PublishMenuMutationResult = NonNullable<
+  Awaited<ReturnType<typeof publishMenu>>
+>;
+export type PublishMenuMutationBody = BodyType<PublishMenuBody>;
+export type PublishMenuMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Staff pushes the current menu for a location (requires auth).
+ */
+export const usePublishMenu = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof publishMenu>>,
+    TError,
+    { data: BodyType<PublishMenuBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof publishMenu>>,
+  TError,
+  { data: BodyType<PublishMenuBody> },
+  TContext
+> => {
+  return useMutation(getPublishMenuMutationOptions(options));
+};
+
+/**
+ * @summary Guest creates an order (no auth, returns access token for status polling).
+ */
+export const getCreateGuestOrderUrl = () => {
+  return `/api/preorder/orders`;
+};
+
+export const createGuestOrder = async (
+  createOrderBody: CreateOrderBody,
+  options?: RequestInit,
+): Promise<GuestOrder> => {
+  return customFetch<GuestOrder>(getCreateGuestOrderUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createOrderBody),
+  });
+};
+
+export const getCreateGuestOrderMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createGuestOrder>>,
+    TError,
+    { data: BodyType<CreateOrderBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createGuestOrder>>,
+  TError,
+  { data: BodyType<CreateOrderBody> },
+  TContext
+> => {
+  const mutationKey = ["createGuestOrder"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createGuestOrder>>,
+    { data: BodyType<CreateOrderBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createGuestOrder(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateGuestOrderMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createGuestOrder>>
+>;
+export type CreateGuestOrderMutationBody = BodyType<CreateOrderBody>;
+export type CreateGuestOrderMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Guest creates an order (no auth, returns access token for status polling).
+ */
+export const useCreateGuestOrder = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createGuestOrder>>,
+    TError,
+    { data: BodyType<CreateOrderBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createGuestOrder>>,
+  TError,
+  { data: BodyType<CreateOrderBody> },
+  TContext
+> => {
+  return useMutation(getCreateGuestOrderMutationOptions(options));
+};
+
+/**
+ * @summary Public order status lookup using id + access token.
+ */
+export const getGetGuestOrderUrl = (
+  id: string,
+  params: GetGuestOrderParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/preorder/orders/${id}?${stringifiedParams}`
+    : `/api/preorder/orders/${id}`;
+};
+
+export const getGuestOrder = async (
+  id: string,
+  params: GetGuestOrderParams,
+  options?: RequestInit,
+): Promise<GuestOrder> => {
+  return customFetch<GuestOrder>(getGetGuestOrderUrl(id, params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetGuestOrderQueryKey = (
+  id: string,
+  params?: GetGuestOrderParams,
+) => {
+  return [`/api/preorder/orders/${id}`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetGuestOrderQueryOptions = <
+  TData = Awaited<ReturnType<typeof getGuestOrder>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: string,
+  params: GetGuestOrderParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getGuestOrder>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetGuestOrderQueryKey(id, params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getGuestOrder>>> = ({
+    signal,
+  }) => getGuestOrder(id, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getGuestOrder>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetGuestOrderQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getGuestOrder>>
+>;
+export type GetGuestOrderQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Public order status lookup using id + access token.
+ */
+
+export function useGetGuestOrder<
+  TData = Awaited<ReturnType<typeof getGuestOrder>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: string,
+  params: GetGuestOrderParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getGuestOrder>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetGuestOrderQueryOptions(id, params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Staff transitions an order's status (requires auth).
+ */
+export const getUpdateOrderStatusUrl = (id: string) => {
+  return `/api/preorder/orders/${id}/status`;
+};
+
+export const updateOrderStatus = async (
+  id: string,
+  updateOrderStatusBody: UpdateOrderStatusBody,
+  options?: RequestInit,
+): Promise<GuestOrder> => {
+  return customFetch<GuestOrder>(getUpdateOrderStatusUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateOrderStatusBody),
+  });
+};
+
+export const getUpdateOrderStatusMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateOrderStatus>>,
+    TError,
+    { id: string; data: BodyType<UpdateOrderStatusBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateOrderStatus>>,
+  TError,
+  { id: string; data: BodyType<UpdateOrderStatusBody> },
+  TContext
+> => {
+  const mutationKey = ["updateOrderStatus"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateOrderStatus>>,
+    { id: string; data: BodyType<UpdateOrderStatusBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateOrderStatus(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateOrderStatusMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateOrderStatus>>
+>;
+export type UpdateOrderStatusMutationBody = BodyType<UpdateOrderStatusBody>;
+export type UpdateOrderStatusMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Staff transitions an order's status (requires auth).
+ */
+export const useUpdateOrderStatus = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateOrderStatus>>,
+    TError,
+    { id: string; data: BodyType<UpdateOrderStatusBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateOrderStatus>>,
+  TError,
+  { id: string; data: BodyType<UpdateOrderStatusBody> },
+  TContext
+> => {
+  return useMutation(getUpdateOrderStatusMutationOptions(options));
+};
+
+/**
+ * @summary Staff lists pending/active orders for a location (requires auth).
+ */
+export const getListStaffOrdersUrl = (params: ListStaffOrdersParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/preorder/staff/orders?${stringifiedParams}`
+    : `/api/preorder/staff/orders`;
+};
+
+export const listStaffOrders = async (
+  params: ListStaffOrdersParams,
+  options?: RequestInit,
+): Promise<GuestOrder[]> => {
+  return customFetch<GuestOrder[]>(getListStaffOrdersUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListStaffOrdersQueryKey = (params?: ListStaffOrdersParams) => {
+  return [`/api/preorder/staff/orders`, ...(params ? [params] : [])] as const;
+};
+
+export const getListStaffOrdersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listStaffOrders>>,
+  TError = ErrorType<unknown>,
+>(
+  params: ListStaffOrdersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listStaffOrders>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListStaffOrdersQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listStaffOrders>>> = ({
+    signal,
+  }) => listStaffOrders(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listStaffOrders>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListStaffOrdersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listStaffOrders>>
+>;
+export type ListStaffOrdersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Staff lists pending/active orders for a location (requires auth).
+ */
+
+export function useListStaffOrders<
+  TData = Awaited<ReturnType<typeof listStaffOrders>>,
+  TError = ErrorType<unknown>,
+>(
+  params: ListStaffOrdersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listStaffOrders>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListStaffOrdersQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

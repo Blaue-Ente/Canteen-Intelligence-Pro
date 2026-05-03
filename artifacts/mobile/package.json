@@ -63,6 +63,7 @@
   "dependencies": {
     "expo-notifications": "^0.32.17",
     "expo-print": "^15.0.8",
-    "expo-sharing": "^14.0.8"
+    "expo-sharing": "^14.0.8",
+    "react-native-qrcode-svg": "^6.3.21"
   }
 }

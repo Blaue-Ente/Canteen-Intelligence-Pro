@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: preorder
+    description: Guest pre-order flow (menu publish, orders)
 paths:
   /healthz:
     get:
@@ -24,6 +26,152 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /preorder/menu/{locationCode}:
+    get:
+      operationId: getPublishedMenu
+      tags: [preorder]
+      summary: Public menu lookup by short location code (used by guest QR app).
+      parameters:
+        - in: path
+          name: locationCode
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current published menu for the location
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublishedMenu"
+        "404":
+          description: Location not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /preorder/menu/publish:
+    post:
+      operationId: publishMenu
+      tags: [preorder]
+      summary: Staff pushes the current menu for a location (requires auth).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishMenuBody"
+      responses:
+        "200":
+          description: Published
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublishedMenu"
+
+  /preorder/orders:
+    post:
+      operationId: createGuestOrder
+      tags: [preorder]
+      summary: Guest creates an order (no auth, returns access token for status polling).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrderBody"
+      responses:
+        "201":
+          description: Order created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestOrder"
+        "400":
+          description: Invalid order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /preorder/orders/{id}:
+    get:
+      operationId: getGuestOrder
+      tags: [preorder]
+      summary: Public order status lookup using id + access token.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: token
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestOrder"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /preorder/orders/{id}/status:
+    patch:
+      operationId: updateOrderStatus
+      tags: [preorder]
+      summary: Staff transitions an order's status (requires auth).
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrderStatusBody"
+      responses:
+        "200":
+          description: Updated order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestOrder"
+
+  /preorder/staff/orders:
+    get:
+      operationId: listStaffOrders
+      tags: [preorder]
+      summary: Staff lists pending/active orders for a location (requires auth).
+      parameters:
+        - in: query
+          name: locationCode
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Order list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GuestOrder"
+
 components:
   schemas:
     HealthStatus:
@@ -31,6 +179,132 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
+    PreorderDish:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        price:
+          type: number
+        type:
+          type: ["string", "null"]
+        allergens:
+          type: array
+          items:
+            type: string
+        imageUrl:
+          type: ["string", "null"]
+      required: [id, name, price, allergens]
+
+    PublishedMenu:
+      type: object
+      properties:
+        locationCode:
+          type: string
+        locationName:
+          type: string
+        currency:
+          type: string
+        dishes:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreorderDish"
+        publishedAt:
+          type: string
+      required: [locationCode, locationName, currency, dishes, publishedAt]
+
+    PublishMenuBody:
+      type: object
+      properties:
+        locationCode:
+          type: string
+        locationName:
+          type: string
+        currency:
+          type: string
+        dishes:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreorderDish"
+      required: [locationCode, locationName, dishes]
+
+    OrderItem:
+      type: object
+      properties:
+        dishId:
+          type: string
+        name:
+          type: string
+        qty:
+          type: integer
+        price:
+          type: number
+      required: [dishId, name, qty, price]
+
+    GuestOrderStatus:
+      type: string
+      enum: [new, accepted, preparing, ready, served, cancelled]
+
+    GuestOrder:
+      type: object
+      properties:
+        id:
+          type: string
+        locationCode:
+          type: string
+        guestName:
+          type: string
+        guestNote:
+          type: ["string", "null"]
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+        total:
+          type: number
+        currency:
+          type: string
+        status:
+          $ref: "#/components/schemas/GuestOrderStatus"
+        accessToken:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [id, locationCode, guestName, items, total, currency, status, createdAt, updatedAt]
+
+    CreateOrderBody:
+      type: object
+      properties:
+        locationCode:
+          type: string
+        guestName:
+          type: string
+        guestNote:
+          type: ["string", "null"]
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+      required: [locationCode, guestName, items]
+
+    UpdateOrderStatusBody:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/GuestOrderStatus"
+      required: [status]

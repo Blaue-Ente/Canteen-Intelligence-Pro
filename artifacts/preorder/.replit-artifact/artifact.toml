@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/preorder/"
+title = "KitchenOS Pre-Order"
+version = "1.0.0"
+id = "artifacts/preorder"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/preorder/" ]
+localPort = 25604
+
+[services.development]
+run = "pnpm --filter @workspace/preorder run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/preorder", "run", "build" ]
+publicDir = "artifacts/preorder/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25604"
+BASE_PATH = "/preorder/"

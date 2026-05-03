@@ -6,3 +6,9 @@ id = "junJ6FmJqiPRB4jwb9vu-"
 uri = "file://artifacts/mobile/assets/images/icon.png"
 type = "image"
 title = "kitchenos icon"
+
+[[generated]]
+id = "9p0i3touOf3D2Ou4fjka9"
+uri = "file://artifacts/preorder/public/hero-canteen.png"
+type = "image"
+title = "Appetizing canteen food"

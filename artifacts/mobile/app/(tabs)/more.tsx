@@ -45,6 +45,7 @@ export default function More() {
         { icon: "dollar-sign", label: t("calculator"), to: "/calculator" },
         { icon: "trash-2", label: t("waste"), to: "/waste" },
         { icon: "refresh-ccw", label: t("resteRezepte"), to: "/reste" },
+        { icon: "smartphone", label: t("preorder"), to: "/preorder" },
       ],
     },
     {

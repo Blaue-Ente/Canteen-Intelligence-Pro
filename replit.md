@@ -5,9 +5,11 @@ AI-driven kitchen operations app for German restaurants, canteens, and hotels. B
 ## Architecture
 
 - `artifacts/mobile/` — Expo Router app (KitchenOS). All UI, state, AsyncStorage persistence.
-- `artifacts/api-server/` — Express server. Hosts `/api/ai/chat` (SSE stream) and `/api/ai/vision` endpoints that wrap the Replit OpenAI integration.
+- `artifacts/api-server/` — Express server. Hosts `/api/ai/*` endpoints + `/api/preorder/*` (guest pre-order menu + orders).
+- `artifacts/preorder/` — React+Vite guest pre-order web app (warm amber/Outfit/Playfair). Pages: `/` (canteen code), `/menu/:loc` (browse + cart), `/checkout/:loc` (place order), `/order/:id?token=` (live status).
 - `artifacts/mockup-sandbox/` — design canvas (untouched template).
 - `lib/integrations-openai-ai-server` — OpenAI client used by the api-server.
+- `lib/db/src/schema/preorder.ts` — `published_menus` (location_code PK, dishes JSONB, owner_org_id), `guest_orders` (UUID PK, items JSONB, status, access_token).
 
 ## Phase 5 — Multi-tenant accounts + supplier discovery
 
@@ -146,3 +148,16 @@ New helpers (`lib/computations.ts`): `recipeCost`, `recipeMargin` (with trend), 
 - `AppState.notificationPrefs: NotificationPrefs` (enabled + 4 channels + 2 HH:mm fields).
 - New actions: `addInventur`, `updateInventur`, `removeInventur`, `addEmployee`, `updateEmployee`, `removeEmployee` (cascades shifts), `addShift`, `updateShift`, `removeShift`, `setNotificationPrefs`.
 - New screens registered in `app/_layout.tsx`: `inventur`, `dienstplan`. New "Mehr → Operations" entries.
+
+## Phase 6B — Real server-backed features
+
+### #1 Guest pre-order app (DONE)
+
+End-to-end flow: kitchen publishes today's menu → guests scan QR / open link → place order → kitchen advances status → guest sees live status.
+
+- **OpenAPI** (`lib/api-spec/openapi.yaml`) — `/preorder/menu/{code}` GET (public), `/preorder/menu/publish` POST (auth, owner_org from membership), `/preorder/orders` POST (public, returns one-time `accessToken`), `/preorder/orders/{id}` GET (`?token=`), `/preorder/orders/{id}/status` PATCH (auth), `/preorder/staff/orders` GET (auth, filters served/cancelled). Codegen produces hooks + Zod schemas. **api-zod barrel changed**: Zod runtime schemas now live under `schemas.*` namespace (`import { schemas } from "@workspace/api-zod"; schemas.PublishMenuBody.safeParse(...)`); only TS interfaces stay top-level.
+- **DB** — `published_menus` (location_code PK, owner_org_id NOT NULL, dishes JSONB, …), `guest_orders` (uuid PK, owner_org_id NOT NULL — denormalised at insert time for direct authz, items JSONB, total NUMERIC, status text, access_token, timestamps). Demo seed uses synthetic org id `demo-org`.
+- **Server** (`artifacts/api-server/src/routes/preorder.ts`) — Zod-validated; `requireAuth` + `userOrgIds`; staff endpoints authorise by `guest_orders.owner_org_id ∈ user's orgs` (no nullable bypass). Guest order POST never trusts client `price`/`name` — every line item is resolved against the live published menu, qty coerced to a positive integer ≤ 50, total computed server-side. `crypto.randomBytes(16).toString("hex")` for guest tokens. Publish upsert always rewrites `owner_org_id` so legacy null rows self-heal.
+- **Web app** (`artifacts/preorder/`) — Vite, warm amber/orange palette, Outfit/Playfair fonts, 4 pages (canteen-code entry → menu+cart → checkout → order status with Framer-Motion celebration on `ready`), bilingual DE/EN, `useCart` + `useActiveOrder` localStorage hooks. Preview path `/preorder/`.
+- **Mobile** (`artifacts/mobile/app/preorder.tsx`) — Reachable from More → Operations. Derives today's dishes from `state.menu` × `state.recipes` (fallback: first 6 recipes), POSTs to `/preorder/menu/publish`, renders QR (react-native-qrcode-svg) pointing to `https://$EXPO_PUBLIC_DOMAIN/preorder/?loc=<code>`, polls staff orders every 8s, status advance buttons cycle `new → accepted → preparing → ready → served`.
+- **Seed** — `DEMO` location with 5 dishes (Schnitzel, Linsensuppe, Curry, Caesar, Apfelstrudel) for instant demo without publish.

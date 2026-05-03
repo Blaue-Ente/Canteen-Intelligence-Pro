@@ -8,3 +8,90 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface ErrorResponse {
+  error: string;
+}
+
+export interface PreorderDish {
+  id: string;
+  name: string;
+  /** @nullable */
+  description?: string | null;
+  price: number;
+  /** @nullable */
+  type?: string | null;
+  allergens: string[];
+  /** @nullable */
+  imageUrl?: string | null;
+}
+
+export interface PublishedMenu {
+  locationCode: string;
+  locationName: string;
+  currency: string;
+  dishes: PreorderDish[];
+  publishedAt: string;
+}
+
+export interface PublishMenuBody {
+  locationCode: string;
+  locationName: string;
+  currency?: string;
+  dishes: PreorderDish[];
+}
+
+export interface OrderItem {
+  dishId: string;
+  name: string;
+  qty: number;
+  price: number;
+}
+
+export type GuestOrderStatus =
+  (typeof GuestOrderStatus)[keyof typeof GuestOrderStatus];
+
+export const GuestOrderStatus = {
+  new: "new",
+  accepted: "accepted",
+  preparing: "preparing",
+  ready: "ready",
+  served: "served",
+  cancelled: "cancelled",
+} as const;
+
+export interface GuestOrder {
+  id: string;
+  locationCode: string;
+  guestName: string;
+  /** @nullable */
+  guestNote?: string | null;
+  items: OrderItem[];
+  total: number;
+  currency: string;
+  status: GuestOrderStatus;
+  /** @nullable */
+  accessToken?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateOrderBody {
+  locationCode: string;
+  guestName: string;
+  /** @nullable */
+  guestNote?: string | null;
+  items: OrderItem[];
+}
+
+export interface UpdateOrderStatusBody {
+  status: GuestOrderStatus;
+}
+
+export type GetGuestOrderParams = {
+  token: string;
+};
+
+export type ListStaffOrdersParams = {
+  locationCode: string;
+};
