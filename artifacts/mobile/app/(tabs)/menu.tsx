@@ -92,6 +92,16 @@ export default function Menu() {
           </View>
           <View style={{ flexDirection: "row", gap: 8 }}>
             <Pressable
+              onPress={() => router.push("/scan?mode=menu")}
+              style={({ pressed }) => [
+                { width: 38, height: 38, borderRadius: 12, backgroundColor: c.muted, alignItems: "center", justifyContent: "center" },
+                pressed && { opacity: 0.7 },
+              ]}
+              accessibilityLabel={t("scanMenu")}
+            >
+              <Feather name="camera" size={16} color={c.foreground} />
+            </Pressable>
+            <Pressable
               onPress={() => {
                 Alert.alert(t("rotate") + "?", "Tausche Wochenkarte rotierend.", [
                   { text: t("cancel") },
@@ -173,8 +183,14 @@ export default function Menu() {
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 110, gap: 14 }}>
         <SectionHeader title={t("today") + " · " + t("menu")} action="+ " onAction={() => setPicker(true)} />
         {dayRecipes.length === 0 ? (
-          <Card>
+          <Card style={{ gap: 12 }}>
             <EmptyState icon="book-open" title={t("empty")} body="Tippe + um Gerichte hinzuzufügen." />
+            <Button
+              label={t("scanMenu")}
+              icon="camera"
+              variant="secondary"
+              onPress={() => router.push("/scan?mode=menu")}
+            />
           </Card>
         ) : (
           dayRecipes.map((r) => {

@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -52,8 +52,16 @@ export default function Scan() {
   const c = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ mode?: string }>();
   const { state, dispatch, newId } = useApp();
-  const [mode, setMode] = useState<Mode>("receipt");
+  const initialMode: Mode =
+    params.mode === "menu" ||
+    params.mode === "nutrition" ||
+    params.mode === "tray" ||
+    params.mode === "delivery"
+      ? params.mode
+      : "receipt";
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [uri, setUri] = useState<string | null>(null);
   const [b64, setB64] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

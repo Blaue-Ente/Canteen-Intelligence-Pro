@@ -56,3 +56,8 @@ The mobile application features a charcoal and amber theme (`#0a0a0b` / `#f59e0b
 - **`expo-print` and `expo-sharing`**: For PDF export and sharing functionalities on native devices.
 - **`expo-notifications`**: For managing push notifications.
 - **Web Speech API**: For voice input and speech synthesis (web only).
+### Menu camera surfacing (UX fix)
+
+The AI menu-scanner already existed in `app/scan.tsx` (mode `menu` → `parseMenuImage` → import dishes as recipes), but it was only reachable via the Home QuickAction, the Inventory toolbar, and Mehr → Scan. Users on the Menu tab couldn't find it.
+- `app/(tabs)/menu.tsx` — added a camera icon next to the rotate/AI buttons in the toolbar that pushes `/scan?mode=menu`. Also added a prominent "Speisekarte scannen" secondary button to the empty-state card so a fresh day immediately shows the option.
+- `app/scan.tsx` — now reads `?mode=` via `useLocalSearchParams` (`menu | nutrition | tray | delivery`) so deep-links open in the requested mode (default still `receipt`).
