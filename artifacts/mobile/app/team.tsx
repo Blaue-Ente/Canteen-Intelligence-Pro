@@ -84,7 +84,7 @@ export default function TeamScreen() {
             text: "Code teilen",
             onPress: () => {
               if (Platform.OS === "web") void Clipboard.setStringAsync(res.code);
-              else void Share.share({ message: `Tritt unserem Team auf KitchenOS bei. Einladungscode: ${res.code}` });
+              else void Share.share({ message: `Tritt unserem Team auf KItchenOS bei. Einladungscode: ${res.code}` });
             },
           },
         ],

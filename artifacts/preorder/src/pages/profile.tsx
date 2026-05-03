@@ -140,7 +140,7 @@ function ProfileForm() {
 
       {profile.accountType === "regular" && (
         <p className="text-xs text-muted-foreground">
-          Mit einem Geschäftskonto können Sie Vorbestellungen aufgeben. Ein KitchenOS-Mitarbeiter
+          Mit einem Geschäftskonto können Sie Vorbestellungen aufgeben. Ein KItchenOS-Mitarbeiter
           prüft Ihren Antrag.
         </p>
       )}

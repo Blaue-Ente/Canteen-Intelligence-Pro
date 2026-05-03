@@ -60,7 +60,7 @@ export function orderHtml(order: OrderDraft, locale: Locale): string {
       <tbody>${rows}</tbody>
     </table>
     <div class="total">${labels.total}: €${total.toFixed(2)}</div>
-    <div class="footer">KitchenOS · ${labels.title} #${order.id.slice(0, 8)}</div>
+    <div class="footer">KItchenOS · ${labels.title} #${order.id.slice(0, 8)}</div>
   `;
   return baseHtml(labels.title, body);
 }
@@ -119,7 +119,7 @@ export function cateringOfferHtml(
     </div>
     ${blocks}
     <div class="total">${labels.subtotal}: €${perPerson.toFixed(2)}<br/>${labels.total} (${req.guests}× ): €${total.toFixed(2)}</div>
-    <div class="footer">KitchenOS · ${escapeHtml(req.subject)}</div>
+    <div class="footer">KItchenOS · ${escapeHtml(req.subject)}</div>
   `;
   return baseHtml(labels.title, body);
 }
@@ -168,7 +168,7 @@ export function aushangHtml(
     <div style="font-size:32px;font-weight:700">${data.co2.toFixed(2)} <span style="font-size:14px;color:#78716c">kg CO₂e ${labels.per}</span></div>
     <h2>${labels.allergens}</h2>
     <div>${allergensHtml}</div>
-    <div class="footer">KitchenOS · ${labels.title} · ${escapeHtml(recipe.id.slice(0, 8))}</div>
+    <div class="footer">KItchenOS · ${labels.title} · ${escapeHtml(recipe.id.slice(0, 8))}</div>
   `;
   return baseHtml(labels.title, body);
 }

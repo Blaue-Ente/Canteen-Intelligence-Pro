@@ -196,7 +196,7 @@ export default function Settings() {
         />
 
         <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 11, textAlign: "center", marginTop: 16 }}>
-          KitchenOS · Made for German kitchens.
+          KItchenOS · Made for German kitchens.
         </Text>
       </ScrollView>
     </View>

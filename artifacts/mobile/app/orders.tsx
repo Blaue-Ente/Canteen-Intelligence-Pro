@@ -14,7 +14,7 @@ function buildEmail(order: OrderDraft, locale: "de" | "en"): { subject: string; 
       (it) => `– ${it.quantity} ${it.unit} ${it.name}${it.estimatedPrice ? ` (≈ €${it.estimatedPrice.toFixed(2)})` : ""}`,
     );
     return {
-      subject: `Bestellung KitchenOS – ${new Date(order.createdAt).toLocaleDateString("de-DE")}`,
+      subject: `Bestellung KItchenOS – ${new Date(order.createdAt).toLocaleDateString("de-DE")}`,
       body: [
         "Sehr geehrte Damen und Herren,",
         "",
@@ -25,7 +25,7 @@ function buildEmail(order: OrderDraft, locale: "de" | "en"): { subject: string; 
         order.total ? `Gesamt geschätzt: €${order.total.toFixed(2)}` : "",
         "",
         "Mit freundlichen Grüßen,",
-        "KitchenOS",
+        "KItchenOS",
       ]
         .filter(Boolean)
         .join("\n"),
@@ -35,7 +35,7 @@ function buildEmail(order: OrderDraft, locale: "de" | "en"): { subject: string; 
     (it) => `- ${it.quantity} ${it.unit} ${it.name}${it.estimatedPrice ? ` (≈ €${it.estimatedPrice.toFixed(2)})` : ""}`,
   );
   return {
-    subject: `Order from KitchenOS – ${new Date(order.createdAt).toLocaleDateString("en-GB")}`,
+    subject: `Order from KItchenOS – ${new Date(order.createdAt).toLocaleDateString("en-GB")}`,
     body: [
       "Dear Sir/Madam,",
       "",
@@ -46,7 +46,7 @@ function buildEmail(order: OrderDraft, locale: "de" | "en"): { subject: string; 
       order.total ? `Estimated total: €${order.total.toFixed(2)}` : "",
       "",
       "Kind regards,",
-      "KitchenOS",
+      "KItchenOS",
     ]
       .filter(Boolean)
       .join("\n"),

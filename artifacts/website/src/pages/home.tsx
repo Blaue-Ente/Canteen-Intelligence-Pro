@@ -93,7 +93,7 @@ export default function Home() {
               <div className="absolute -inset-4 bg-primary/5 rounded-[2.5rem] -z-10" />
               <img
                 src={`${BASE}screenshots/screen-home.png`}
-                alt="KitchenOS Dashboard"
+                alt="KItchenOS Dashboard"
                 className="w-[260px] sm:w-[300px] rounded-[2rem] shadow-2xl border border-border/40"
                 loading="eager"
               />

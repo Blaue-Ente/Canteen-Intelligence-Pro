@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "KitchenOS",
+    "name": "KItchenOS",
     "slug": "kitchenos",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -12,9 +12,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.replit.kitchenos",
       "infoPlist": {
-        "NSCameraUsageDescription": "KitchenOS uses the camera to scan invoices, delivery notes and dishes.",
-        "NSPhotoLibraryUsageDescription": "KitchenOS uses your library to attach photos to complaints and orders.",
-        "NSLocationWhenInUseUsageDescription": "KitchenOS uses your location to find nearby suppliers."
+        "NSCameraUsageDescription": "KItchenOS uses the camera to scan invoices, delivery notes and dishes.",
+        "NSPhotoLibraryUsageDescription": "KItchenOS uses your library to attach photos to complaints and orders.",
+        "NSLocationWhenInUseUsageDescription": "KItchenOS uses your location to find nearby suppliers."
       }
     },
     "android": {
@@ -30,14 +30,14 @@
       [
         "expo-image-picker",
         {
-          "cameraPermission": "Allow KitchenOS to access your camera to scan invoices, delivery notes and dishes.",
-          "photosPermission": "Allow KitchenOS to access your photos to attach to complaints."
+          "cameraPermission": "Allow KItchenOS to access your camera to scan invoices, delivery notes and dishes.",
+          "photosPermission": "Allow KItchenOS to access your photos to attach to complaints."
         }
       ],
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow KitchenOS to find nearby suppliers."
+          "locationAlwaysAndWhenInUsePermission": "Allow KItchenOS to find nearby suppliers."
         }
       ]
     ],

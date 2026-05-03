@@ -2,7 +2,7 @@ import type { Locale } from "@/types";
 
 const dict = {
   de: {
-    appName: "KitchenOS",
+    appName: "KItchenOS",
     tagline: "Dein KI-Küchenchef",
     home: "Übersicht",
     inventory: "Lager",
@@ -303,7 +303,7 @@ const dict = {
     loading: "Lade",
   },
   en: {
-    appName: "KitchenOS",
+    appName: "KItchenOS",
     tagline: "Your AI kitchen chef",
     home: "Home",
     inventory: "Stock",

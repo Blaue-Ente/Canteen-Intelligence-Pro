@@ -61,7 +61,7 @@ export default function SupplierDetail() {
 
   const sendComplaint = () => {
     const subject = `Reklamation – Rechnung ${invoice}`;
-    const body = `Sehr geehrte Damen und Herren,\n\nbezugnehmend auf Rechnung Nr. ${invoice} müssen wir folgende Reklamation einreichen:\n\nGrund: ${reason}\nBetrag: € ${amount}\n\nMit freundlichen Grüßen,\nKitchenOS`;
+    const body = `Sehr geehrte Damen und Herren,\n\nbezugnehmend auf Rechnung Nr. ${invoice} müssen wir folgende Reklamation einreichen:\n\nGrund: ${reason}\nBetrag: € ${amount}\n\nMit freundlichen Grüßen,\nKItchenOS`;
     dispatch({
       type: "addComplaint",
       complaint: {

@@ -88,7 +88,7 @@ function OnboardingInner() {
     >
       <ScrollView contentContainerStyle={{ padding: 20, gap: 16, paddingTop: 60 }}>
         <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 26 }}>
-          Willkommen bei KitchenOS
+          Willkommen bei KItchenOS
         </Text>
         <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular" }}>
           Erstelle dein Restaurant oder tritt mit einem Einladungscode bei.

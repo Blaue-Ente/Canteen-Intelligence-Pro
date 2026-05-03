@@ -35,7 +35,7 @@ function buildSystemPrompt(state: ReturnType<typeof useApp>["state"]): string {
   const recipes = state.recipes.map((r) => r.nameDe).join(", ");
   const lang = state.locale === "de" ? "Deutsch" : "English";
   return [
-    `You are KitchenOS, the proactive AI head chef and operations assistant for a German restaurant. Always answer in ${lang}.`,
+    `You are KItchenOS, the proactive AI head chef and operations assistant for a German restaurant. Always answer in ${lang}.`,
     "Be concise, professional, action-oriented. Use bullet lists when helpful.",
     "Knowledge: German food law (LMIV allergens, §4 LMHV HACCP, EU 852/2004 hygiene), receipt/delivery-note OCR, menu rotation, supplier complaints, pricing, waste reduction.",
     `Current low-stock items: ${lowStock || "none"}.`,
@@ -295,7 +295,7 @@ export default function Chat() {
               <Feather name="cpu" size={28} color={c.primary} />
             </View>
             <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 18 }}>
-              KitchenOS · KI
+              KItchenOS · KI
             </Text>
             <Text
               style={{

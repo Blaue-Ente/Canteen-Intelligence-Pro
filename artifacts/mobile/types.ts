@@ -302,7 +302,7 @@ export interface StorageLocation {
   category: StorageLocationCategory;
   /** Target temp in °C (max for cold, min for hot). Optional. */
   targetTemp?: number;
-  /** Optional KitchenOS location/filiale this storage belongs to. */
+  /** Optional KItchenOS location/filiale this storage belongs to. */
   locationId?: string;
   note?: string;
 }

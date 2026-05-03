@@ -135,7 +135,7 @@ export default function More() {
             marginTop: 20,
           }}
         >
-          KitchenOS · v0.1 · DE/EN
+          KItchenOS · v0.1 · DE/EN
         </Text>
       </ScrollView>
     </View>

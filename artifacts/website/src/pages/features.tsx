@@ -100,8 +100,8 @@ export default function Features() {
       side: "right",
       titleDe: "Preiskalkulation mit echten Zahlen",
       titleEn: "Pricing with real numbers",
-      bodyDe: "Geben Sie Portion, Marge und Gemeinkosten ein — KitchenOS berechnet Ihnen Netto-VK und Brutto-VK inkl. MwSt. automatisch.",
-      bodyEn: "Enter portion, margin and overheads — KitchenOS calculates your net and gross selling price including VAT automatically.",
+      bodyDe: "Geben Sie Portion, Marge und Gemeinkosten ein — KItchenOS berechnet Ihnen Netto-VK und Brutto-VK inkl. MwSt. automatisch.",
+      bodyEn: "Enter portion, margin and overheads — KItchenOS calculates your net and gross selling price including VAT automatically.",
     },
   ];
 

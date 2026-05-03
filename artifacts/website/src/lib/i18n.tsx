@@ -5,7 +5,7 @@ export type Lang = "de" | "en";
 type Dict = Record<string, string>;
 
 const de: Dict = {
-  brand: "KitchenOS",
+  brand: "KItchenOS",
   tagline: "Die smarte Kantinen-Plattform",
   navHome: "Start",
   navFeatures: "Funktionen",
@@ -21,12 +21,12 @@ const de: Dict = {
 
   // Home
   heroTitle: "Die Kantine von morgen — heute eingerichtet.",
-  heroSub: "KitchenOS digitalisiert Ihre Betriebskantine: Vorbestellungen, KI-Rezepte, Allergene nach LMIV, Aggregat-Listen für die Küche und vieles mehr — alles in einer Plattform.",
+  heroSub: "KItchenOS digitalisiert Ihre Betriebskantine: Vorbestellungen, KI-Rezepte, Allergene nach LMIV, Aggregat-Listen für die Küche und vieles mehr — alles in einer Plattform.",
   heroPoint1: "Vorbestellung bis 08:00 Uhr",
   heroPoint2: "Allergene & Nährwerte automatisch",
   heroPoint3: "Live-Aggregat für die Küche",
   socialProofTitle: "Vertraut von Kantinen-Betreibern in der DACH-Region",
-  whyTitle: "Warum KitchenOS?",
+  whyTitle: "Warum KItchenOS?",
   whySub: "Schluss mit Tabellen, Zetteln und Lebensmittelverschwendung. Eine Plattform, die wirklich für Küchen gemacht ist.",
   why1Title: "Weniger Verschwendung",
   why1Body: "Bestellen Sie nur das, was wirklich gegessen wird — dank täglicher Aggregat-Listen pro Gericht und Kunde.",
@@ -63,7 +63,7 @@ const de: Dict = {
 
   // Operators
   opTitle: "Für Kantinen-Betreiber",
-  opSub: "Ob Betriebskantine, Schule, Pflegeheim oder Catering — KitchenOS passt sich Ihrem Betrieb an.",
+  opSub: "Ob Betriebskantine, Schule, Pflegeheim oder Catering — KItchenOS passt sich Ihrem Betrieb an.",
   opCanteenTitle: "Betriebskantinen",
   opCanteenBody: "Mitarbeiter bestellen vorab, Sie kochen genau die richtige Menge. Sammelrechnung an den Arbeitgeber, einfache Lohnabrechnungs-Integration.",
   opSchoolTitle: "Schulen & Kitas",
@@ -72,7 +72,7 @@ const de: Dict = {
   opCareBody: "Diätspezifische Filter (vegan, glutenfrei, püriert, fettarm). Pflegekräfte bestellen am Tablet für ihre Bewohner.",
   opCateringTitle: "Catering",
   opCateringBody: "Event-Bestellungen mit Vorlauffrist, Lieferzeitfenstern und automatischem Pack-Plan für die Küche.",
-  opStatTitle: "Was Betreiber mit KitchenOS erreichen",
+  opStatTitle: "Was Betreiber mit KItchenOS erreichen",
   opStat1: "−18 % Lebensmittelverschwendung",
   opStat2: "+22 % Bestellannahme",
   opStat3: "−4 Std/Woche Verwaltung",
@@ -102,9 +102,9 @@ const de: Dict = {
   pickPlan: "Plan wählen",
 
   // About
-  aboutTitle: "Über KitchenOS",
+  aboutTitle: "Über KItchenOS",
   aboutLead: "Wir glauben, dass Kantinen verdient haben, was Restaurants schon längst haben: gute Software.",
-  aboutP1: "KitchenOS wurde 2025 gegründet, weil wir es satt hatten, Kantinen mit Excel und Klemmbrettern zu sehen, während Lieferdienste mit Millionen jonglieren. Jede Kantine — vom Krankenhaus bis zur Werkskantine — verdient Software, die für sie gemacht ist.",
+  aboutP1: "KItchenOS wurde 2025 gegründet, weil wir es satt hatten, Kantinen mit Excel und Klemmbrettern zu sehen, während Lieferdienste mit Millionen jonglieren. Jede Kantine — vom Krankenhaus bis zur Werkskantine — verdient Software, die für sie gemacht ist.",
   aboutP2: "Wir sind ein kleines, unabhängiges Team. Unsere Software wird in Deutschland entwickelt und auf europäischen Servern gehostet. DSGVO-konform, ohne Tracking-Theater.",
   aboutP3: "Wir arbeiten direkt mit Küchenleitern, Kantinen-Pächtern und Caterern. Was Sie sehen, ist Software, die in echten Küchen entsteht — nicht im Konferenzraum.",
   valuesTitle: "Was uns antreibt",
@@ -124,7 +124,7 @@ const de: Dict = {
   contactHours: "Geschäftszeiten",
   contactHoursVal: "Mo–Fr, 09:00–17:00 Uhr",
   imprintTitle: "Impressum",
-  imprintBody: "KitchenOS GmbH, Beispielstraße 1, 10115 Berlin · HRB 000000 B · Geschäftsführer: Beispiel · USt-IdNr: DE000000000 · Verantwortlich i.S.d. § 18 Abs. 2 MStV: Beispiel.",
+  imprintBody: "KItchenOS GmbH, Beispielstraße 1, 10115 Berlin · HRB 000000 B · Geschäftsführer: Beispiel · USt-IdNr: DE000000000 · Verantwortlich i.S.d. § 18 Abs. 2 MStV: Beispiel.",
 
   // Demo
   demoTitle: "Kostenlose Demo anfragen",
@@ -144,13 +144,13 @@ const de: Dict = {
   demoSubmit: "Demo anfragen",
   demoThanks: "Danke! Wir melden uns innerhalb eines Werktages.",
 
-  footerRights: "© 2026 KitchenOS. Alle Rechte vorbehalten.",
+  footerRights: "© 2026 KItchenOS. Alle Rechte vorbehalten.",
   footerImprint: "Impressum",
   footerPrivacy: "Datenschutz",
 };
 
 const en: Dict = {
-  brand: "KitchenOS",
+  brand: "KItchenOS",
   tagline: "The smart canteen platform",
   navHome: "Home",
   navFeatures: "Features",
@@ -165,12 +165,12 @@ const en: Dict = {
   langSwitch: "DE",
 
   heroTitle: "The canteen of tomorrow — running today.",
-  heroSub: "KitchenOS digitises your company canteen: pre-orders, AI recipes, EU food-info-compliant allergens, kitchen aggregate lists, and much more — all in one platform.",
+  heroSub: "KItchenOS digitises your company canteen: pre-orders, AI recipes, EU food-info-compliant allergens, kitchen aggregate lists, and much more — all in one platform.",
   heroPoint1: "Pre-orders until 08:00",
   heroPoint2: "Allergens & nutrition automatic",
   heroPoint3: "Live aggregate for the kitchen",
   socialProofTitle: "Trusted by canteen operators across DACH",
-  whyTitle: "Why KitchenOS?",
+  whyTitle: "Why KItchenOS?",
   whySub: "No more spreadsheets, sticky notes, and food waste. A platform actually built for kitchens.",
   why1Title: "Less waste",
   why1Body: "Cook only what gets eaten — thanks to daily aggregate lists per dish and customer.",
@@ -205,7 +205,7 @@ const en: Dict = {
   f8Body: "One platform for several canteens or catering operations. Clean separation, shared analytics.",
 
   opTitle: "For canteen operators",
-  opSub: "Whether company canteen, school, care facility or catering — KitchenOS adapts to your operation.",
+  opSub: "Whether company canteen, school, care facility or catering — KItchenOS adapts to your operation.",
   opCanteenTitle: "Company canteens",
   opCanteenBody: "Staff order ahead, you cook the right amount. Collective invoicing to the employer, easy payroll integration.",
   opSchoolTitle: "Schools & kindergartens",
@@ -214,7 +214,7 @@ const en: Dict = {
   opCareBody: "Diet-specific filters (vegan, gluten-free, pureed, low-fat). Care staff order on tablets for their residents.",
   opCateringTitle: "Catering",
   opCateringBody: "Event orders with lead-time, delivery windows and automated packing plans for the kitchen.",
-  opStatTitle: "What operators achieve with KitchenOS",
+  opStatTitle: "What operators achieve with KItchenOS",
   opStat1: "−18% food waste",
   opStat2: "+22% order acceptance",
   opStat3: "−4 hrs/week admin",
@@ -242,9 +242,9 @@ const en: Dict = {
   feat8: "Personal onboarding manager",
   pickPlan: "Choose plan",
 
-  aboutTitle: "About KitchenOS",
+  aboutTitle: "About KItchenOS",
   aboutLead: "We believe canteens deserve what restaurants have had for years: good software.",
-  aboutP1: "KitchenOS was founded in 2025 because we were tired of seeing canteens running on Excel and clipboards while delivery apps juggle millions. Every canteen — from a hospital to a factory floor — deserves software actually built for it.",
+  aboutP1: "KItchenOS was founded in 2025 because we were tired of seeing canteens running on Excel and clipboards while delivery apps juggle millions. Every canteen — from a hospital to a factory floor — deserves software actually built for it.",
   aboutP2: "We are a small, independent team. Our software is built in Germany and hosted on European servers. GDPR-compliant, no tracking theatre.",
   aboutP3: "We work directly with kitchen managers, canteen leaseholders and caterers. What you see is software born in real kitchens — not in a meeting room.",
   valuesTitle: "What drives us",
@@ -263,7 +263,7 @@ const en: Dict = {
   contactHours: "Hours",
   contactHoursVal: "Mon–Fri, 09:00–17:00",
   imprintTitle: "Imprint",
-  imprintBody: "KitchenOS GmbH, Beispielstraße 1, 10115 Berlin · HRB 000000 B · Managing Director: Sample · VAT ID: DE000000000 · Responsible per § 18 (2) MStV: Sample.",
+  imprintBody: "KItchenOS GmbH, Beispielstraße 1, 10115 Berlin · HRB 000000 B · Managing Director: Sample · VAT ID: DE000000000 · Responsible per § 18 (2) MStV: Sample.",
 
   demoTitle: "Request a free demo",
   demoSub: "30 minutes. No sales pitch. You tell us what you need — we show whether it fits.",
@@ -282,7 +282,7 @@ const en: Dict = {
   demoSubmit: "Request demo",
   demoThanks: "Thanks! We'll get back to you within one working day.",
 
-  footerRights: "© 2026 KitchenOS. All rights reserved.",
+  footerRights: "© 2026 KItchenOS. All rights reserved.",
   footerImprint: "Imprint",
   footerPrivacy: "Privacy",
 };

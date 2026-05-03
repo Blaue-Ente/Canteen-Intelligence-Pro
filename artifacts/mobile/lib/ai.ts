@@ -90,7 +90,7 @@ export async function generateJson<T>(
 // generator that should produce authentic, well-portioned, allergen-aware
 // recipes / menus suitable for a German canteen.
 export const CHEF_PERSONA =
-  "You are KitchenOS Master Chef – a German Küchenchef with 25 years of canteen and à-la-carte experience. " +
+  "You are KItchenOS Master Chef – a German Küchenchef with 25 years of canteen and à-la-carte experience. " +
   "You have memorised hundreds of classic German Hausmannskost recipes (Wiener Schnitzel, Sauerbraten, Königsberger Klopse, Rouladen, Gulasch, Schweinebraten, Maultaschen, Käsespätzle, Kartoffelsuppe, Linsensuppe, Erbsensuppe, Frikadellen, Currywurst, Bratkartoffeln, Apfelstrudel, Kaiserschmarrn, Milchreis, Grießbrei, Rote Grütze …) plus regional Bavarian, Swabian, Rheinisch and Norddeutsch dishes. " +
   "You know the canonical books by heart: Dr. Oetker Schulkochbuch, Henriette Davidis Praktisches Kochbuch, Bayerisches Kochbuch (Maria Hofmann), Das große GU Kochbuch, Mensa-Kochbuch, Tim Mälzer Heimat. " +
   "You always cook with: realistic Mensa portion sizes (250–450 g), exact gram weights, correct LMIV allergen letters, kcal per portion, and step-by-step German technique (anschwitzen, ablöschen, durchziehen lassen). " +
@@ -175,7 +175,7 @@ export async function parseCateringEmail(args: {
   const list = args.recipes.map((r) => `${r.id}: ${r.name} (${r.category})`).join("\n");
   return generateJson<ParsedCatering>(
     [
-      `You are KitchenOS, parsing an inbound German catering enquiry. Reply notes in ${lang}.`,
+      `You are KItchenOS, parsing an inbound German catering enquiry. Reply notes in ${lang}.`,
       `Extract: customer/company, sender email, intended date (ISO YYYY-MM-DD if derivable), guest count (integer), dietary requirements (free text in ${lang}), and group dishes into 1-3 menu BLOCKS (e.g. "vegetarian", "meat", "kids"). For each block list recipe IDs that best match using ONLY ids from the catalogue below.`,
       `Catalogue:\n${list}`,
       `Email body:\n"""${args.body}"""`,
@@ -246,7 +246,7 @@ export async function aiForecast(args: {
     : "unbekannt";
   return generateJson<ForecastResult>(
     [
-      `Du bist KitchenOS Forecast-KI für eine deutsche Kantine. Antworte rationale auf ${lang}.`,
+      `Du bist KItchenOS Forecast-KI für eine deutsche Kantine. Antworte rationale auf ${lang}.`,
       `Datum: ${args.date} (${args.isWeekend ? "Wochenende" : "Werktag"}). Wetter: ${weather}. Ø Gäste/Tag: ${args.avgGuestsPerDay}.`,
       `Letzte 14 Tage Verkäufe pro Gericht:\n${sales}`,
       `Aufgabe: schätze Gäste-Anzahl morgen (regen/wochenende anpassen) und empfohlene Kochmenge pro Gericht (ganze Portionen).`,
@@ -268,7 +268,7 @@ export async function aiHandover(args: {
   const lang = args.locale === "de" ? "Deutsch" : "English";
   return generateJson<HandoverSummary>(
     [
-      `Du bist KitchenOS Schichtübergabe-Assistent. Antworte auf ${lang}.`,
+      `Du bist KItchenOS Schichtübergabe-Assistent. Antworte auf ${lang}.`,
       `Fasse das gesprochene Übergabeprotokoll in 3-6 prägnanten Bullet-Points zusammen ("summary") und extrahiere konkrete Aufgaben für die nächste Schicht ("actions" — kurze Imperative wie "Techniker für Kühlung 3 anrufen").`,
       `Transkript:\n"""${args.transcript}"""`,
     ].join("\n\n"),
@@ -290,7 +290,7 @@ export async function aiResteRezepte(args: {
     .join("\n");
   return generateJson<ResteSuggestion>(
     [
-      `Du bist KitchenOS Reste-Koch. Antworte auf ${lang}.`,
+      `Du bist KItchenOS Reste-Koch. Antworte auf ${lang}.`,
       `Aus diesen Resten der Kantine, schlage 3 schnelle Rezepte vor, die maximal Reste verwerten. Pro Rezept: Name, Zutatenliste, 3-5 Schritte, matchScore 0-100 (wie viel der Reste verwendet wird).`,
       `Reste:\n${list}`,
     ].join("\n\n"),
@@ -333,7 +333,7 @@ export interface TrayReturnAnalysis {
 export async function aiTrayReturn(args: { base64: string; locale: "de" | "en" }): Promise<TrayReturnAnalysis> {
   const lang = args.locale === "de" ? "Deutsch" : "English";
   return generateJson<TrayReturnAnalysis>(
-    `Du bist KitchenOS Tablett-Analyse. Schau dir das zurückgebrachte Tablett an und liefere: erkanntes Gericht (dishGuess), Restanteil 0-100% (leftoverPct), geschätzte verbleibende Gramm (estimatedGrams), kurze Hypothese warum nicht aufgegessen (reasonHypothesis). Antworte auf ${lang}.`,
+    `Du bist KItchenOS Tablett-Analyse. Schau dir das zurückgebrachte Tablett an und liefere: erkanntes Gericht (dishGuess), Restanteil 0-100% (leftoverPct), geschätzte verbleibende Gramm (estimatedGrams), kurze Hypothese warum nicht aufgegessen (reasonHypothesis). Antworte auf ${lang}.`,
     '{"dishGuess":"string","leftoverPct":number,"estimatedGrams":number,"reasonHypothesis":"string"}',
     args.base64,
   );
@@ -446,7 +446,7 @@ export async function parseMenuImage(args: {
   const lang = args.locale === "de" ? "Deutsch" : "English";
   return generateJson<ParsedMenu>(
     [
-      `You are KitchenOS menu reader. The photo shows a printed restaurant/canteen menu (Speisekarte). Reply names in ${lang}.`,
+      `You are KItchenOS menu reader. The photo shows a printed restaurant/canteen menu (Speisekarte). Reply names in ${lang}.`,
       `Extract every dish line. For each: name, optional short description, price in EUR (parse "8,50 €" or "€8.50"), category (starter/soup/salad/main/dessert/drink/side/other), type (vegan/vegetarian/fish/meat/other based on description), allergen letters/numbers if printed (map common LMIV codes A/1=gluten, C/3=egg, G/7=milk, H/8=nuts, F/6=soy, D/4=fish, B/2=shellfish, L/9=celery, M/13=mustard, N/14=sesame, etc.).`,
       `IMPORTANT — day assignment: if the menu organises dishes by weekday (e.g. "Montag", "Mo", "Monday", "Lundi", a date like "12.05.", "2026-05-12"), set the "day" field to the FULL German weekday name (Montag/Dienstag/Mittwoch/Donnerstag/Freitag/Samstag/Sonntag) or to an ISO date (YYYY-MM-DD) if an exact date is printed. If no day grouping exists, set "day" to null.`,
       `Also set "hasWeeklyPlan": true at the root level when you find any day groupings, false otherwise.`,
@@ -508,7 +508,7 @@ export async function distributeOrder(args: {
     .join("\n");
   return generateJson<DistributedOrderResult>(
     [
-      `You are KitchenOS auto-purchasing assistant. Group the following shortage list into one order per supplier, choosing the best matching supplier by category (or honour preferredSupplierId when present). Reply notes in ${lang}.`,
+      `You are KItchenOS auto-purchasing assistant. Group the following shortage list into one order per supplier, choosing the best matching supplier by category (or honour preferredSupplierId when present). Reply notes in ${lang}.`,
       `Suppliers:\n${supplierList}`,
       `Shortages (round up to a sensible whole-pack order quantity ≥ needed):\n${itemList}`,
       "Each order MUST list: supplierId, items (name, quantity, unit, inventoryId, estimatedPrice). Add a short reason field describing why this supplier was chosen.",

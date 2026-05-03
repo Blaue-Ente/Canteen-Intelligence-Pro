@@ -1,7 +1,7 @@
-# KitchenOS
+# KItchenOS
 
 ## Overview
-KitchenOS is an AI-driven kitchen operations application designed for German restaurants, canteens, and hotels. It aims to streamline various aspects of kitchen management, from menu generation and inventory to HACCP compliance, staff planning, and customer engagement. The project's vision is to leverage AI to optimize efficiency, reduce waste, and enhance the overall dining experience, tapping into the market potential of the hospitality sector. Key capabilities include multi-tenant account management, supplier discovery, client-side AI features for demand forecasting and recipe generation, and a comprehensive guest pre-order system with customer accounts and feedback mechanisms.
+KItchenOS is an AI-driven kitchen operations application designed for German restaurants, canteens, and hotels. It aims to streamline various aspects of kitchen management, from menu generation and inventory to HACCP compliance, staff planning, and customer engagement. The project's vision is to leverage AI to optimize efficiency, reduce waste, and enhance the overall dining experience, tapping into the market potential of the hospitality sector. Key capabilities include multi-tenant account management, supplier discovery, client-side AI features for demand forecasting and recipe generation, and a comprehensive guest pre-order system with customer accounts and feedback mechanisms.
 
 ## User Preferences
 - **Communication Style**: I prefer simple language and detailed explanations.
@@ -11,7 +11,7 @@ KitchenOS is an AI-driven kitchen operations application designed for German res
 
 ## System Architecture
 
-KitchenOS is built as a cross-platform Expo app for iOS, Android, and Web, complemented by an Express.js API server.
+KItchenOS is built as a cross-platform Expo app for iOS, Android, and Web, complemented by an Express.js API server.
 
 ### UI/UX Decisions
 The mobile application features a charcoal and amber theme (`#0a0a0b` / `#f59e0b`) with full light/dark mode support, controlled by the system. The Inter font family is used throughout the application. The guest pre-order web app (`artifacts/preorder/`) utilizes a warm amber/orange palette with Outfit/Playfair fonts.
@@ -93,7 +93,7 @@ The seed cookbook was expanded from 30 German recipes to ~150 across 7 cuisines,
 
 Текущата Outlook интеграция (Replit connector) свързва **един** Microsoft 365 акаунт (на разработчика/демо). Подходящо е за тестване и демо.
 
-**Планирано за по-късно:** KitchenOS ще се продава като SaaS на независими оператори. Всеки клиент трябва да свърже **свой собствен** Microsoft 365 акаунт. Нужно е:
+**Планирано за по-късно:** KItchenOS ще се продава като SaaS на независими оператори. Всеки клиент трябва да свърже **свой собствен** Microsoft 365 акаунт. Нужно е:
 1. Регистрация на Azure AD Multi-tenant App (portal.azure.com) — `client_id` + `client_secret` → env vars
 2. Нова таблица `org_exchange_tokens` в БД (org_id, access_token, refresh_token, expires_at)
 3. OAuth routes: `GET /api/auth/microsoft/start?orgId=` и `GET /api/auth/microsoft/callback`

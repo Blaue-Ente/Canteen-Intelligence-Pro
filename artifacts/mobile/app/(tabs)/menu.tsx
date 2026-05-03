@@ -78,7 +78,7 @@ export default function Menu() {
         dispatch({ type: "addRecipe", recipe });
         added += 1;
       });
-      Alert.alert("KitchenOS", t("classicsImported").replace("{n}", String(added)));
+      Alert.alert("KItchenOS", t("classicsImported").replace("{n}", String(added)));
     };
     if (state.recipes.length === 0) {
       doImport();

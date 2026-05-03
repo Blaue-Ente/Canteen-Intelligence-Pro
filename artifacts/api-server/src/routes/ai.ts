@@ -173,7 +173,7 @@ router.post("/ai/parse-menu-pdf", async (req: Request, res: Response) => {
     }
     const truncated = text.length > 24000 ? text.slice(0, 24000) : text;
     const prompt = [
-      `You are KitchenOS menu reader. The text below was extracted from a printed restaurant/canteen menu PDF (Speisekarte). Reply names in ${lang}.`,
+      `You are KItchenOS menu reader. The text below was extracted from a printed restaurant/canteen menu PDF (Speisekarte). Reply names in ${lang}.`,
       `Extract every dish line. For each: name, optional short description, price in EUR (parse "8,50 €" or "€8.50"), category (starter/soup/salad/main/dessert/drink/side/other), type (vegan/vegetarian/fish/meat/other), allergen letters/numbers if printed (map common LMIV codes A/1=gluten, C/3=egg, G/7=milk, H/8=nuts, F/6=soy, D/4=fish, B/2=shellfish, L/9=celery, M/13=mustard, N/14=sesame).`,
       `IMPORTANT — day assignment: if the menu organises dishes by weekday (e.g. "Montag", "Mo", "Monday", a date like "12.05." or "2026-05-12"), set the "day" field for each dish to the FULL German weekday name (Montag/Dienstag/Mittwoch/Donnerstag/Freitag/Samstag/Sonntag) or to an ISO date (YYYY-MM-DD) when an exact date is printed. Set "day" to null when no day is indicated. Also set "hasWeeklyPlan": true at the root level when any day groupings are found.`,
       `Skip headers, footers, page numbers, prices-only legends, allergen tables.`,

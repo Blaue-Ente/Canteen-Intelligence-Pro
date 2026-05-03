@@ -76,7 +76,7 @@ export default function PreorderScreen() {
     () => (currentLocation?.code ?? "DEMO").toUpperCase(),
   );
   const [locationName, setLocationName] = useState<string>(
-    () => currentLocation?.name ?? "KitchenOS Demo Mensa",
+    () => currentLocation?.name ?? "KItchenOS Demo Mensa",
   );
   const [publishedMenu, setPublishedMenu] = useState<PublishedMenu | null>(null);
   const [orders, setOrders] = useState<GuestOrder[]>([]);

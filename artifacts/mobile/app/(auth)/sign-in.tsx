@@ -51,7 +51,7 @@ export default function SignInScreen() {
     >
       <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: 20 }}>
         <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 28, marginBottom: 4 }}>
-          KitchenOS
+          KItchenOS
         </Text>
         <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 14, marginBottom: 24 }}>
           Willkommen zurück. Bitte anmelden.

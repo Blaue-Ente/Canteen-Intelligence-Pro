@@ -16,7 +16,7 @@ export async function ensurePermissions(): Promise<boolean> {
 async function ensureChannel(): Promise<void> {
   if (Platform.OS !== "android") return;
   await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
-    name: "KitchenOS",
+    name: "KItchenOS",
     importance: Notifications.AndroidImportance.DEFAULT,
     vibrationPattern: [0, 200, 200, 200],
   });

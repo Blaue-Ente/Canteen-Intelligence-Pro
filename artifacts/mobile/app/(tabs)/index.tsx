@@ -197,7 +197,7 @@ export default function Home() {
                     marginTop: 2,
                   }}
                 >
-                  KitchenOS · KI
+                  KItchenOS · KI
                 </Text>
               </View>
               <Feather name="chevron-right" size={18} color="#fff" />
