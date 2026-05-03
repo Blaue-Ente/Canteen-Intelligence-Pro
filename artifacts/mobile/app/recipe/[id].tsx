@@ -37,6 +37,8 @@ export default function RecipeDetail() {
   const recipe = state.recipes.find((r) => r.id === id);
   const [portion, setPortion] = useState(String(recipe?.portionGrams ?? 350));
   const [editAllergens, setEditAllergens] = useState(false);
+  const [editPrice, setEditPrice] = useState(false);
+  const [priceInput, setPriceInput] = useState(String(recipe?.sellPrice ?? ""));
   const author = useAuthor();
 
   const toggleAllergen = (a: Allergen) => {
@@ -96,6 +98,38 @@ export default function RecipeDetail() {
           <Stat label={t("price")} value={`€${recipe.sellPrice.toFixed(2)}`} icon="tag" />
           <Stat label={t("margin")} value={`${marginPct.toFixed(0)}%`} icon="trending-up" tone={marginPct > 50 ? "success" : "warning"} />
         </View>
+
+        <Card>
+          <SectionHeader
+            title={t("sellPrice")}
+            action={editPrice ? t("save") : t("editPrice")}
+            onAction={() => {
+              if (editPrice) {
+                const p = Number(priceInput.replace(",", "."));
+                if (!Number.isNaN(p) && p >= 0) {
+                  dispatch({ type: "updateRecipe", recipe: { ...recipe, sellPrice: p } });
+                }
+                setEditPrice(false);
+              } else {
+                setPriceInput(String(recipe.sellPrice ?? ""));
+                setEditPrice(true);
+              }
+            }}
+          />
+          {editPrice ? (
+            <Field
+              label="EUR"
+              value={priceInput}
+              onChangeText={setPriceInput}
+              keyboardType="numeric"
+              placeholder="9.90"
+            />
+          ) : (
+            <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 22 }}>
+              €{recipe.sellPrice.toFixed(2)}
+            </Text>
+          )}
+        </Card>
 
         <Card>
           <SectionHeader title={t("portion")} />

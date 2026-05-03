@@ -8,13 +8,24 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Badge, Button, Card, Chip, EmptyState } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
-import { analyzePhoto, aiTrayReturn, parseReceiptImage, type ParsedReceipt, type TrayReturnAnalysis } from "@/lib/ai";
-import type { InventoryItem } from "@/types";
+import {
+  aiDishVision,
+  aiTrayReturn,
+  parseMenuImage,
+  parseReceiptImage,
+  type DishVisionResult,
+  type ParsedMenu,
+  type ParsedReceipt,
+  type TrayReturnAnalysis,
+} from "@/lib/ai";
+import type { Allergen, InventoryItem, Recipe } from "@/types";
 
-type Mode = "receipt" | "delivery" | "nutrition" | "tray";
+type Mode = "receipt" | "delivery" | "nutrition" | "tray" | "menu";
 
-const NUTRITION_PROMPT =
-  "Identify the dish in the photo. Estimate per-portion nutrition (kcal, protein g, carbs g, fat g) and list likely allergens (LMIV). Return as concise German bullet list.";
+const ALLOWED_ALLERGENS: Allergen[] = [
+  "gluten", "milk", "egg", "nuts", "soy", "fish", "shellfish",
+  "celery", "mustard", "sesame", "sulphite", "lupin", "mollusc", "peanut",
+];
 
 const CAT_MAP: Record<string, InventoryItem["category"]> = {
   meat: "meat",
@@ -49,7 +60,10 @@ export default function Scan() {
   const [textResult, setTextResult] = useState<string | null>(null);
   const [parsed, setParsed] = useState<ParsedReceipt | null>(null);
   const [tray, setTray] = useState<TrayReturnAnalysis | null>(null);
+  const [menuParsed, setMenuParsed] = useState<ParsedMenu | null>(null);
+  const [dishVision, setDishVision] = useState<DishVisionResult | null>(null);
   const [picked, setPicked] = useState<Record<number, boolean>>({});
+  const [applyToRecipeId, setApplyToRecipeId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const reset = () => {
@@ -58,6 +72,9 @@ export default function Scan() {
     setTextResult(null);
     setParsed(null);
     setTray(null);
+    setMenuParsed(null);
+    setDishVision(null);
+    setApplyToRecipeId(null);
     setPicked({});
     setError(null);
   };
@@ -101,12 +118,19 @@ export default function Scan() {
     setError(null);
     try {
       if (mode === "nutrition") {
-        const lang = state.locale === "de" ? "Antworte auf Deutsch." : "Reply in English.";
-        const text = await analyzePhoto(b64, NUTRITION_PROMPT + " " + lang);
-        setTextResult(text);
+        const r = await aiDishVision({ base64: b64, locale: state.locale });
+        setDishVision(r);
       } else if (mode === "tray") {
         const r = await aiTrayReturn({ base64: b64, locale: state.locale });
         setTray(r);
+      } else if (mode === "menu") {
+        const data = await parseMenuImage({ base64: b64, locale: state.locale });
+        setMenuParsed(data);
+        const initialPicked: Record<number, boolean> = {};
+        (data.items ?? []).forEach((_, i) => {
+          initialPicked[i] = true;
+        });
+        setPicked(initialPicked);
       } else {
         const data = await parseReceiptImage(b64);
         setParsed(data);
@@ -149,11 +173,70 @@ export default function Scan() {
   const togglePick = (i: number) =>
     setPicked((p) => ({ ...p, [i]: !p[i] }));
 
+  const importPickedDishes = () => {
+    if (!menuParsed) return;
+    (menuParsed.items ?? []).forEach((it, i) => {
+      if (!picked[i]) return;
+      const allergens = (it.allergens ?? [])
+        .map((a) => a.toLowerCase())
+        .filter((a): a is Allergen => ALLOWED_ALLERGENS.includes(a as Allergen));
+      const cat: Recipe["category"] =
+        it.type === "vegan" ? "vegan" : it.type === "vegetarian" ? "vegetarian" : "meat";
+      const meat: Recipe["meat"] =
+        it.type === "meat" ? "pork" : "none";
+      const dishType: Recipe["type"] =
+        it.category === "soup"
+          ? "soup"
+          : it.category === "salad" || it.category === "starter"
+            ? "salad"
+            : it.category === "dessert"
+              ? "dessert"
+              : it.category === "side"
+                ? "side"
+                : it.category === "drink"
+                  ? "drink"
+                  : "main";
+      const recipe: Recipe = {
+        id: newId(),
+        name: it.name,
+        nameDe: it.name,
+        type: dishType,
+        category: cat,
+        meat,
+        allergens,
+        ingredients: [],
+        steps: it.description ? [it.description] : [],
+        stepsDe: it.description ? [it.description] : [],
+        sellPrice: Number(it.price) || 0,
+        basePrice: Number(it.price) || 0,
+        portionGrams: 350,
+        cookTimeMin: 15,
+      };
+      dispatch({ type: "addRecipe", recipe });
+    });
+    router.replace("/(tabs)/index" as never);
+  };
+
+  const applyDishToRecipe = () => {
+    if (!dishVision || !applyToRecipeId) return;
+    const r = state.recipes.find((x) => x.id === applyToRecipeId);
+    if (!r) return;
+    const allergens = (dishVision.allergens ?? [])
+      .map((a) => a.toLowerCase())
+      .filter((a): a is Allergen => ALLOWED_ALLERGENS.includes(a as Allergen));
+    const merged = Array.from(new Set([...r.allergens, ...allergens]));
+    dispatch({
+      type: "updateRecipe",
+      recipe: { ...r, allergens: merged, kcalPerPortion: Math.round(dishVision.kcalPerPortion) },
+    });
+    setApplyToRecipeId(null);
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: insets.bottom + 30 }}>
         <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-          {(["receipt", "delivery", "nutrition", "tray"] as Mode[]).map((m) => (
+          {(["receipt", "delivery", "nutrition", "tray", "menu"] as Mode[]).map((m) => (
             <Chip
               key={m}
               label={
@@ -163,7 +246,9 @@ export default function Scan() {
                     ? "Lieferschein"
                     : m === "nutrition"
                       ? "Nährwerte"
-                      : t("trayReturn")
+                      : m === "tray"
+                        ? t("trayReturn")
+                        : t("scanMenu")
               }
               active={mode === m}
               onPress={() => {
@@ -171,6 +256,9 @@ export default function Scan() {
                 setTextResult(null);
                 setParsed(null);
                 setTray(null);
+                setMenuParsed(null);
+                setDishVision(null);
+                setApplyToRecipeId(null);
               }}
             />
           ))}
@@ -235,6 +323,120 @@ export default function Scan() {
             <Text style={{ color: c.foreground, fontFamily: "Inter_400Regular", fontSize: 14, lineHeight: 21 }}>
               {textResult}
             </Text>
+          </Card>
+        ) : null}
+
+        {dishVision ? (
+          <Card>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <Feather name="zap" size={16} color={c.primary} />
+              <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 15, flex: 1 }}>
+                {dishVision.dishGuess}
+              </Text>
+              <Badge label={`${Math.round(dishVision.kcalPerPortion)} kcal`} tone="accent" />
+            </View>
+            <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 12, marginBottom: 8 }}>
+              P {dishVision.proteinG.toFixed(0)}g · KH {dishVision.carbsG.toFixed(0)}g · F {dishVision.fatG.toFixed(0)}g
+            </Text>
+            {dishVision.allergens.length > 0 ? (
+              <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                {dishVision.allergens.map((a) => (
+                  <Badge key={a} label={a} tone="warning" />
+                ))}
+              </View>
+            ) : null}
+            {dishVision.notes ? (
+              <Text style={{ color: c.foreground, fontFamily: "Inter_400Regular", fontSize: 13, fontStyle: "italic", marginBottom: 10 }}>
+                {dishVision.notes}
+              </Text>
+            ) : null}
+            <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 12, marginBottom: 6 }}>
+              {t("applyToRecipe")}
+            </Text>
+            <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+              {state.recipes.slice(0, 12).map((r) => (
+                <Chip
+                  key={r.id}
+                  label={state.locale === "de" ? r.nameDe : r.name}
+                  active={applyToRecipeId === r.id}
+                  onPress={() => setApplyToRecipeId(r.id === applyToRecipeId ? null : r.id)}
+                />
+              ))}
+            </View>
+            <Button
+              label={t("applyToRecipe")}
+              icon="check"
+              onPress={applyDishToRecipe}
+              disabled={!applyToRecipeId}
+            />
+          </Card>
+        ) : null}
+
+        {menuParsed ? (
+          <Card>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <Feather name="book-open" size={16} color={c.primary} />
+              <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 15, flex: 1 }}>
+                {menuParsed.restaurantName ?? t("detectedDishes")}
+              </Text>
+            </View>
+            {(menuParsed.items ?? []).length === 0 ? (
+              <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular" }}>
+                {t("none")}
+              </Text>
+            ) : (
+              (menuParsed.items ?? []).map((it, i) => (
+                <Pressable
+                  key={i}
+                  onPress={() => togglePick(i)}
+                  style={({ pressed }) => [
+                    {
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 10,
+                      paddingVertical: 10,
+                      borderBottomWidth: 1,
+                      borderColor: c.border,
+                    },
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <Feather
+                    name={picked[i] ? "check-square" : "square"}
+                    size={18}
+                    color={picked[i] ? c.primary : c.mutedForeground}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: c.foreground, fontFamily: "Inter_500Medium", fontSize: 14 }}>
+                      {it.name}
+                    </Text>
+                    {it.description ? (
+                      <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 2 }}>
+                        {it.description}
+                      </Text>
+                    ) : null}
+                    <View style={{ flexDirection: "row", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+                      {it.type ? <Badge label={it.type} /> : null}
+                      {it.category ? <Badge label={it.category} /> : null}
+                      {(it.allergens ?? []).map((a) => (
+                        <Badge key={a} label={a} tone="warning" />
+                      ))}
+                    </View>
+                  </View>
+                  <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 14 }}>
+                    €{Number(it.price ?? 0).toFixed(2)}
+                  </Text>
+                </Pressable>
+              ))
+            )}
+            {(menuParsed.items ?? []).length > 0 ? (
+              <Button
+                label={`${t("importDishes")} (${Object.values(picked).filter(Boolean).length})`}
+                icon="download"
+                onPress={importPickedDishes}
+                style={{ marginTop: 14 }}
+              />
+            ) : null}
           </Card>
         ) : null}
 

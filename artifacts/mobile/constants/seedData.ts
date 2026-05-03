@@ -164,4 +164,12 @@ export const seedState: AppState = {
   deliveries: [],
   priceHistory: [],
   forecasts: [],
+  storageLocations: [
+    { id: "sl-fridge-1", name: "Kühlung 1", category: "fridge", targetTemp: 4 },
+    { id: "sl-fridge-2", name: "Kühlung 2 (Fleisch)", category: "fridge", targetTemp: 2 },
+    { id: "sl-freezer-1", name: "Tiefkühler 1", category: "freezer", targetTemp: -18 },
+    { id: "sl-room-dry", name: "Trockenlager", category: "room" },
+    { id: "sl-kitchen-1", name: "Heißhaltung Pass", category: "kitchen", targetTemp: 65 },
+    { id: "sl-delivery", name: "Wareneingang", category: "delivery" },
+  ],
 };

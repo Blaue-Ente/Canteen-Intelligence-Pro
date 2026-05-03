@@ -28,6 +28,7 @@ import type {
   Recipe,
   SaleEntry,
   ShiftEntry,
+  StorageLocation,
   Supplier,
   SupplierDelivery,
   WasteEntry,
@@ -79,7 +80,11 @@ type Action =
   | { type: "addDelivery"; delivery: SupplierDelivery }
   | { type: "updateDelivery"; delivery: SupplierDelivery }
   | { type: "addPriceHistory"; entry: IngredientPriceHistory }
-  | { type: "upsertForecast"; forecast: ForecastDay };
+  | { type: "upsertForecast"; forecast: ForecastDay }
+  // ---- Phase 6B ----
+  | { type: "addStorageLocation"; loc: StorageLocation }
+  | { type: "updateStorageLocation"; loc: StorageLocation }
+  | { type: "removeStorageLocation"; id: string };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -244,6 +249,20 @@ function reducer(state: AppState, action: Action): AppState {
       const others = state.forecasts.filter((f) => key(f) !== k);
       return { ...state, forecasts: [action.forecast, ...others].slice(0, 60) };
     }
+    case "addStorageLocation":
+      return { ...state, storageLocations: [...state.storageLocations, action.loc] };
+    case "updateStorageLocation":
+      return {
+        ...state,
+        storageLocations: state.storageLocations.map((s) =>
+          s.id === action.loc.id ? action.loc : s,
+        ),
+      };
+    case "removeStorageLocation":
+      return {
+        ...state,
+        storageLocations: state.storageLocations.filter((s) => s.id !== action.id),
+      };
     default:
       return state;
   }
@@ -294,6 +313,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           deliveries: pick("deliveries"),
           priceHistory: pick("priceHistory"),
           forecasts: pick("forecasts"),
+          storageLocations: pick("storageLocations"),
         };
         dispatch({ type: "hydrate", state: merged });
       }

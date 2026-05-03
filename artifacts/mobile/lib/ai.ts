@@ -318,6 +318,63 @@ export async function aiTrayReturn(args: { base64: string; locale: "de" | "en" }
   );
 }
 
+// ---- Phase 6B helpers ----
+
+export interface ParsedMenuItem {
+  name: string;
+  description?: string;
+  price: number;
+  category?: "starter" | "soup" | "salad" | "main" | "dessert" | "drink" | "side" | "other";
+  type?: "vegan" | "vegetarian" | "fish" | "meat" | "other";
+  allergens?: string[];
+}
+export interface ParsedMenu {
+  restaurantName?: string;
+  items: ParsedMenuItem[];
+}
+
+export async function parseMenuImage(args: {
+  base64: string;
+  locale: "de" | "en";
+}): Promise<ParsedMenu> {
+  const lang = args.locale === "de" ? "Deutsch" : "English";
+  return generateJson<ParsedMenu>(
+    [
+      `You are KitchenOS menu reader. The photo shows a printed restaurant/canteen menu (Speisekarte). Reply names in ${lang}.`,
+      `Extract every dish line. For each: name, optional short description, price in EUR (parse "8,50 €" or "€8.50"), category (starter/soup/salad/main/dessert/drink/side/other), type (vegan/vegetarian/fish/meat/other based on description), allergen letters/numbers if printed (map common LMIV codes A/1=gluten, C/3=egg, G/7=milk, H/8=nuts, F/6=soy, D/4=fish, B/2=shellfish, L/9=celery, M/13=mustard, N/14=sesame, etc.).`,
+      `Skip headers, footers, prices-only legends, allergen tables.`,
+    ].join("\n\n"),
+    '{"restaurantName":"string","items":[{"name":"string","description":"string","price":number,"category":"starter|soup|salad|main|dessert|drink|side|other","type":"vegan|vegetarian|fish|meat|other","allergens":["string"]}]}',
+    args.base64,
+  );
+}
+
+export interface DishVisionResult {
+  dishGuess: string;
+  kcalPerPortion: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  allergens: string[];
+  notes?: string;
+}
+
+export async function aiDishVision(args: {
+  base64: string;
+  locale: "de" | "en";
+}): Promise<DishVisionResult> {
+  const lang = args.locale === "de" ? "Deutsch" : "English";
+  return generateJson<DishVisionResult>(
+    [
+      `Du bist Lebensmittelchemiker und Gastronom. Antworte notes auf ${lang}.`,
+      `Identifiziere das Gericht auf dem Foto und schätze Nährwerte pro Portion (kcal, Protein g, KH g, Fett g) sowie LMIV-Allergene.`,
+      `Allergene NUR aus: gluten, milk, egg, nuts, soy, fish, shellfish, celery, mustard, sesame, sulphite, lupin, mollusc, peanut.`,
+    ].join("\n\n"),
+    '{"dishGuess":"string","kcalPerPortion":number,"proteinG":number,"carbsG":number,"fatG":number,"allergens":["string"],"notes":"string"}',
+    args.base64,
+  );
+}
+
 export async function distributeOrder(args: {
   shortages: {
     inventoryId: string;

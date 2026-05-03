@@ -31,6 +31,17 @@ AI-driven kitchen operations app for German restaurants, canteens, and hotels. B
 - **Attribution**: every `dispatch` that creates a record now spreads `...author` (= `{ createdBy, createdByName }`) sourced from `useAuthor()` so the UI can show "von <name>" on cards. Wired in: `sales`, `haccp`, `waste`, `inventur`, `(tabs)/inventory` (orders), `dienstplan` (shifts), `catering`, `supplier/[id]` (complaints), `zettle`, `recipe/[id]`.
 - **Required env vars**: `CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` (server), `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` (mobile, set automatically from `CLERK_PUBLISHABLE_KEY` in the dev script). Optional: `GOOGLE_PLACES_API_KEY` for richer supplier metadata.
 
+## Phase 6B — HACCP storage, editable price, menu OCR, dish vision (client-side)
+
+All client-side, reuses existing `/api/ai/json` + `/api/ai/vision` endpoints.
+
+- **HACCP storage locations** — new `StorageLocation { id, name, category: fridge|freezer|room|kitchen|delivery, targetTemp?, locationId? }`. AppContext actions `addStorageLocation/updateStorageLocation/removeStorageLocation`. `/haccp` screen now: type chips → category-filtered storage chips → tap to select, long-press to delete; inline "Lagerort hinzufügen" form (name + category + target °C); pass/fail threshold derived dynamically from `targetTemp` (cold = ≤, hot = ≥) with sensible defaults (Kühlung ≤ 7, Tiefkühler ≤ -18, Heißhaltung ≥ 65).
+- **Editable sell price** — recipe detail screen has new "Verkaufspreis" card with "Preis ändern" / "Speichern" toggle; dispatches `updateRecipe` so margin Stat updates live.
+- **Menu OCR** — `/scan` gains "Speisekarte scannen" mode + `lib/ai.ts::parseMenuImage` (vision JSON) → `ParsedMenu { items: [{name, description?, price, category, type, allergens[]}] }`. UI lists detected dishes with price + type/category/allergen badges and per-item checkbox; "Gerichte übernehmen (N)" creates `Recipe[]` (sellPrice from OCR, dish type mapped soup/salad/dessert/side/drink/main, vegan/vegetarian/meat category).
+- **Structured dish vision** — Nährwerte mode upgraded from text to `aiDishVision` (vision JSON) → `{ dishGuess, kcalPerPortion, proteinG, carbsG, fatG, allergens[], notes }`. Card shows kcal badge + macros + allergen chips + notes; "Auf Rezept übertragen" picker merges allergens and updates `kcalPerPortion` on selected recipe.
+
+Seed data (`seedData.ts`) ships 6 default storage locations (Kühlung 1, Kühlung 2 (Fleisch), Tiefkühler 1, Trockenlager, Heißhaltung Pass, Wareneingang). New i18n keys (DE+EN): `storageLocations`, `addStorage`, `catFridge/Freezer/Room/Kitchen/Delivery`, `targetTemp`, `editPrice`, `sellPrice`, `scanMenu`, `importDishes`, `detectedDishes`, `applyToRecipe`, `selectRecipe`, `none`.
+
 ## Phase 6A — 11 client-side AI features (no DB changes)
 
 All client-side; new server routes intentionally skipped — Phase 6A reuses existing `/api/ai/json` and `/api/ai/vision`. Phase 6B (server persistence + native voice/maps/notifications) is deferred.

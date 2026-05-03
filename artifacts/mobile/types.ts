@@ -294,6 +294,19 @@ export interface ForecastDay {
   generatedAt: string;
 }
 
+export type StorageLocationCategory = "fridge" | "freezer" | "room" | "kitchen" | "delivery";
+
+export interface StorageLocation {
+  id: string;
+  name: string;
+  category: StorageLocationCategory;
+  /** Target temp in °C (max for cold, min for hot). Optional. */
+  targetTemp?: number;
+  /** Optional KitchenOS location/filiale this storage belongs to. */
+  locationId?: string;
+  note?: string;
+}
+
 export interface AppState {
   locale: Locale;
   inventory: InventoryItem[];
@@ -318,4 +331,6 @@ export interface AppState {
   deliveries: SupplierDelivery[];
   priceHistory: IngredientPriceHistory[];
   forecasts: ForecastDay[];
+  // ---- Phase 6B ----
+  storageLocations: StorageLocation[];
 }
