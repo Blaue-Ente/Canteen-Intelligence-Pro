@@ -7,7 +7,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Badge, Button, Card, Chip, EmptyState, SectionHeader } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
-import { generateRecipe, generateWeekMenu } from "@/lib/ai";
+import * as ImagePicker from "expo-image-picker";
+
+import { detectIngredientsFromPhoto, generateRecipe, generateWeekMenu } from "@/lib/ai";
 import { SEED_RECIPES } from "@/lib/seedRecipes";
 import type { Allergen, DishCategory, DishType, MeatType, Recipe } from "@/types";
 
@@ -51,6 +53,10 @@ export default function Menu() {
   const [aiPromptOpen, setAiPromptOpen] = useState(false);
   const [aiPromptText, setAiPromptText] = useState("");
   const [aiPromptBusy, setAiPromptBusy] = useState(false);
+  const [mixerOpen, setMixerOpen] = useState(false);
+  const [mixerText, setMixerText] = useState("");
+  const [mixerBusy, setMixerBusy] = useState(false);
+  const [mixerDetecting, setMixerDetecting] = useState(false);
 
   const importClassics = () => {
     const seeds = SEED_RECIPES;
@@ -85,39 +91,87 @@ export default function Menu() {
     );
   };
 
+  const buildRecipe = (g: Awaited<ReturnType<typeof generateRecipe>>, fallbackName: string): Recipe => ({
+    id: rid(),
+    nameDe: g.nameDe || fallbackName,
+    name: g.name || fallbackName,
+    type: (g.type as DishType) ?? "main",
+    category: (g.category as DishCategory) ?? "vegetarian",
+    meat: (g.meat as MeatType) ?? "none",
+    portionGrams: Math.max(150, Math.min(600, Math.round(g.portionGrams ?? 350))),
+    ingredients: [],
+    allergens: (g.allergens ?? []).filter((a): a is Allergen =>
+      (ALLERGEN_TOKENS as string[]).includes(a),
+    ),
+    steps: g.steps ?? [],
+    stepsDe: g.stepsDe ?? [],
+    basePrice: Number(g.basePrice ?? 2.5),
+    sellPrice: Number(g.sellPrice ?? 8.5),
+    cookTimeMin: Math.max(5, Math.round(g.cookTimeMin ?? 30)),
+    kcalPerPortion: g.kcalPerPortion ? Math.round(g.kcalPerPortion) : undefined,
+    source: "ai",
+  });
+
   const submitAiRecipe = async () => {
     const idea = aiPromptText.trim();
     if (!idea) return;
     setAiPromptBusy(true);
     try {
       const g = await generateRecipe({ idea, locale: state.locale });
-      const recipe: Recipe = {
-        id: rid(),
-        nameDe: g.nameDe || idea,
-        name: g.name || idea,
-        type: (g.type as DishType) ?? "main",
-        category: (g.category as DishCategory) ?? "vegetarian",
-        meat: (g.meat as MeatType) ?? "none",
-        portionGrams: Math.max(150, Math.min(600, Math.round(g.portionGrams ?? 350))),
-        ingredients: [],
-        allergens: (g.allergens ?? []).filter((a): a is Allergen =>
-          (ALLERGEN_TOKENS as string[]).includes(a),
-        ),
-        steps: g.steps ?? [],
-        stepsDe: g.stepsDe ?? [],
-        basePrice: Number(g.basePrice ?? 2.5),
-        sellPrice: Number(g.sellPrice ?? 8.5),
-        cookTimeMin: Math.max(5, Math.round(g.cookTimeMin ?? 30)),
-        kcalPerPortion: g.kcalPerPortion ? Math.round(g.kcalPerPortion) : undefined,
-        source: "ai",
-      };
-      dispatch({ type: "addRecipe", recipe });
+      dispatch({ type: "addRecipe", recipe: buildRecipe(g, idea) });
       setAiPromptText("");
       setAiPromptOpen(false);
     } catch (e) {
       Alert.alert("Fehler", e instanceof Error ? e.message : "KI nicht verfügbar");
     } finally {
       setAiPromptBusy(false);
+    }
+  };
+
+  const photographIngredients = async () => {
+    try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert("Kamera", "Keine Kameraberechtigung.");
+        return;
+      }
+      const r = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        base64: true,
+        quality: 0.6,
+      });
+      if (r.canceled || !r.assets[0]?.base64) return;
+      setMixerDetecting(true);
+      const { ingredients } = await detectIngredientsFromPhoto({
+        base64: r.assets[0].base64,
+        locale: state.locale,
+      });
+      const existing = mixerText.trim();
+      const merged = [
+        ...(existing ? existing.split(",").map((s) => s.trim()).filter(Boolean) : []),
+        ...ingredients,
+      ];
+      setMixerText(Array.from(new Set(merged)).join(", "));
+    } catch (e) {
+      Alert.alert("Fehler", e instanceof Error ? e.message : "Vision nicht verfügbar");
+    } finally {
+      setMixerDetecting(false);
+    }
+  };
+
+  const submitMixer = async () => {
+    const ingredients = mixerText.split(",").map((s) => s.trim()).filter(Boolean);
+    if (ingredients.length === 0) return;
+    setMixerBusy(true);
+    try {
+      const g = await generateRecipe({ availableIngredients: ingredients, locale: state.locale });
+      dispatch({ type: "addRecipe", recipe: buildRecipe(g, ingredients.slice(0, 3).join(" + ")) });
+      setMixerText("");
+      setMixerOpen(false);
+    } catch (e) {
+      Alert.alert("Fehler", e instanceof Error ? e.message : "KI nicht verfügbar");
+    } finally {
+      setMixerBusy(false);
     }
   };
 
@@ -345,9 +399,14 @@ export default function Menu() {
               <Text style={{ color: c.primary, fontFamily: "Inter_500Medium", fontSize: 15 }}>{t("close")}</Text>
             </Pressable>
             <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 17 }}>{t("recipes")}</Text>
-            <Pressable onPress={() => setAiPromptOpen(true)} hitSlop={6}>
-              <Text style={{ color: c.primary, fontFamily: "Inter_600SemiBold", fontSize: 15 }}>+ {t("aiRecipe")}</Text>
-            </Pressable>
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              <Pressable onPress={() => setMixerOpen(true)} hitSlop={6}>
+                <Text style={{ color: c.primary, fontFamily: "Inter_600SemiBold", fontSize: 15 }}>🥗 {t("mixer")}</Text>
+              </Pressable>
+              <Pressable onPress={() => setAiPromptOpen(true)} hitSlop={6}>
+                <Text style={{ color: c.primary, fontFamily: "Inter_600SemiBold", fontSize: 15 }}>+ {t("aiRecipe")}</Text>
+              </Pressable>
+            </View>
           </View>
           {state.recipes.length === 0 ? (
             <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
@@ -403,6 +462,87 @@ export default function Menu() {
               );
             })}
           </ScrollView>
+        </View>
+      </Modal>
+
+      <Modal visible={mixerOpen} animationType="fade" transparent onRequestClose={() => setMixerOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", padding: 24 }}>
+          <View style={{ backgroundColor: c.card, borderRadius: 16, padding: 20, gap: 12 }}>
+            <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 17 }}>
+              🥗 {t("mixer")}
+            </Text>
+            <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 13 }}>
+              {t("mixerSubtitle")}
+            </Text>
+            <Pressable
+              onPress={photographIngredients}
+              disabled={mixerDetecting}
+              style={({ pressed }) => [
+                {
+                  flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+                  backgroundColor: c.muted, borderRadius: 10, padding: 12,
+                  opacity: mixerDetecting ? 0.6 : 1,
+                },
+                pressed && { opacity: 0.8 },
+              ]}
+            >
+              {mixerDetecting ? (
+                <ActivityIndicator size="small" color={c.foreground} />
+              ) : (
+                <Feather name="camera" size={16} color={c.foreground} />
+              )}
+              <Text style={{ color: c.foreground, fontFamily: "Inter_600SemiBold", fontSize: 14 }}>
+                {mixerDetecting ? t("detecting") : t("mixerPhotoButton")}
+              </Text>
+            </Pressable>
+            <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 12 }}>
+              {t("mixerIngredientsLabel")}
+            </Text>
+            <TextInput
+              value={mixerText}
+              onChangeText={setMixerText}
+              placeholder={state.locale === "de" ? "Tomate, Zwiebel, Hähnchen, Reis…" : "Tomato, onion, chicken, rice…"}
+              placeholderTextColor={c.mutedForeground}
+              multiline
+              style={{
+                color: c.foreground,
+                backgroundColor: c.muted,
+                borderRadius: 10,
+                padding: 12,
+                fontFamily: "Inter_400Regular",
+                fontSize: 14,
+                minHeight: 80,
+              }}
+            />
+            <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
+              <Pressable onPress={() => setMixerOpen(false)} style={{ padding: 10 }}>
+                <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 14 }}>
+                  {t("cancel")}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={submitMixer}
+                disabled={mixerBusy || !mixerText.trim()}
+                style={({ pressed }) => [
+                  {
+                    flexDirection: "row", alignItems: "center", gap: 6,
+                    backgroundColor: c.primary, borderRadius: 10, paddingHorizontal: 14, height: 38,
+                    opacity: mixerBusy || !mixerText.trim() ? 0.5 : 1,
+                  },
+                  pressed && { opacity: 0.8 },
+                ]}
+              >
+                {mixerBusy ? (
+                  <ActivityIndicator size="small" color={c.primaryForeground} />
+                ) : (
+                  <Feather name="cpu" size={14} color={c.primaryForeground} />
+                )}
+                <Text style={{ color: c.primaryForeground, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
+                  {t("mixerSuggest")}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
         </View>
       </Modal>
 

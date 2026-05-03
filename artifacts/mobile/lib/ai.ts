@@ -389,17 +389,38 @@ export interface GeneratedRecipe {
 }
 
 export async function generateRecipe(args: {
-  idea: string;
+  idea?: string;
+  availableIngredients?: string[];
   locale: "de" | "en";
 }): Promise<GeneratedRecipe> {
   const lang = args.locale === "de" ? "Deutsch" : "English";
+  const ideaPart = args.idea
+    ? `Compose ONE complete recipe matching the user's idea: "${args.idea}".`
+    : "";
+  const mixerPart = args.availableIngredients && args.availableIngredients.length > 0
+    ? `The cook has these ingredients on hand: ${args.availableIngredients.join(", ")}. Choose ONE delicious dish from your cookbook knowledge that uses MOSTLY these ingredients (assume basic pantry: salt, pepper, oil, butter, flour, sugar, herbs, spices). Prefer authentic classics over fusion.`
+    : "";
   return generateJson<GeneratedRecipe>(
     [
       CHEF_PERSONA,
-      `Compose ONE complete recipe matching the user's idea: "${args.idea}". Use authentic German Mensa technique. Always provide both nameDe (Deutsch) and name (English), and both stepsDe (Deutsch) and steps (English). Reply notes in ${lang}.`,
+      ideaPart,
+      mixerPart,
+      `Always provide both nameDe (Deutsch) and name (English), and both stepsDe (Deutsch) and steps (English). Reply notes in ${lang}.`,
       `Constraints: portionGrams 250-450, 4-8 numbered cooking steps, allergens use ONLY these tokens: gluten, milk, egg, nuts, soy, fish, shellfish, celery, mustard, sesame, sulphite, lupin, mollusc, peanut. Realistic basePrice (food cost EUR per portion) and sellPrice (canteen list price EUR), cookTimeMin (active+passive), integer kcalPerPortion.`,
-    ].join("\n\n"),
+    ].filter(Boolean).join("\n\n"),
     '{"nameDe":"string","name":"string","type":"soup|main|salad|dessert|side|drink","category":"vegan|vegetarian|meat|fish|kids","meat":"beef|pork|chicken|lamb|turkey|none","portionGrams":number,"allergens":["string"],"stepsDe":["string"],"steps":["string"],"basePrice":number,"sellPrice":number,"cookTimeMin":number,"kcalPerPortion":number}',
+  );
+}
+
+export async function detectIngredientsFromPhoto(args: {
+  base64: string;
+  locale: "de" | "en";
+}): Promise<{ ingredients: string[] }> {
+  const lang = args.locale === "de" ? "Deutsch" : "English";
+  return generateJson<{ ingredients: string[] }>(
+    `You are a kitchen vision assistant. Look at this photo and list every distinct edible ingredient you can identify (raw vegetables, fruits, packaged products, meats, fish, dairy, herbs, spices visible). Reply with concise ingredient names in ${lang}, no quantities, no prepositions.`,
+    '{"ingredients":["string"]}',
+    args.base64,
   );
 }
 
