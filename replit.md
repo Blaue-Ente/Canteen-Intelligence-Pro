@@ -89,6 +89,17 @@ The seed cookbook was expanded from 30 German recipes to ~150 across 7 cuisines,
 - **Mixer UI** (`artifacts/mobile/app/(tabs)/menu.tsx`): the recipe-picker modal header now has a `🥗 Mixer` button next to `+ KI-Rezept`. Mixer modal has: comma-separated ingredients textarea + camera button (uses `expo-image-picker` like scan.tsx → `detectIngredientsFromPhoto` → merges results into the textarea, deduped) + "Rezept vorschlagen" button → `generateRecipe({availableIngredients})` → adds the proposed recipe to the library.
 - i18n keys: `mixer`, `mixerSubtitle`, `mixerIngredientsLabel`, `mixerPhotoButton`, `mixerDetected`, `mixerSuggest`, `detecting` (DE + EN).
 
+### Exchange email — текущо ограничение и бъдещ план
+
+Текущата Outlook интеграция (Replit connector) свързва **един** Microsoft 365 акаунт (на разработчика/демо). Подходящо е за тестване и демо.
+
+**Планирано за по-късно:** KitchenOS ще се продава като SaaS на независими оператори. Всеки клиент трябва да свърже **свой собствен** Microsoft 365 акаунт. Нужно е:
+1. Регистрация на Azure AD Multi-tenant App (portal.azure.com) — `client_id` + `client_secret` → env vars
+2. Нова таблица `org_exchange_tokens` в БД (org_id, access_token, refresh_token, expires_at)
+3. OAuth routes: `GET /api/auth/microsoft/start?orgId=` и `GET /api/auth/microsoft/callback`
+4. Бутон "Свържи Exchange акаунт" в мобилното (Settings/More)
+5. Mail route-овете да използват org-specific токен от БД вместо Replit connector
+
 ### Customer accounts + 08:00 cutoff + daily aggregate (Phase 6C)
 
 The pre-order portal now distinguishes anonymous guests from logged-in customers (regular vs business-approved), with a per-day 08:00 Europe/Berlin lockout for self-service edits and a per-customer aggregate view for the kitchen.
