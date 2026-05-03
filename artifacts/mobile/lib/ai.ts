@@ -348,9 +348,19 @@ export interface ParsedMenuItem {
   category?: "starter" | "soup" | "salad" | "main" | "dessert" | "drink" | "side" | "other";
   type?: "vegan" | "vegetarian" | "fish" | "meat" | "other";
   allergens?: string[];
+  /**
+   * Day this dish is planned for, as extracted from the menu.
+   * Can be a full German or English weekday name ("Montag", "Monday"),
+   * a short abbreviation ("Mo", "Di", "Mon", "Tue"),
+   * or an ISO date ("YYYY-MM-DD").
+   * Null/undefined = menu has no per-day assignment.
+   */
+  day?: string | null;
 }
 export interface ParsedMenu {
   restaurantName?: string;
+  /** True when the menu contains explicit per-day dish assignments. */
+  hasWeeklyPlan?: boolean;
   items: ParsedMenuItem[];
 }
 
@@ -438,9 +448,11 @@ export async function parseMenuImage(args: {
     [
       `You are KitchenOS menu reader. The photo shows a printed restaurant/canteen menu (Speisekarte). Reply names in ${lang}.`,
       `Extract every dish line. For each: name, optional short description, price in EUR (parse "8,50 €" or "€8.50"), category (starter/soup/salad/main/dessert/drink/side/other), type (vegan/vegetarian/fish/meat/other based on description), allergen letters/numbers if printed (map common LMIV codes A/1=gluten, C/3=egg, G/7=milk, H/8=nuts, F/6=soy, D/4=fish, B/2=shellfish, L/9=celery, M/13=mustard, N/14=sesame, etc.).`,
+      `IMPORTANT — day assignment: if the menu organises dishes by weekday (e.g. "Montag", "Mo", "Monday", "Lundi", a date like "12.05.", "2026-05-12"), set the "day" field to the FULL German weekday name (Montag/Dienstag/Mittwoch/Donnerstag/Freitag/Samstag/Sonntag) or to an ISO date (YYYY-MM-DD) if an exact date is printed. If no day grouping exists, set "day" to null.`,
+      `Also set "hasWeeklyPlan": true at the root level when you find any day groupings, false otherwise.`,
       `Skip headers, footers, prices-only legends, allergen tables.`,
     ].join("\n\n"),
-    '{"restaurantName":"string","items":[{"name":"string","description":"string","price":number,"category":"starter|soup|salad|main|dessert|drink|side|other","type":"vegan|vegetarian|fish|meat|other","allergens":["string"]}]}',
+    '{"restaurantName":"string","hasWeeklyPlan":true,"items":[{"name":"string","description":"string","price":number,"category":"starter|soup|salad|main|dessert|drink|side|other","type":"vegan|vegetarian|fish|meat|other","allergens":["string"],"day":"Montag|Dienstag|Mittwoch|Donnerstag|Freitag|Samstag|Sonntag|YYYY-MM-DD|null"}]}',
     args.base64,
   );
 }

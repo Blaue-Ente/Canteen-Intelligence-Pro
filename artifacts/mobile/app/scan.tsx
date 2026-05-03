@@ -214,8 +214,38 @@ export default function Scan() {
   const togglePick = (i: number) =>
     setPicked((p) => ({ ...p, [i]: !p[i] }));
 
+  // Map German/English/abbreviated weekday name → 0 (Mon) … 6 (Sun)
+  const dayNameToIndex = (day: string): number | null => {
+    const d = day.trim().toLowerCase();
+    const map: Record<string, number> = {
+      montag: 0, mo: 0, monday: 0, mon: 0, lundi: 0,
+      dienstag: 1, di: 1, tuesday: 1, tue: 1, mardi: 1,
+      mittwoch: 2, mi: 2, wednesday: 2, wed: 2, mercredi: 2,
+      donnerstag: 3, do: 3, thursday: 3, thu: 3, jeudi: 3,
+      freitag: 4, fr: 4, friday: 4, fri: 4, vendredi: 4,
+      samstag: 5, sa: 5, saturday: 5, sat: 5, samedi: 5,
+      sonntag: 6, so: 6, sunday: 6, sun: 6, dimanche: 6,
+    };
+    return map[d] ?? null;
+  };
+
+  // Returns the ISO date (YYYY-MM-DD) for the NEXT WEEK's given weekday index (0=Mon).
+  const nextWeekDate = (dayIndex: number): string => {
+    const today = new Date();
+    // Start of next week Monday
+    const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon … 6=Sat
+    const daysToMonday = dayOfWeek === 0 ? 1 : 8 - dayOfWeek;
+    const nextMon = new Date(today);
+    nextMon.setDate(today.getDate() + daysToMonday);
+    nextMon.setDate(nextMon.getDate() + dayIndex);
+    return nextMon.toISOString().slice(0, 10);
+  };
+
   const importPickedDishes = () => {
     if (!menuParsed) return;
+    // recipeId per day: date string → array of recipe IDs
+    const dayMap = new Map<string, string[]>();
+
     (menuParsed.items ?? []).forEach((it, i) => {
       if (!picked[i]) return;
       const allergens = (it.allergens ?? [])
@@ -237,8 +267,9 @@ export default function Scan() {
                 : it.category === "drink"
                   ? "drink"
                   : "main";
+      const recipeId = newId();
       const recipe: Recipe = {
-        id: newId(),
+        id: recipeId,
         name: it.name,
         nameDe: it.name,
         type: dishType,
@@ -254,7 +285,29 @@ export default function Scan() {
         cookTimeMin: 15,
       };
       dispatch({ type: "addRecipe", recipe });
+
+      // Resolve the target date for this dish
+      const rawDay = it.day ?? null;
+      if (rawDay) {
+        let targetDate: string | null = null;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(rawDay)) {
+          targetDate = rawDay;
+        } else {
+          const idx = dayNameToIndex(rawDay);
+          if (idx !== null) targetDate = nextWeekDate(idx);
+        }
+        if (targetDate) {
+          if (!dayMap.has(targetDate)) dayMap.set(targetDate, []);
+          dayMap.get(targetDate)!.push(recipeId);
+        }
+      }
     });
+
+    // Dispatch menu entries for each day that has dishes
+    dayMap.forEach((recipeIds, date) => {
+      dispatch({ type: "setMenu", entry: { date, recipeIds } });
+    });
+
     router.replace("/(tabs)/menu");
   };
 
@@ -430,6 +483,22 @@ export default function Scan() {
                 {menuParsed.restaurantName ?? t("detectedDishes")}
               </Text>
             </View>
+            {menuParsed.hasWeeklyPlan && (
+              <View style={{
+                backgroundColor: c.primary + "18",
+                borderRadius: 8,
+                padding: 10,
+                marginBottom: 10,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+              }}>
+                <Feather name="calendar" size={15} color={c.primary} />
+                <Text style={{ color: c.primary, fontFamily: "Inter_600SemiBold", fontSize: 13, flex: 1 }}>
+                  Wochenplan erkannt — Gerichte werden in die nächste Woche eingeplant.
+                </Text>
+              </View>
+            )}
             {(menuParsed.items ?? []).length === 0 ? (
               <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular" }}>
                 {t("none")}
@@ -457,9 +526,23 @@ export default function Scan() {
                     color={picked[i] ? c.primary : c.mutedForeground}
                   />
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: c.foreground, fontFamily: "Inter_500Medium", fontSize: 14 }}>
-                      {it.name}
-                    </Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      {it.day ? (
+                        <View style={{
+                          backgroundColor: c.primary,
+                          borderRadius: 4,
+                          paddingHorizontal: 6,
+                          paddingVertical: 2,
+                        }}>
+                          <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 10 }}>
+                            {it.day.length <= 3 ? it.day.toUpperCase() : it.day.slice(0, 2).toUpperCase()}
+                          </Text>
+                        </View>
+                      ) : null}
+                      <Text style={{ color: c.foreground, fontFamily: "Inter_500Medium", fontSize: 14 }}>
+                        {it.name}
+                      </Text>
+                    </View>
                     {it.description ? (
                       <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 2 }}>
                         {it.description}
