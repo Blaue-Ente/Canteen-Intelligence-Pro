@@ -37,9 +37,18 @@ export default function Inventory() {
   const [orderBusy, setOrderBusy] = useState(false);
   const author = useAuthor();
 
+  const locId = state.currentLocationId;
+  const currentLoc = state.locations.find((l) => l.id === locId);
+
+  // An item belongs to the active location if its locationId matches,
+  // OR it has no locationId at all (shared/unassigned items always show).
+  const matchesLoc = (i: InventoryItem) =>
+    !locId || !i.locationId || i.locationId === locId;
+
   const shortages = useMemo(
-    () => state.inventory.filter((i) => i.quantity < i.minQuantity),
-    [state.inventory],
+    () => state.inventory.filter((i) => i.quantity < i.minQuantity && matchesLoc(i)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.inventory, locId],
   );
 
   const createOrders = async () => {
@@ -148,9 +157,11 @@ export default function Inventory() {
       const name = (state.locale === "de" ? i.nameDe : i.name).toLowerCase();
       const okQ = !q || name.includes(q.toLowerCase());
       const okC = cat === "all" || i.category === cat;
-      return okQ && okC;
+      const okL = matchesLoc(i);
+      return okQ && okC && okL;
     });
-  }, [state.inventory, state.locale, q, cat]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.inventory, state.locale, q, cat, locId]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
@@ -172,18 +183,25 @@ export default function Inventory() {
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
-            marginBottom: 10,
+            marginBottom: 6,
           }}
         >
-          <Text
-            style={{
-              color: c.foreground,
-              fontFamily: "Inter_700Bold",
-              fontSize: 22,
-            }}
-          >
-            {t("inventory")}
-          </Text>
+          <View>
+            <Text
+              style={{
+                color: c.foreground,
+                fontFamily: "Inter_700Bold",
+                fontSize: 22,
+              }}
+            >
+              {t("inventory")}
+            </Text>
+            {currentLoc && (
+              <Text style={{ color: c.primary, fontFamily: "Inter_500Medium", fontSize: 12, marginTop: 1 }}>
+                {currentLoc.name}
+              </Text>
+            )}
+          </View>
           <View style={{ flexDirection: "row", gap: 8 }}>
             <Pressable
               onPress={() => router.push("/scan")}
@@ -254,6 +272,58 @@ export default function Inventory() {
             </Pressable>
           </View>
         </View>
+        {/* Location switcher */}
+        {state.locations.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 8, paddingBottom: 8 }}
+          >
+            <Pressable
+              onPress={() => dispatch({ type: "setCurrentLocation", id: undefined })}
+              style={({ pressed }) => [
+                {
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 20,
+                  backgroundColor: !locId ? c.primary : c.muted,
+                },
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Text style={{
+                color: !locId ? c.primaryForeground : c.mutedForeground,
+                fontFamily: "Inter_600SemiBold",
+                fontSize: 13,
+              }}>
+                {state.locale === "de" ? "Alle" : "All"}
+              </Text>
+            </Pressable>
+            {state.locations.map((loc) => (
+              <Pressable
+                key={loc.id}
+                onPress={() => dispatch({ type: "setCurrentLocation", id: loc.id })}
+                style={({ pressed }) => [
+                  {
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 20,
+                    backgroundColor: locId === loc.id ? c.primary : c.muted,
+                  },
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                <Text style={{
+                  color: locId === loc.id ? c.primaryForeground : c.mutedForeground,
+                  fontFamily: "Inter_600SemiBold",
+                  fontSize: 13,
+                }}>
+                  {loc.name}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        )}
         <View
           style={{
             flexDirection: "row",
@@ -386,6 +456,13 @@ export default function Inventory() {
                   {low ? <Badge label={t("lowStock")} tone="destructive" /> : null}
                   {expSoon ? <Badge label={t("expiringSoon")} tone="warning" /> : null}
                   <Badge label={`€${item.pricePerUnit.toFixed(2)}/${item.unit}`} />
+                  {/* Show location pill only in "All" view when item is assigned to a specific location */}
+                  {!locId && item.locationId ? (
+                    <Badge
+                      label={state.locations.find((l) => l.id === item.locationId)?.name ?? item.locationId}
+                      tone="default"
+                    />
+                  ) : null}
                 </View>
               </View>
               <View style={{ alignItems: "flex-end" }}>
@@ -416,6 +493,8 @@ export default function Inventory() {
       <ItemModal
         open={modalOpen}
         item={editItem}
+        defaultLocationId={locId}
+        locations={state.locations}
         onClose={() => setModalOpen(false)}
         onSave={(it) => {
           if (editItem) dispatch({ type: "updateInventory", item: it });
@@ -466,6 +545,8 @@ function iconFor(
 function ItemModal({
   open,
   item,
+  defaultLocationId,
+  locations,
   onClose,
   onSave,
   onDelete,
@@ -473,6 +554,8 @@ function ItemModal({
 }: {
   open: boolean;
   item: InventoryItem | null;
+  defaultLocationId?: string;
+  locations: import("@/types").Location[];
   onClose: () => void;
   onSave: (i: InventoryItem) => void;
   onDelete: (id: string) => void;
@@ -486,6 +569,9 @@ function ItemModal({
   const [price, setPrice] = useState(String(item?.pricePerUnit ?? ""));
   const [unit, setUnit] = useState<InventoryItem["unit"]>(item?.unit ?? "kg");
   const [cat, setCat] = useState<InventoryItem["category"]>(item?.category ?? "vegetable");
+  const [itemLocId, setItemLocId] = useState<string | undefined>(
+    item?.locationId ?? defaultLocationId,
+  );
 
   React.useEffect(() => {
     if (open) {
@@ -495,8 +581,9 @@ function ItemModal({
       setPrice(String(item?.pricePerUnit ?? ""));
       setUnit(item?.unit ?? "kg");
       setCat(item?.category ?? "vegetable");
+      setItemLocId(item?.locationId ?? defaultLocationId);
     }
-  }, [open, item]);
+  }, [open, item, defaultLocationId]);
 
   return (
     <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -552,6 +639,28 @@ function ItemModal({
               ))}
             </View>
           </View>
+          {locations.length > 0 && (
+            <View>
+              <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 12, marginBottom: 8 }}>
+                Kantine / Standort
+              </Text>
+              <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+                <Chip
+                  label="Alle Standorte"
+                  active={!itemLocId}
+                  onPress={() => setItemLocId(undefined)}
+                />
+                {locations.map((loc) => (
+                  <Chip
+                    key={loc.id}
+                    label={loc.name}
+                    active={itemLocId === loc.id}
+                    onPress={() => setItemLocId(loc.id)}
+                  />
+                ))}
+              </View>
+            </View>
+          )}
           <Button
             label="Speichern"
             icon="check"
@@ -568,6 +677,7 @@ function ItemModal({
                 supplierId: item?.supplierId,
                 expiresAt: item?.expiresAt,
                 location: item?.location,
+                locationId: itemLocId,
                 updatedAt: new Date().toISOString(),
               };
               onSave(it);
