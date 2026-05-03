@@ -13,13 +13,17 @@ import type {
   CateringRequest,
   ChatMessage,
   ComplaintDraft,
+  Employee,
   HaccpLog,
   InventoryItem,
+  InventurSession,
   Locale,
   MenuDayEntry,
+  NotificationPrefs,
   OrderDraft,
   Recipe,
   SaleEntry,
+  ShiftEntry,
   Supplier,
   WasteEntry,
 } from "@/types";
@@ -50,7 +54,17 @@ type Action =
   | { type: "removeOrder"; id: string }
   | { type: "addChat"; message: ChatMessage }
   | { type: "updateLastChat"; content: string }
-  | { type: "clearChat" };
+  | { type: "clearChat" }
+  | { type: "addInventur"; session: InventurSession }
+  | { type: "updateInventur"; session: InventurSession }
+  | { type: "removeInventur"; id: string }
+  | { type: "addEmployee"; employee: Employee }
+  | { type: "updateEmployee"; employee: Employee }
+  | { type: "removeEmployee"; id: string }
+  | { type: "addShift"; shift: ShiftEntry }
+  | { type: "updateShift"; shift: ShiftEntry }
+  | { type: "removeShift"; id: string }
+  | { type: "setNotificationPrefs"; prefs: NotificationPrefs };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -126,6 +140,39 @@ function reducer(state: AppState, action: Action): AppState {
     }
     case "clearChat":
       return { ...state, chat: [] };
+    case "addInventur":
+      return { ...state, inventurs: [action.session, ...state.inventurs] };
+    case "updateInventur":
+      return {
+        ...state,
+        inventurs: state.inventurs.map((s) => (s.id === action.session.id ? action.session : s)),
+      };
+    case "removeInventur":
+      return { ...state, inventurs: state.inventurs.filter((s) => s.id !== action.id) };
+    case "addEmployee":
+      return { ...state, employees: [...state.employees, action.employee] };
+    case "updateEmployee":
+      return {
+        ...state,
+        employees: state.employees.map((e) => (e.id === action.employee.id ? action.employee : e)),
+      };
+    case "removeEmployee":
+      return {
+        ...state,
+        employees: state.employees.filter((e) => e.id !== action.id),
+        shifts: state.shifts.filter((sh) => sh.employeeId !== action.id),
+      };
+    case "addShift":
+      return { ...state, shifts: [...state.shifts, action.shift] };
+    case "updateShift":
+      return {
+        ...state,
+        shifts: state.shifts.map((sh) => (sh.id === action.shift.id ? action.shift : sh)),
+      };
+    case "removeShift":
+      return { ...state, shifts: state.shifts.filter((sh) => sh.id !== action.id) };
+    case "setNotificationPrefs":
+      return { ...state, notificationPrefs: action.prefs };
     default:
       return state;
   }
@@ -164,6 +211,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           catering: pick("catering"),
           orders: pick("orders"),
           chat: pick("chat"),
+          inventurs: pick("inventurs"),
+          employees: pick("employees"),
+          shifts: pick("shifts"),
+          notificationPrefs: pick("notificationPrefs"),
         };
         dispatch({ type: "hydrate", state: merged });
       }

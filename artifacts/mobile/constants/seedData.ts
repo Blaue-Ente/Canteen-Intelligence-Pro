@@ -8,6 +8,8 @@ import type {
   WasteEntry,
   CateringRequest,
   MenuDayEntry,
+  Employee,
+  NotificationPrefs,
 } from "@/types";
 
 const today = new Date();
@@ -115,6 +117,23 @@ const catering: CateringRequest[] = [
   },
 ];
 
+const employees: Employee[] = [
+  { id: "e1", name: "Markus Weber", role: "chef", color: "#f59e0b", weeklyHours: 40, phone: "+49 170 1112233" },
+  { id: "e2", name: "Lena Krüger", role: "cook", color: "#10b981", weeklyHours: 35, phone: "+49 170 4445566" },
+  { id: "e3", name: "Tobias Klein", role: "kitchen_help", color: "#6366f1", weeklyHours: 25 },
+  { id: "e4", name: "Sara Hoffmann", role: "service", color: "#ec4899", weeklyHours: 30 },
+];
+
+const notificationPrefs: NotificationPrefs = {
+  enabled: false,
+  lowStock: true,
+  expiring: true,
+  tagesabschluss: true,
+  tagesabschlussTime: "21:30",
+  haccpReminder: true,
+  haccpTime: "08:30",
+};
+
 export const seedState: AppState = {
   locale: "de",
   inventory,
@@ -128,4 +147,8 @@ export const seedState: AppState = {
   catering,
   orders: [],
   chat: [],
+  inventurs: [],
+  employees,
+  shifts: [],
+  notificationPrefs,
 };

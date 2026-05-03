@@ -17,6 +17,7 @@ import { Badge, Button, Card, EmptyState, SectionHeader } from "@/components/ui"
 import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { parseCateringEmail, type ParsedCatering } from "@/lib/ai";
+import { cateringOfferHtml, sharePdf } from "@/lib/pdf";
 import type { CateringRequest } from "@/types";
 
 const SAMPLE_DE = `Von: schmidt@firma-acme.de
@@ -217,6 +218,22 @@ export default function Catering() {
                   />
                 ) : null}
               </View>
+              <Button
+                label={t("cateringOffer") + " · PDF"}
+                icon="share-2"
+                variant="secondary"
+                style={{ marginTop: 8 }}
+                onPress={async () => {
+                  try {
+                    await sharePdf(
+                      cateringOfferHtml(req, state.recipes, state.locale),
+                      `catering-${req.id.slice(0, 8)}`,
+                    );
+                  } catch (e) {
+                    Alert.alert("PDF", e instanceof Error ? e.message : "");
+                  }
+                }}
+              />
             </Card>
           ))
         )}

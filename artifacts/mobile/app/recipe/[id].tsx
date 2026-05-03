@@ -1,11 +1,29 @@
 import { Feather } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 
-import { Badge, Button, Card, EmptyState, Field, SectionHeader, Stat } from "@/components/ui";
+import { Badge, Button, Card, Chip, EmptyState, Field, SectionHeader, Stat } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
+import type { Allergen } from "@/types";
+
+const ALL_ALLERGENS: { key: Allergen; tKey: string }[] = [
+  { key: "gluten", tKey: "allergenGluten" },
+  { key: "milk", tKey: "allergenMilk" },
+  { key: "egg", tKey: "allergenEgg" },
+  { key: "nuts", tKey: "allergenNuts" },
+  { key: "soy", tKey: "allergenSoy" },
+  { key: "fish", tKey: "allergenFish" },
+  { key: "shellfish", tKey: "allergenShellfish" },
+  { key: "celery", tKey: "allergenCelery" },
+  { key: "mustard", tKey: "allergenMustard" },
+  { key: "sesame", tKey: "allergenSesame" },
+  { key: "sulphite", tKey: "allergenSulphite" },
+  { key: "lupin", tKey: "allergenLupin" },
+  { key: "mollusc", tKey: "allergenMollusc" },
+  { key: "peanut", tKey: "allergenPeanut" },
+];
 
 export default function RecipeDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -16,6 +34,16 @@ export default function RecipeDetail() {
 
   const recipe = state.recipes.find((r) => r.id === id);
   const [portion, setPortion] = useState(String(recipe?.portionGrams ?? 350));
+  const [editAllergens, setEditAllergens] = useState(false);
+
+  const toggleAllergen = (a: Allergen) => {
+    if (!recipe) return;
+    const has = recipe.allergens.includes(a);
+    const next = has
+      ? recipe.allergens.filter((x) => x !== a)
+      : [...recipe.allergens, a];
+    dispatch({ type: "updateRecipe", recipe: { ...recipe, allergens: next } });
+  };
 
   const cost = useMemo(() => {
     if (!recipe) return 0;
@@ -93,14 +121,32 @@ export default function RecipeDetail() {
         </Card>
 
         <Card>
-          <SectionHeader title={t("allergens")} />
-          {recipe.allergens.length === 0 ? (
-            <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular" }}>Keine</Text>
+          <SectionHeader
+            title={t("allergens")}
+            action={editAllergens ? t("close") : t("editAllergens")}
+            onAction={() => setEditAllergens((v) => !v)}
+          />
+          {editAllergens ? (
+            <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+              {ALL_ALLERGENS.map((a) => (
+                <Chip
+                  key={a.key}
+                  label={t(a.tKey as never)}
+                  active={recipe.allergens.includes(a.key)}
+                  onPress={() => toggleAllergen(a.key)}
+                />
+              ))}
+            </View>
+          ) : recipe.allergens.length === 0 ? (
+            <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular" }}>
+              {state.locale === "de" ? "Keine" : "None"}
+            </Text>
           ) : (
             <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
-              {recipe.allergens.map((a) => (
-                <Badge key={a} label={a} tone="warning" />
-              ))}
+              {recipe.allergens.map((a) => {
+                const meta = ALL_ALLERGENS.find((x) => x.key === a);
+                return <Badge key={a} label={meta ? t(meta.tKey as never) : a} tone="warning" />;
+              })}
             </View>
           )}
         </Card>

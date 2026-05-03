@@ -164,6 +164,54 @@ export interface OrderDraft {
   notes?: string;
 }
 
+export interface InventurCount {
+  inventoryId: string;
+  expectedQty: number;
+  actualQty?: number;
+  unit: string;
+  pricePerUnit: number;
+}
+
+export interface InventurSession {
+  id: string;
+  startedAt: string;
+  closedAt?: string;
+  note?: string;
+  counts: InventurCount[];
+  /** Sum of (expected - actual) * pricePerUnit at close (positive = loss). */
+  varianceValue?: number;
+  status: "open" | "closed";
+}
+
+export interface Employee {
+  id: string;
+  name: string;
+  role: "chef" | "cook" | "service" | "kitchen_help" | "manager";
+  color?: string;
+  weeklyHours?: number;
+  phone?: string;
+}
+
+export interface ShiftEntry {
+  id: string;
+  employeeId: string;
+  date: string; // YYYY-MM-DD
+  start: string; // HH:mm
+  end: string; // HH:mm
+  role?: string;
+  note?: string;
+}
+
+export interface NotificationPrefs {
+  enabled: boolean;
+  lowStock: boolean;
+  expiring: boolean;
+  tagesabschluss: boolean;
+  tagesabschlussTime: string; // HH:mm
+  haccpReminder: boolean;
+  haccpTime: string; // HH:mm
+}
+
 export interface AppState {
   locale: Locale;
   inventory: InventoryItem[];
@@ -177,4 +225,8 @@ export interface AppState {
   catering: CateringRequest[];
   orders: OrderDraft[];
   chat: ChatMessage[];
+  inventurs: InventurSession[];
+  employees: Employee[];
+  shifts: ShiftEntry[];
+  notificationPrefs: NotificationPrefs;
 }

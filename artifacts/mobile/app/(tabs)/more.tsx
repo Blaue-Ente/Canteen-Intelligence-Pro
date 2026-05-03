@@ -37,6 +37,8 @@ export default function More() {
         { icon: "check-square", label: "Tagesabschluss", to: "/sales" },
         { icon: "credit-card", label: t("zettle"), to: "/zettle" },
         { icon: "truck", label: t("orders"), to: "/orders" },
+        { icon: "clipboard", label: t("inventur"), to: "/inventur" },
+        { icon: "calendar", label: t("dienstplan"), to: "/dienstplan" },
         { icon: "users", label: t("suppliers"), to: "/suppliers" },
         { icon: "mail", label: t("catering"), to: "/catering" },
         { icon: "dollar-sign", label: t("calculator"), to: "/calculator" },

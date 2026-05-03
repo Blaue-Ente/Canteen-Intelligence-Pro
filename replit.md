@@ -74,3 +74,20 @@ AI-driven kitchen operations app for German restaurants, canteens, and hotels. B
 - `CateringRequest.dietary` — free-text dietary requirements extracted by the parser.
 - New AI helpers in `lib/ai.ts`: `parseCateringEmail`, `parseZettleReport`, `distributeOrder` (all backed by `/api/ai/json`).
 - New screens: `app/orders.tsx`, `app/zettle.tsx`. New reducer actions: `addCatering`, `updateCatering`, `addOrder`, `updateOrder`, `removeOrder`.
+
+## Phase 4 features
+
+- **HACCP daily temperature logs** — `/haccp` accepts fridge/freezer/delivery/cleaning/cooking entries with a per-type limit check (fridge ≤7°C, freezer ≤-18°C, cooking ≥65°C). Critical breaches raise an alert and persist `ok=false`. Daily reminder schedulable via Settings.
+- **Allergens (LMIV 14) editor** — `app/recipe/[id].tsx` shows the 14 EU allergens as toggleable chips behind an "Allergene bearbeiten" action; toggles dispatch `updateRecipe`. Read mode shows localised badges. Catering offer PDF prints allergen badges per dish.
+- **Inventur (stocktake)** — `/inventur` snapshots all inventory quantities (`expectedQty`) when a session is opened. Each item gets a numeric `Ist` field; on close the variance value €(soll-ist)·price is computed, actual quantities are written back via `updateInventory`, and the session is moved to history with status `closed`.
+- **PDF / Share export** — `lib/pdf.ts` builds branded HTML for orders and catering offers and uses `expo-print` + `expo-sharing` on native (web fallback opens a print window). Buttons added to every order card and confirmed catering request.
+- **Dienstplan (shift planning)** — `/dienstplan` is a weekly grid (Mon–Sun) per employee. Tap a day to open a bottom-sheet that adds/removes shift times. Tap an employee row to edit their name, role, weekly hours, phone. Long-press to delete (cascades shifts). Weekly hours target vs planned shown as a badge (success/warning/destructive).
+- **Push notifications** — `lib/notifications.ts` wraps `expo-notifications` with calendar triggers. Settings screen has a toggle that requests permission and reschedules: Tagesabschluss-Erinnerung (configurable HH:mm), HACCP-Erinnerung (HH:mm), Knapper Bestand at 09:00 (only fires if there are items below min), Bald abgelaufen at 09:30 (≤2 days). Web is a no-op.
+
+## State additions (Phase 4)
+
+- `AppState.inventurs: InventurSession[]` (`InventurCount[]` rows).
+- `AppState.employees: Employee[]` and `AppState.shifts: ShiftEntry[]`.
+- `AppState.notificationPrefs: NotificationPrefs` (enabled + 4 channels + 2 HH:mm fields).
+- New actions: `addInventur`, `updateInventur`, `removeInventur`, `addEmployee`, `updateEmployee`, `removeEmployee` (cascades shifts), `addShift`, `updateShift`, `removeShift`, `setNotificationPrefs`.
+- New screens registered in `app/_layout.tsx`: `inventur`, `dienstplan`. New "Mehr → Operations" entries.

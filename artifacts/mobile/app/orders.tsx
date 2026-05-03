@@ -5,7 +5,8 @@ import { Alert, Linking, Pressable, ScrollView, Text, View } from "react-native"
 import { Badge, Button, Card, EmptyState, SectionHeader } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
-import type { OrderDraft } from "@/types";
+import { orderHtml, sharePdf } from "@/lib/pdf";
+import type { Locale, OrderDraft } from "@/types";
 
 function buildEmail(order: OrderDraft, locale: "de" | "en"): { subject: string; body: string } {
   if (locale === "de") {
@@ -114,7 +115,13 @@ export default function Orders() {
           <>
             <SectionHeader title={t("draft") + " (" + drafts.length + ")"} />
             {drafts.map((o) => (
-              <OrderCard key={o.id} order={o} onSend={() => send(o)} onDelete={() => remove(o.id)} />
+              <OrderCard
+                key={o.id}
+                order={o}
+                locale={state.locale}
+                onSend={() => send(o)}
+                onDelete={() => remove(o.id)}
+              />
             ))}
           </>
         ) : null}
@@ -123,7 +130,13 @@ export default function Orders() {
           <>
             <SectionHeader title={t("history")} />
             {sent.map((o) => (
-              <OrderCard key={o.id} order={o} onSend={() => send(o)} onDelete={() => remove(o.id)} />
+              <OrderCard
+                key={o.id}
+                order={o}
+                locale={state.locale}
+                onSend={() => send(o)}
+                onDelete={() => remove(o.id)}
+              />
             ))}
           </>
         ) : null}
@@ -134,15 +147,24 @@ export default function Orders() {
 
 function OrderCard({
   order,
+  locale,
   onSend,
   onDelete,
 }: {
   order: OrderDraft;
+  locale: Locale;
   onSend: () => void;
   onDelete: () => void;
 }) {
   const c = useColors();
   const t = useT();
+  const exportPdf = async () => {
+    try {
+      await sharePdf(orderHtml(order, locale), `bestellung-${order.id.slice(0, 8)}`);
+    } catch (e) {
+      Alert.alert("PDF", e instanceof Error ? e.message : "");
+    }
+  };
   const total =
     order.total ??
     order.items.reduce((s, x) => s + (x.estimatedPrice ?? 0), 0);
@@ -215,6 +237,7 @@ function OrderCard({
         ) : (
           <Button label={t("sendEmail")} icon="mail" variant="secondary" onPress={onSend} style={{ flex: 1 }} />
         )}
+        <Button label={t("pdfExport")} icon="share-2" variant="ghost" onPress={exportPdf} />
         <Pressable
           onPress={onDelete}
           style={({ pressed }) => [
