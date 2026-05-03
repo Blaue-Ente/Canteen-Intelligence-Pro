@@ -140,7 +140,7 @@ async function refreshCategory(category: string): Promise<DirectoryRow[]> {
 
 const TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
 
-router.get("/suppliers/discover", requireAuth, async (req, res: Response) => {
+router.get("/suppliers/discover", async (req, res: Response) => {
   const category = String(req.query.category ?? "");
   const q = String(req.query.q ?? "").toLowerCase().trim();
   const lat = req.query.lat ? Number(req.query.lat) : null;
@@ -257,7 +257,7 @@ router.get("/suppliers/discover", requireAuth, async (req, res: Response) => {
   res.json({ category, count: results.length, results: results.slice(0, 100) });
 });
 
-router.get("/suppliers/categories", requireAuth, (_req, res: Response) => {
+router.get("/suppliers/categories", (_req, res: Response) => {
   res.json({
     categories: Object.entries(CATEGORIES).map(([id, cfg]) => ({
       id,

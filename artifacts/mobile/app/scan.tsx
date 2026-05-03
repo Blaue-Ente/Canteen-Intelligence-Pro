@@ -4,7 +4,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState } from "react";
-import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Image, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Badge, Button, Card, Chip, EmptyState } from "@/components/ui";
@@ -331,7 +331,7 @@ export default function Scan() {
                 <Button label="Kamera" icon="camera" onPress={() => pickFrom("camera")} style={{ flex: 1 }} />
                 <Button label="Galerie" icon="image" variant="secondary" onPress={() => pickFrom("library")} style={{ flex: 1 }} />
               </View>
-              {mode === "menu" ? (
+              {mode === "menu" && Platform.OS !== "web" ? (
                 <Button
                   label={busy ? t("parsingPdf") : t("pickPdf")}
                   icon="file-text"
