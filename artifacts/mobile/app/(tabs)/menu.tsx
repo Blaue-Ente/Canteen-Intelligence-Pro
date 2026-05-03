@@ -1,13 +1,24 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Badge, Button, Card, Chip, EmptyState, SectionHeader } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
-import { generateWeekMenu } from "@/lib/ai";
+import { generateRecipe, generateWeekMenu } from "@/lib/ai";
+import { SEED_RECIPES } from "@/lib/seedRecipes";
+import type { Allergen, DishCategory, DishType, MeatType, Recipe } from "@/types";
+
+const ALLERGEN_TOKENS: Allergen[] = [
+  "gluten", "milk", "egg", "nuts", "soy", "fish", "shellfish",
+  "celery", "mustard", "sesame", "sulphite", "lupin", "mollusc", "peanut",
+];
+
+function rid() {
+  return `r_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+}
 
 const DAYS_DE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const DAYS_EN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -37,6 +48,78 @@ export default function Menu() {
   const [picker, setPicker] = useState(false);
   const [filter, setFilter] = useState<string>("all");
   const [generating, setGenerating] = useState(false);
+  const [aiPromptOpen, setAiPromptOpen] = useState(false);
+  const [aiPromptText, setAiPromptText] = useState("");
+  const [aiPromptBusy, setAiPromptBusy] = useState(false);
+
+  const importClassics = () => {
+    const seeds = SEED_RECIPES;
+    const doImport = () => {
+      let added = 0;
+      seeds.forEach((s) => {
+        const exists = state.recipes.some(
+          (r) => r.nameDe.toLowerCase() === s.nameDe.toLowerCase(),
+        );
+        if (exists) return;
+        const recipe: Recipe = {
+          ...s,
+          id: rid(),
+          ingredients: [],
+          allergens: s.allergens.filter((a): a is Allergen =>
+            (ALLERGEN_TOKENS as string[]).includes(a),
+          ),
+        };
+        dispatch({ type: "addRecipe", recipe });
+        added += 1;
+      });
+      Alert.alert("KitchenOS", t("classicsImported").replace("{n}", String(added)));
+    };
+    if (state.recipes.length === 0) {
+      doImport();
+      return;
+    }
+    Alert.alert(
+      t("importClassics"),
+      t("importClassicsConfirm").replace("{n}", String(seeds.length)),
+      [{ text: t("cancel") }, { text: t("importClassics"), onPress: doImport }],
+    );
+  };
+
+  const submitAiRecipe = async () => {
+    const idea = aiPromptText.trim();
+    if (!idea) return;
+    setAiPromptBusy(true);
+    try {
+      const g = await generateRecipe({ idea, locale: state.locale });
+      const recipe: Recipe = {
+        id: rid(),
+        nameDe: g.nameDe || idea,
+        name: g.name || idea,
+        type: (g.type as DishType) ?? "main",
+        category: (g.category as DishCategory) ?? "vegetarian",
+        meat: (g.meat as MeatType) ?? "none",
+        portionGrams: Math.max(150, Math.min(600, Math.round(g.portionGrams ?? 350))),
+        ingredients: [],
+        allergens: (g.allergens ?? []).filter((a): a is Allergen =>
+          (ALLERGEN_TOKENS as string[]).includes(a),
+        ),
+        steps: g.steps ?? [],
+        stepsDe: g.stepsDe ?? [],
+        basePrice: Number(g.basePrice ?? 2.5),
+        sellPrice: Number(g.sellPrice ?? 8.5),
+        cookTimeMin: Math.max(5, Math.round(g.cookTimeMin ?? 30)),
+        kcalPerPortion: g.kcalPerPortion ? Math.round(g.kcalPerPortion) : undefined,
+        source: "ai",
+      };
+      dispatch({ type: "addRecipe", recipe });
+      setAiPromptText("");
+      setAiPromptOpen(false);
+    } catch (e) {
+      Alert.alert("Fehler", e instanceof Error ? e.message : "KI nicht verfügbar");
+    } finally {
+      setAiPromptBusy(false);
+    }
+  };
 
   const selectedDate = dateKey(days[selectedIdx]!);
   const entry = state.menu.find((m) => m.date === selectedDate) ?? { date: selectedDate, recipeIds: [] };
@@ -262,8 +345,29 @@ export default function Menu() {
               <Text style={{ color: c.primary, fontFamily: "Inter_500Medium", fontSize: 15 }}>{t("close")}</Text>
             </Pressable>
             <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 17 }}>{t("recipes")}</Text>
-            <View style={{ width: 60 }} />
+            <Pressable onPress={() => setAiPromptOpen(true)} hitSlop={6}>
+              <Text style={{ color: c.primary, fontFamily: "Inter_600SemiBold", fontSize: 15 }}>+ {t("aiRecipe")}</Text>
+            </Pressable>
           </View>
+          {state.recipes.length === 0 ? (
+            <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+              <Pressable
+                onPress={importClassics}
+                style={({ pressed }) => [
+                  {
+                    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+                    backgroundColor: c.muted, borderRadius: 12, padding: 12,
+                  },
+                  pressed && { opacity: 0.8 },
+                ]}
+              >
+                <Feather name="book-open" size={16} color={c.foreground} />
+                <Text style={{ color: c.foreground, fontFamily: "Inter_600SemiBold", fontSize: 14 }}>
+                  {t("importClassics")} ({SEED_RECIPES.length})
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ padding: 12, gap: 8 }}>
             {(["all", "soup", "main", "salad", "dessert", "vegan", "vegetarian", "meat", "fish"] as const).map((k) => (
               <Chip key={k} label={k} active={filter === k} onPress={() => setFilter(k)} />
@@ -299,6 +403,64 @@ export default function Menu() {
               );
             })}
           </ScrollView>
+        </View>
+      </Modal>
+
+      <Modal visible={aiPromptOpen} animationType="fade" transparent onRequestClose={() => setAiPromptOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", padding: 24 }}>
+          <View style={{ backgroundColor: c.card, borderRadius: 16, padding: 20, gap: 12 }}>
+            <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 17 }}>
+              + {t("aiRecipe")}
+            </Text>
+            <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 13 }}>
+              {t("aiRecipePrompt")}
+            </Text>
+            <TextInput
+              value={aiPromptText}
+              onChangeText={setAiPromptText}
+              placeholder={state.locale === "de" ? "Rinderroulade…" : "Beef roulade…"}
+              placeholderTextColor={c.mutedForeground}
+              autoFocus
+              multiline
+              style={{
+                color: c.foreground,
+                backgroundColor: c.muted,
+                borderRadius: 10,
+                padding: 12,
+                fontFamily: "Inter_400Regular",
+                fontSize: 14,
+                minHeight: 70,
+              }}
+            />
+            <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
+              <Pressable onPress={() => setAiPromptOpen(false)} style={{ padding: 10 }}>
+                <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 14 }}>
+                  {t("cancel")}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={submitAiRecipe}
+                disabled={aiPromptBusy || !aiPromptText.trim()}
+                style={({ pressed }) => [
+                  {
+                    flexDirection: "row", alignItems: "center", gap: 6,
+                    backgroundColor: c.primary, borderRadius: 10, paddingHorizontal: 14, height: 38,
+                    opacity: aiPromptBusy || !aiPromptText.trim() ? 0.5 : 1,
+                  },
+                  pressed && { opacity: 0.8 },
+                ]}
+              >
+                {aiPromptBusy ? (
+                  <ActivityIndicator size="small" color={c.primaryForeground} />
+                ) : (
+                  <Feather name="cpu" size={14} color={c.primaryForeground} />
+                )}
+                <Text style={{ color: c.primaryForeground, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
+                  {t("create")}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
         </View>
       </Modal>
     </View>

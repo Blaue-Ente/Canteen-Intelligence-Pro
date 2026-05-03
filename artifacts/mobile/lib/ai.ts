@@ -81,6 +81,21 @@ export async function generateJson<T>(
   return json.data;
 }
 
+// ---- Chef persona ----
+// Prepended to recipe/menu generators so the LLM behaves like a master chef
+// with deep knowledge of classic German canteen / Mensa cooking and the
+// canonical cookbooks (Dr. Oetker Schulkochbuch, Henriette Davidis "Praktisches
+// Kochbuch", Bayerisches Kochbuch / Maria Hofmann, "Mensa-Kochbuch", "Das
+// große Buch der Hausmannskost", Tim Mälzer Heimat). Use this for any
+// generator that should produce authentic, well-portioned, allergen-aware
+// recipes / menus suitable for a German canteen.
+export const CHEF_PERSONA =
+  "You are KitchenOS Master Chef – a German Küchenchef with 25 years of canteen and à-la-carte experience. " +
+  "You have memorised hundreds of classic German Hausmannskost recipes (Wiener Schnitzel, Sauerbraten, Königsberger Klopse, Rouladen, Gulasch, Schweinebraten, Maultaschen, Käsespätzle, Kartoffelsuppe, Linsensuppe, Erbsensuppe, Frikadellen, Currywurst, Bratkartoffeln, Apfelstrudel, Kaiserschmarrn, Milchreis, Grießbrei, Rote Grütze …) plus regional Bavarian, Swabian, Rheinisch and Norddeutsch dishes. " +
+  "You know the canonical books by heart: Dr. Oetker Schulkochbuch, Henriette Davidis Praktisches Kochbuch, Bayerisches Kochbuch (Maria Hofmann), Das große GU Kochbuch, Mensa-Kochbuch, Tim Mälzer Heimat. " +
+  "You always cook with: realistic Mensa portion sizes (250–450 g), exact gram weights, correct LMIV allergen letters, kcal per portion, and step-by-step German technique (anschwitzen, ablöschen, durchziehen lassen). " +
+  "When asked for a recipe you give a complete, runnable recipe a Köchin can prepare today with standard kitchen equipment.";
+
 // ---- Domain helpers ----
 
 export interface ParsedReceiptItem {
@@ -122,7 +137,8 @@ export async function generateWeekMenu(args: {
     .join("\n");
   return generateJson<GeneratedMenu>(
     [
-      `You are KitchenOS, planning a 7-day weekly menu for a German restaurant. Reply rationale in ${lang}.`,
+      CHEF_PERSONA,
+      `Plan a 7-day weekly menu for a German canteen. Reply rationale in ${lang}.`,
       `Available recipes:\n${list}`,
       `Each day MUST contain 3 recipe IDs from the list: 1 starter/soup or salad, 1 main, 1 dessert/side – pick the closest matching types if exact missing.`,
       `Balance over the week: at least 2 vegan/vegetarian mains, no two consecutive days with the same meat type, prefer using these low-stock items first: ${args.lowStockNames.join(", ") || "(none)"}.`,
@@ -354,6 +370,37 @@ export async function parseMenuPdf(args: {
   }
   const json = (await res.json()) as { data: ParsedMenu };
   return json.data;
+}
+
+export interface GeneratedRecipe {
+  nameDe: string;
+  name: string;
+  type: "soup" | "main" | "salad" | "dessert" | "side" | "drink";
+  category: "vegan" | "vegetarian" | "meat" | "fish" | "kids";
+  meat: "beef" | "pork" | "chicken" | "lamb" | "turkey" | "none";
+  portionGrams: number;
+  allergens: string[];
+  stepsDe: string[];
+  steps: string[];
+  basePrice: number;
+  sellPrice: number;
+  cookTimeMin: number;
+  kcalPerPortion: number;
+}
+
+export async function generateRecipe(args: {
+  idea: string;
+  locale: "de" | "en";
+}): Promise<GeneratedRecipe> {
+  const lang = args.locale === "de" ? "Deutsch" : "English";
+  return generateJson<GeneratedRecipe>(
+    [
+      CHEF_PERSONA,
+      `Compose ONE complete recipe matching the user's idea: "${args.idea}". Use authentic German Mensa technique. Always provide both nameDe (Deutsch) and name (English), and both stepsDe (Deutsch) and steps (English). Reply notes in ${lang}.`,
+      `Constraints: portionGrams 250-450, 4-8 numbered cooking steps, allergens use ONLY these tokens: gluten, milk, egg, nuts, soy, fish, shellfish, celery, mustard, sesame, sulphite, lupin, mollusc, peanut. Realistic basePrice (food cost EUR per portion) and sellPrice (canteen list price EUR), cookTimeMin (active+passive), integer kcalPerPortion.`,
+    ].join("\n\n"),
+    '{"nameDe":"string","name":"string","type":"soup|main|salad|dessert|side|drink","category":"vegan|vegetarian|meat|fish|kids","meat":"beef|pork|chicken|lamb|turkey|none","portionGrams":number,"allergens":["string"],"stepsDe":["string"],"steps":["string"],"basePrice":number,"sellPrice":number,"cookTimeMin":number,"kcalPerPortion":number}',
+  );
 }
 
 export async function parseMenuImage(args: {

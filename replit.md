@@ -71,3 +71,12 @@ The menu scanner now also accepts PDF menus, not only photos.
 - **Mobile** (`artifacts/mobile/metro.config.js`): added `resolver.blockList` regex to ignore `pdf-parse` and its install-time `pdf-parse_tmp_*` dirs (those vanish during `pnpm install` and crash Metro's file watcher).
 - **Deps**: added `pdf-parse@1.1.1` + `@types/pdf-parse` to api-server (v2 needs `@napi-rs/canvas` + DOM polyfills for pdfjs — overkill for text-only); added `expo-document-picker` and `expo-file-system` to mobile.
 - i18n keys: `pickPdf`, `parsingPdf` (DE + EN).
+
+### Cookbook-aware AI assistant (Phase 6B #6)
+
+The AI assistant now behaves like a German Küchenchef with knowledge of hundreds of classic Mensa recipes, plus a one-tap seed bank.
+- **Persona** (`artifacts/mobile/lib/ai.ts`): exported `CHEF_PERSONA` preamble that names the canonical books (Dr. Oetker Schulkochbuch, Henriette Davidis, Bayerisches Kochbuch, Mensa-Kochbuch, Tim Mälzer Heimat) and demands realistic Mensa portions / LMIV allergens / kcal. Prepended to `generateWeekMenu` and the new `generateRecipe` helper.
+- **Recipe-from-idea**: `generateRecipe({idea, locale})` returns a fully-formed `GeneratedRecipe` (nameDe/name, type, category, meat, portionGrams, allergens, stepsDe/steps, base/sellPrice, cookTime, kcalPerPortion).
+- **Seed bank** (`artifacts/mobile/lib/seedRecipes.ts`): 30 hand-written classic German Mensa recipes (Wiener Schnitzel, Sauerbraten, Königsberger Klopse, Rouladen, Schweinebraten, Currywurst, Frikadellen, Gulasch, Hähnchenschnitzel, Kasseler, Käsespätzle, Maultaschen, Bauernfrühstück, Kartoffelpuffer, Spinat-Lasagne, Linsen-Bolognese, Gemüse-Curry, Falafel, Chili sin Carne, Ofengemüse, Forellenfilet, Backfisch, Linsensuppe, Erbsensuppe, Tomatensuppe, Kürbissuppe, Gulaschsuppe, Salate, Apfelstrudel, Kaiserschmarrn, Milchreis) with grams, allergens, kcal, base/sell price.
+- **UI** (`artifacts/mobile/app/(tabs)/menu.tsx`): the recipe picker modal header now has a `+ KI-Rezept` action that opens a textarea modal calling `generateRecipe`. When the recipe library is empty, the picker also shows a `Klassiker importieren (30)` button that bulk-imports the seed bank (skips name duplicates, asks for confirmation if recipes already exist).
+- i18n keys: `importClassics`, `importClassicsConfirm`, `classicsImported`, `aiRecipe`, `aiRecipePrompt`, `create` (DE + EN).
