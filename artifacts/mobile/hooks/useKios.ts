@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { askKios } from "@/lib/kios";
+import { generateRecipe } from "@/lib/ai";
 import { speakHQ, stopSpeaking, isSafari, prewarmTtsCache, primeAudio, prefetchKiosPhrases } from "@/lib/voice";
 import { useApp } from "@/contexts/AppContext";
 import {
@@ -21,18 +23,20 @@ import type {
   Employee,
   CateringEvent,
   InventoryItem,
+  HaccpLog,
+  WasteEntry,
 } from "@/types";
 
 export type KiosStatus = "off" | "idle" | "awake" | "thinking" | "speaking";
 
-// ── T015: Smart Kios pending-confirmation actions ────────────────────────────
-// When a voice command would mutate state (add/remove order item), we never
-// execute it directly. Instead we stash it as a PendingAction and require an
-// explicit spoken "Ja" before dispatching. This is critical because mis-heard
-// commands during a busy service ("entferne Schnitzel" misheard as "entferne
-// Schnitzelbrot") could otherwise trash a real order. The 30-second TTL means
-// a forgotten confirm naturally times out without leaving the kios in an
-// awkward "waiting for Ja/Nein" state forever.
+// ── T015 + T016c + T016f: Smart Kios pending-confirmation actions ────────────
+// When a voice command would mutate state (add/remove order item, log HACCP,
+// adjust inventory, log waste, import an internet recipe), we never execute it
+// directly. Instead we stash it as a PendingAction and require an explicit
+// spoken "Ja" before dispatching. This is critical because mis-heard commands
+// during a busy service could otherwise trash production data. The 30-second
+// TTL means a forgotten confirm naturally times out without leaving the kios
+// in an awkward "waiting for Ja/Nein" state forever.
 type PendingAction =
   | {
       kind: "addOrderItem";
@@ -45,7 +49,53 @@ type PendingAction =
       order: OrderDraft;
       itemIndex: number;
       itemName: string;
+    }
+  // T016c — voice mutations beyond orders.
+  | {
+      kind: "addHaccpEntry";
+      entry: HaccpLog;
+      summary: string;
+    }
+  | {
+      kind: "setInventoryQty";
+      itemId: string;
+      itemName: string;
+      qty: number;
+      unit: InventoryItem["unit"]; // strict so executor unit check is type-safe
+    }
+  | {
+      kind: "consumeInventoryQty";
+      itemId: string;
+      itemName: string;
+      qty: number;  // already in inv.unit (parser did the conversion + dim check)
+      unit: InventoryItem["unit"]; // snapshot of inv.unit at parse time
+    }
+  | {
+      kind: "logWaste";
+      entry: WasteEntry;
+      summary: string;
+    }
+  // T016f — internet recipe search → import to library.
+  | {
+      kind: "addRecipeFromOnline";
+      recipe: Recipe;
     };
+
+// ── T016a: Conversation memory (anaphora resolution) ─────────────────────────
+// After every successful smart lookup we remember the entity the user just
+// asked about (recipe/inventory item/contact). Pronouns in the next question
+// ("davon", "das", "die", "es", "sie") get resolved to that entity's name
+// before pattern matching, so the user can naturally chain:
+//   "Kios, kalorien hat Linsensuppe" → "und wie teuer ist das?"
+// TTL is 3 minutes — long enough for a real follow-up, short enough that a
+// stranger walking up later can't accidentally hit a stale context.
+interface LastContext {
+  recipe?: Recipe;
+  inventoryItem?: InventoryItem;
+  contact?: { name: string; role: string; phone: string };
+  ts: number;
+}
+const ANAPHORA_TTL_MS = 3 * 60 * 1000;
 
 // ── T015: Allergen ID → German label ─────────────────────────────────────────
 // LMIV-compliant German names. Used when speaking allergen lists (e.g.
@@ -318,6 +368,413 @@ function parseQtyUnit(raw: string): { qty: number; unit: string; rest: string } 
   return { qty: 1, unit: "Stück", rest: trimmed };
 }
 
+// ── T016b: date-range + day-name helpers ─────────────────────────────────────
+// Translate German temporal phrases ("heute", "gestern", "diese Woche",
+// "letzten Monat") into ISO date ranges for sales/waste aggregation.
+// Used by handleSmartLookups data-intent patterns.
+const GERMAN_DAYS = ["sonntag", "montag", "dienstag", "mittwoch", "donnerstag", "freitag", "samstag"];
+
+function dateRangeFromPhrase(lower: string): { from: string; to: string; label: string } | null {
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+  if (/\bheute\b/.test(lower)) return { from: todayStr, to: todayStr, label: "heute" };
+  if (/\bgestern\b/.test(lower)) {
+    const y = new Date(today);
+    y.setDate(y.getDate() - 1);
+    const s = y.toISOString().slice(0, 10);
+    return { from: s, to: s, label: "gestern" };
+  }
+  if (/\bdiese\s+woche\b/.test(lower)) {
+    const wd = (today.getDay() + 6) % 7; // Mon=0
+    const start = new Date(today);
+    start.setDate(start.getDate() - wd);
+    return { from: start.toISOString().slice(0, 10), to: todayStr, label: "diese Woche" };
+  }
+  if (/\bletzte\s+woche\b/.test(lower)) {
+    const wd = (today.getDay() + 6) % 7;
+    const start = new Date(today);
+    start.setDate(start.getDate() - wd - 7);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    return { from: start.toISOString().slice(0, 10), to: end.toISOString().slice(0, 10), label: "letzte Woche" };
+  }
+  if (/\bdiesen?\s+monat\b/.test(lower)) {
+    const start = new Date(today.getFullYear(), today.getMonth(), 1);
+    return { from: start.toISOString().slice(0, 10), to: todayStr, label: "diesen Monat" };
+  }
+  if (/\bletzten?\s+monat\b/.test(lower)) {
+    const start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const end = new Date(today.getFullYear(), today.getMonth(), 0);
+    return { from: start.toISOString().slice(0, 10), to: end.toISOString().slice(0, 10), label: "letzten Monat" };
+  }
+  return null;
+}
+
+// "Wer arbeitet morgen / am Freitag" → resolve to a single ISO date.
+function parseSingleDay(lower: string): { iso: string; label: string } | null {
+  if (/\bmorgen\b/.test(lower)) {
+    const t = new Date();
+    t.setDate(t.getDate() + 1);
+    return { iso: t.toISOString().slice(0, 10), label: "morgen" };
+  }
+  if (/\bheute\b/.test(lower)) {
+    return { iso: new Date().toISOString().slice(0, 10), label: "heute" };
+  }
+  if (/\bübermorgen\b|\buebermorgen\b/.test(lower)) {
+    const t = new Date();
+    t.setDate(t.getDate() + 2);
+    return { iso: t.toISOString().slice(0, 10), label: "übermorgen" };
+  }
+  for (let i = 0; i < GERMAN_DAYS.length; i++) {
+    if (lower.includes(GERMAN_DAYS[i]!)) {
+      const today = new Date();
+      const cur = today.getDay();
+      let delta = (i - cur + 7) % 7;
+      if (delta === 0) delta = 7; // "am Montag" said on Monday → next Monday
+      const d = new Date(today);
+      d.setDate(d.getDate() + delta);
+      const name = GERMAN_DAYS[i]!;
+      return { iso: d.toISOString().slice(0, 10), label: `am ${name[0]!.toUpperCase()}${name.slice(1)}` };
+    }
+  }
+  return null;
+}
+
+// ── T016g: rush-mode detection (terse replies in busy hours) ─────────────────
+// Lunch service in German Mensen runs 11:30-13:30, dinner 17:30-19:30.
+// During those windows Kios trims greetings/filler so the cook gets the
+// answer faster. Outside rush, the verbose form is friendlier.
+// (SaleEntry is a daily aggregate — no per-minute timestamps — so we can't
+// derive sales velocity from state. Time-of-day is the only signal.)
+function isRushMode(): boolean {
+  const now = new Date();
+  const mins = now.getHours() * 60 + now.getMinutes();
+  if (mins >= 11 * 60 + 30 && mins <= 13 * 60 + 30) return true;
+  if (mins >= 17 * 60 + 30 && mins <= 19 * 60 + 30) return true;
+  return false;
+}
+
+// Terse one-word reply for navigation commands during rush. Falls back to
+// the verbose reply when no terse label is mapped, so unknown nav keys still
+// get spoken (just at the normal length).
+const TERSE_NAV_LABELS: Record<string, string> = {
+  inventory: "Lager.", stats: "Statistik.", menu: "Speisekarte.", home: "Übersicht.",
+  more: "Mehr.", sales: "Tagesabschluss.", zettle: "Zettle.", orders: "Wareneingänge.",
+  procurement: "Bestellvorschläge.", inventur: "Inventur.", dienstplan: "Dienstplan.",
+  suppliers: "Lieferanten.", producers: "Erzeuger.", catering: "Catering.",
+  events: "Events.", calculator: "Rechner.", waste: "Abfall.", wastecam: "Tablett-Foto.",
+  reste: "Reste.", preorder: "Vorbestellungen.", customers: "Kunden.",
+  forecast: "Prognose.", handover: "Übergabe.", margin: "Margen.",
+  leaderboard: "Leaderboard.", reports: "Berichte.", dishanalysis: "Analyse.",
+  okowizard: "Öko.", locations: "Standorte.", haccp: "HACCP.", scan: "Scanner.",
+  chat: "Chat.", recipe: "Rezept.", team: "Team.", settings: "Einstellungen.",
+  aushang: "Aushang.", production: "Produktion.", cleaning: "Reinigung.",
+  kasse: "Kasse.", dge: "DGE.", aggregate: "Aggregat.", rollup: "Standorte.",
+  priceserver: "Preisserver.", crm: "CRM.",
+};
+function terseQuickReply(nav: string, fallback: string): string {
+  return TERSE_NAV_LABELS[nav] ?? fallback;
+}
+
+// ── T016a: anaphora pre-resolver ─────────────────────────────────────────────
+// Replace pronouns ("davon"/"dazu"/"das"/"die"/"es"/"sie"/"der") with the
+// last-referenced entity's name. Only fires when context is fresh (within
+// ANAPHORA_TTL_MS) and the question contains pronouns in positions where
+// they obviously stand for an entity (after a verb like ist/von/für/hat/kostet
+// or at end of question). Returns the rewritten question + lower form.
+function expandAnaphora(
+  question: string,
+  lower: string,
+  ctx: LastContext | null,
+): { question: string; lower: string } {
+  if (!ctx || Date.now() - ctx.ts > ANAPHORA_TTL_MS) return { question, lower };
+  const ent =
+    ctx.recipe?.nameDe ||
+    ctx.recipe?.name ||
+    ctx.inventoryItem?.nameDe ||
+    ctx.inventoryItem?.name ||
+    ctx.contact?.name ||
+    "";
+  if (!ent) return { question, lower };
+  // 1) "davon" / "dazu" anywhere → entity
+  // 2) "ist|von|für|hat|kostet|enthält|enthaelt|bekommt das|die|es|sie|der" → "<verb> <entity>"
+  // 3) trailing "das|die|es|sie?" at end of question → entity
+  const replaced = question
+    .replace(/\b(davon|dazu)\b/gi, ent)
+    .replace(/\b(ist|von|für|fuer|hat|kostet|enth[äa]lt|bekommt|teuer)\s+(das|die|es|sie|der)\b/gi,
+      (_m, v: string) => `${v} ${ent}`)
+    .replace(/\b(das|die|es|sie)\s*\??\s*$/i, ent + (question.trimEnd().endsWith("?") ? "?" : ""));
+  return { question: replaced, lower: replaced.toLowerCase().trim() };
+}
+
+// ── T016c: HACCP voice command parser ────────────────────────────────────────
+// "Notiere Kühltemperatur 5 Grad" / "Kühlschrank 2 hat 4 Grad" /
+// "Tiefkühl mit minus 18 Grad" / "Lieferung 6 Grad"
+// Returns null when the sentence isn't clearly a HACCP entry — we deliberately
+// don't fire on every "X Grad" mention to avoid false positives like
+// "wie viel Grad ist es draußen".
+function parseHaccpFromText(lower: string): { entry: HaccpLog; summary: string } | null {
+  const tempMatch = lower.match(/(-?\s*\d+(?:[.,]\d+)?)\s*(?:°|grad|c\b|celsius)/i);
+  if (!tempMatch) return null;
+  if (!/k[üu]hl|gefrier|tiefk[üu]hl|temperatur|lieferung/.test(lower)) return null;
+  if (!/notiere|miss|setze|erfass|hat|mit|protokoll|^k[üu]hl|^gefrier|^tiefk[üu]hl|^lieferung/.test(lower)) return null;
+  const temp = Number(tempMatch[1]!.replace(",", ".").replace(/\s+/g, ""));
+  if (!Number.isFinite(temp) || temp < -50 || temp > 50) return null;
+  let type: HaccpLog["type"] = "fridge";
+  if (/tiefk[üu]hl|gefrier/.test(lower)) type = "freezer";
+  else if (/lieferung|delivery|wareneingang/.test(lower)) type = "delivery";
+  const locMatch = lower.match(/(k[üu]hlschrank|k[üu]hlraum|gefrierschrank|gefrierraum|tiefk[üu]hlschrank|tiefk[üu]hlraum)\s*(\d+|[a-z])?/i);
+  let locBase: string;
+  if (type === "delivery") locBase = "Wareneingang";
+  else if (type === "freezer") locBase = locMatch && /raum/i.test(locMatch[1]!) ? "Tiefkühlraum" : "Tiefkühlschrank";
+  else locBase = locMatch && /raum/i.test(locMatch[1]!) ? "Kühlraum" : "Kühlschrank";
+  const locSuffix = locMatch?.[2] ? " " + locMatch[2]!.toUpperCase() : "";
+  const location = locBase + locSuffix;
+  const ok = type === "freezer" ? temp <= -15 : temp <= 7;
+  const entry: HaccpLog = {
+    id: `kios-${Date.now().toString(36)}`,
+    date: new Date().toISOString(),
+    type,
+    location,
+    temperature: temp,
+    ok,
+    source: "manual",
+  };
+  return { entry, summary: `${location} mit ${temp} Grad` };
+}
+
+// ── T016c — unit-safe inventory parsing helpers ──────────────────────────
+// Architect feedback: spoken units (kg/l/ml/g/Stück) MUST be converted into
+// the item's actual storage unit, AND dimensional class must match (mass↔mass,
+// vol↔vol, pcs↔pcs). Without this, "setze Mehl (g) auf 2 kg" would write
+// `2` instead of `2000`, or "verbrauche 2 kg Eier (pcs)" would consume 2000
+// pieces. We reject mismatches and let the user re-phrase.
+type UnitDim = "mass" | "vol" | "pcs";
+function dimOfInvUnit(u: InventoryItem["unit"]): UnitDim {
+  if (u === "kg" || u === "g") return "mass";
+  if (u === "l" || u === "ml") return "vol";
+  return "pcs";
+}
+// Returns { dim, factorToBaseG_or_ml }: kg→{mass,1000}, g→{mass,1}, l→{vol,1000},
+// ml→{vol,1}, Stück/pcs/stk→{pcs,1}. Spoken phrasings normalised here.
+function parseSpokenUnit(raw: string | undefined): { dim: UnitDim; factor: number } | null {
+  if (!raw) return null;
+  const u = raw.toLowerCase().trim();
+  if (u === "kg" || u === "kilo" || u === "kilogramm") return { dim: "mass", factor: 1000 };
+  if (u === "g" || u === "gramm") return { dim: "mass", factor: 1 };
+  if (u === "l" || u === "liter") return { dim: "vol", factor: 1000 };
+  if (u === "ml") return { dim: "vol", factor: 1 };
+  if (u === "stk" || u === "stück" || u === "stueck" || u === "pcs") return { dim: "pcs", factor: 1 };
+  return null;
+}
+// Convert qty in spoken unit → qty in target inv.unit. Returns null on
+// dimension mismatch (e.g. spoken "kg" against pcs item).
+function convertToInvUnit(qty: number, spoken: { dim: UnitDim; factor: number }, invUnit: InventoryItem["unit"]): number | null {
+  if (dimOfInvUnit(invUnit) !== spoken.dim) return null;
+  const baseQty = qty * spoken.factor; // in g or ml or pcs
+  if (invUnit === "kg" || invUnit === "l") return Math.round((baseQty / 1000) * 1000) / 1000;
+  if (invUnit === "g" || invUnit === "ml") return Math.round(baseQty * 1000) / 1000;
+  return Math.round(baseQty); // pcs — integer count
+}
+
+// Discriminated parse result: success | dim-mismatch (so caller can speak a
+// helpful clarification instead of falling through to "I didn't understand").
+type InvParseFail = { error: "dimMismatch"; itemName: string; spokenUnit: string; invUnit: InventoryItem["unit"] };
+
+// "Setze Milch auf 12 Liter" / "Stelle Mehl auf 5 kg"
+function parseInventorySet(
+  lower: string,
+  inventory: readonly InventoryItem[],
+): { item: InventoryItem; qty: number; unit: InventoryItem["unit"] } | InvParseFail | null {
+  // Unit token list MUST cover everything parseSpokenUnit normalises, otherwise
+  // "setze Mehl auf 2 kilogramm" would slip through with unit captured as
+  // empty → parser would assume qty is already in inv.unit and write "2g"
+  // instead of "2000g". End-anchored to reject trailing junk tokens.
+  const m = lower.match(/(?:setze|stelle|aktualisiere|update)\s+(.+?)\s+auf\s+(\d+(?:[.,]\d+)?)\s*(kg|kilo|kilogramm|g|gramm|liter|l|ml|stück|stueck|stk|pcs)?\s*$/i);
+  if (!m) return null;
+  const inv = findInventoryByName(m[1]!.trim(), inventory);
+  if (!inv) return null;
+  const qty = Number(m[2]!.replace(",", "."));
+  if (!Number.isFinite(qty) || qty < 0) return null;
+  // Default: if user omitted the unit, assume they meant the inv.unit.
+  const spoken = parseSpokenUnit(m[3]) ?? { dim: dimOfInvUnit(inv.unit), factor: inv.unit === "kg" || inv.unit === "l" ? 1000 : 1 };
+  const inInvUnit = convertToInvUnit(
+    qty,
+    m[3] ? spoken : { dim: dimOfInvUnit(inv.unit), factor: 1 }, // omitted unit → qty already in inv.unit
+    inv.unit,
+  );
+  if (inInvUnit === null) {
+    return { error: "dimMismatch", itemName: inv.nameDe || inv.name, spokenUnit: m[3] || "", invUnit: inv.unit };
+  }
+  // When unit was omitted we treated qty as already in inv.unit; the helper
+  // above multiplies by 1 so the math is right but the returned value is
+  // rounded — make sure we keep the original qty in that case.
+  const finalQty = m[3] ? inInvUnit : qty;
+  return { item: inv, qty: finalQty, unit: inv.unit };
+}
+
+// "Verbrauche 2 kg Mehl" / "Buche 500 Gramm Salz ab"
+function parseInventoryConsume(
+  lower: string,
+  inventory: readonly InventoryItem[],
+): { item: InventoryItem; qty: number; unit: InventoryItem["unit"] } | InvParseFail | null {
+  // Same unit-token completeness as parseInventorySet — must cover every form
+  // parseSpokenUnit normalises, else we'd silently miss the unit and fall into
+  // the "no unit → assume inv.unit" path with wrong magnitude.
+  const m = lower.match(/(?:verbrauch(?:e|t)?|nimm|buche?|abzieh(?:en)?)\s+(\d+(?:[.,]\d+)?)\s*(kg|kilo|kilogramm|g|gramm|liter|l|ml|stück|stueck|stk|pcs)?\s+(.+?)(?:\s+ab)?$/i);
+  if (!m) return null;
+  const qty = Number(m[1]!.replace(",", "."));
+  if (!Number.isFinite(qty) || qty <= 0) return null;
+  const inv = findInventoryByName(m[3]!.trim(), inventory);
+  if (!inv) return null;
+  if (!m[2]) {
+    // No spoken unit — assume the user meant the item's own unit.
+    return { item: inv, qty, unit: inv.unit };
+  }
+  const spoken = parseSpokenUnit(m[2]);
+  if (!spoken) return null;
+  const inInvUnit = convertToInvUnit(qty, spoken, inv.unit);
+  if (inInvUnit === null) {
+    return { error: "dimMismatch", itemName: inv.nameDe || inv.name, spokenUnit: m[2], invUnit: inv.unit };
+  }
+  return { item: inv, qty: inInvUnit, unit: inv.unit };
+}
+
+// "Notiere 500 Gramm Brot weggeworfen" / "200 Gramm Salat in den Müll"
+function parseWasteFromText(
+  lower: string,
+  inventory: readonly InventoryItem[],
+): { entry: WasteEntry; summary: string } | null {
+  if (!/weggeworfen|in\s+den\s+m[üu]ll|entsorgt|verschwendet/.test(lower)) return null;
+  const m = lower.match(/(\d+(?:[.,]\d+)?)\s*(gramm|g|kg|kilo|kilogramm)\s+([\wäöüß-]+(?:\s+[\wäöüß-]+){0,3}?)\s+(?:weggeworfen|in\s+den\s+m[üu]ll|entsorgt|verschwendet)/i);
+  if (!m) return null;
+  let grams = Number(m[1]!.replace(",", "."));
+  if (!Number.isFinite(grams) || grams <= 0) return null;
+  if (/^kg|kilo/i.test(m[2]!)) grams *= 1000;
+  const itemName = m[3]!.trim();
+  const inv = findInventoryByName(itemName, inventory);
+  let cost = 0;
+  if (inv) {
+    const pricePerKg =
+      inv.unit === "kg" ? inv.pricePerUnit
+      : inv.unit === "g" ? inv.pricePerUnit * 1000
+      : inv.pricePerUnit;
+    cost = (pricePerKg * grams) / 1000;
+  }
+  const entry: WasteEntry = {
+    id: `kios-${Date.now().toString(36)}`,
+    date: new Date().toISOString().slice(0, 10),
+    grams: Math.round(grams),
+    reason: "preparation",
+    cost: Math.round(cost * 100) / 100,
+    ...(inv ? { inventoryId: inv.id } : {}),
+  };
+  return { entry, summary: `${Math.round(grams)} Gramm ${inv?.nameDe || inv?.name || itemName}` };
+}
+
+// ── T016d: NL recipe search (filters: category/price/kcal/allergens/type) ────
+const ALLERGEN_DE_TO_KEY: Array<{ token: RegExp; key: Allergen }> = [
+  { token: /gluten|weizen|getreide/i, key: "gluten" },
+  { token: /milch|laktose|lactose/i, key: "milk" },
+  { token: /\bei\b|eier/i, key: "egg" },
+  { token: /n[üu]ss/i, key: "nuts" },
+  { token: /soja/i, key: "soy" },
+  { token: /\bfisch\b/i, key: "fish" },
+  { token: /krebs|garnele|krustentier/i, key: "shellfish" },
+  { token: /sellerie/i, key: "celery" },
+  { token: /senf/i, key: "mustard" },
+  { token: /sesam/i, key: "sesame" },
+  { token: /sulfit|schwefel/i, key: "sulphite" },
+  { token: /lupin/i, key: "lupin" },
+  { token: /weichtier|muschel/i, key: "mollusc" },
+  { token: /erdnu/i, key: "peanut" },
+];
+
+function handleRecipeSearch(lower: string, recipes: readonly Recipe[]): string | null {
+  if (!/\b(finde|zeige?|gib mir|welche|liste)\b/.test(lower)) return null;
+  let pool = [...recipes];
+  let hits = 0;
+  if (/\bvegan\b/.test(lower)) { pool = pool.filter((r) => r.category === "vegan"); hits++; }
+  else if (/\bvegetarisch\b/.test(lower)) { pool = pool.filter((r) => r.category === "vegan" || r.category === "vegetarian"); hits++; }
+  else if (/\bfleisch\w*\b/.test(lower)) { pool = pool.filter((r) => r.category === "meat"); hits++; }
+  else if (/\bfisch\w*\b/.test(lower)) { pool = pool.filter((r) => r.category === "fish"); hits++; }
+  else if (/\bkinder/.test(lower)) { pool = pool.filter((r) => r.category === "kids"); hits++; }
+  if (/suppen?|eintopf/.test(lower)) { pool = pool.filter((r) => r.type === "soup" || /suppe|eintopf/i.test(r.nameDe + " " + r.name)); hits++; }
+  else if (/salate?\b/.test(lower)) { pool = pool.filter((r) => r.type === "salad" || /salat/i.test(r.nameDe + " " + r.name)); hits++; }
+  else if (/desserts?\b|nachtisch|nachspeise/.test(lower)) { pool = pool.filter((r) => r.type === "dessert"); hits++; }
+  const priceMax = lower.match(/unter\s+(\d+(?:[.,]\d+)?)\s*(?:euro|€)/i);
+  if (priceMax) {
+    const max = Number(priceMax[1]!.replace(",", "."));
+    pool = pool.filter((r) => r.sellPrice > 0 && r.sellPrice < max);
+    hits++;
+  }
+  const kcalMax = lower.match(/unter\s+(\d+)\s*(?:kcal|kalorien)/i);
+  if (kcalMax) {
+    const max = Number(kcalMax[1]);
+    pool = pool.filter((r) => typeof r.kcalPerPortion === "number" && r.kcalPerPortion < max);
+    hits++;
+  }
+  const ohneMatch = lower.match(/ohne\s+([\wäöü]+)/i);
+  if (ohneMatch) {
+    for (const { token, key } of ALLERGEN_DE_TO_KEY) {
+      if (token.test(ohneMatch[1]!)) {
+        pool = pool.filter((r) => !r.allergens.includes(key));
+        hits++;
+        break;
+      }
+    }
+  }
+  if (hits === 0) return null;
+  if (pool.length === 0) return "Ich habe keine passenden Gerichte in deinen Rezepten gefunden.";
+  const top = pool.slice(0, 3).map((r) => {
+    const price = r.sellPrice > 0 ? ` (${r.sellPrice.toFixed(2).replace(".", ",")} Euro)` : "";
+    return `${r.nameDe || r.name}${price}`;
+  });
+  const more = pool.length > 3 ? ` Insgesamt ${pool.length} Treffer.` : "";
+  return `Ich habe gefunden: ${joinDeList(top)}.${more}`;
+}
+
+// ── T016e: morning briefing composer ─────────────────────────────────────────
+// Pulls expiring items, low-stock count, today's events, and yesterday's
+// waste cost into one short paragraph. Returns null if there's nothing to
+// report (so we don't fire an empty briefing).
+function composeMorningBriefing(state: AppState): string | null {
+  const today = new Date().toISOString().slice(0, 10);
+  const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+  const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+  const parts: string[] = [];
+  const todayEvents = (state.events ?? []).filter((e) => e.eventDate === today);
+  if (todayEvents.length > 0) {
+    const confirmed = todayEvents.filter((e) => e.status === "bestaetigt" || e.status === "produktion").length;
+    parts.push(
+      `Heute ${todayEvents.length === 1 ? "ist 1 Veranstaltung" : `sind ${todayEvents.length} Veranstaltungen`} geplant${confirmed > 0 ? `, davon ${confirmed} bestätigt` : ""}.`,
+    );
+  }
+  const expiring = state.inventory.filter((i) => {
+    if (!i.expiresAt) return false;
+    const days = (new Date(i.expiresAt).getTime() - Date.now()) / 86_400_000;
+    return days >= 0 && days <= 2;
+  });
+  if (expiring.length > 0) {
+    const names = expiring.slice(0, 3).map((i) => i.nameDe || i.name);
+    parts.push(`${expiring.length} ${expiring.length === 1 ? "Artikel läuft" : "Artikel laufen"} bald ab: ${joinDeList(names)}.`);
+  }
+  const low = state.inventory.filter((i) => i.quantity <= i.minQuantity).length;
+  if (low > 0) {
+    parts.push(`${low} ${low === 1 ? "Artikel ist" : "Artikel sind"} unter Mindestbestand.`);
+  }
+  const yWaste = (state.waste ?? []).filter((w) => w.date === yesterday).reduce((n, w) => n + (w.cost ?? 0), 0);
+  if (yWaste > 5) {
+    parts.push(`Gestern wurden ${yWaste.toFixed(0)} Euro Abfall erfasst.`);
+  }
+  const tomEvents = (state.events ?? []).filter((e) => e.eventDate === tomorrow);
+  if (tomEvents.length > 0) {
+    parts.push(`Morgen ${tomEvents.length === 1 ? "1 weitere Veranstaltung" : `${tomEvents.length} weitere Veranstaltungen`}.`);
+  }
+  if (parts.length === 0) return null;
+  return `Guten Morgen, Chef. ${parts.join(" ")}`;
+}
+
 // ── T015: Smart lookups (recipe info, contacts, order mutations) ─────────────
 // Runs BEFORE handleHandsFree so contact/recipe-info patterns can use the
 // dedicated longest-first matchers without competing with timer/portion regex.
@@ -325,30 +782,35 @@ function parseQtyUnit(raw: string): { qty: number; unit: string; rest: string } 
 //   - reply: what Kios should say
 //   - pending: optional PendingAction → handleQuestion will switch to confirm
 //     phase and stash this for the Ja/Nein response.
+//   - context: T016a — the entity (recipe/inventory/contact) the user just
+//     asked about, so subsequent questions can resolve "davon"/"das"/"es".
 interface SmartLookupResult {
   reply: string;
   pending?: PendingAction;
+  context?: Partial<Omit<LastContext, "ts">>;
 }
 
-function handleSmartLookups(question: string, state: AppState): SmartLookupResult | null {
-  const lower = question.toLowerCase().trim();
+function handleSmartLookups(
+  questionRaw: string,
+  state: AppState,
+  lastContext: LastContext | null,
+): SmartLookupResult | null {
+  // T016a — anaphora pre-resolver: rewrite "davon"/"das"/"es" → entity.
+  const { question, lower } = expandAnaphora(questionRaw, questionRaw.toLowerCase().trim(), lastContext);
 
   // ── Contact phone lookup ───────────────────────────────────────────────
-  // "Welche Telefonnummer hat Anna?" / "Telefon von METRO" / "Ruf Müller an"
   const contactPattern = /(?:welche\s+)?(?:telefon(?:nummer)?|nummer|kontakt|email|mail)\s+(?:hat|von|für)\s+(.+?)\??$/i;
   const callPattern = /^(?:ruf|wähle|anrufen)\s+(.+?)(?:\s+an)?\??$/i;
   const contactMatch = lower.match(contactPattern) ?? lower.match(callPattern);
   if (contactMatch) {
     const queryName = contactMatch[1]!.trim();
     const hit = findContact(queryName, state);
-    if (!hit) {
-      return { reply: `Ich habe keinen Kontakt namens ${queryName} gefunden.` };
-    }
-    if (!hit.phone) {
-      return { reply: `Für ${hit.name} (${hit.role}) ist keine Telefonnummer hinterlegt.` };
-    }
-    // Read phone naturally — Web Speech reads "+49 30 12345" reasonably well.
-    return { reply: `${hit.name}, ${hit.role}: ${hit.phone}.` };
+    if (!hit) return { reply: `Ich habe keinen Kontakt namens ${queryName} gefunden.` };
+    if (!hit.phone) return { reply: `Für ${hit.name} (${hit.role}) ist keine Telefonnummer hinterlegt.` };
+    return {
+      reply: `${hit.name}, ${hit.role}: ${hit.phone}.`,
+      context: { contact: hit },
+    };
   }
 
   // ── Recipe kcal lookup ─────────────────────────────────────────────────
@@ -357,9 +819,12 @@ function handleSmartLookups(question: string, state: AppState): SmartLookupResul
     const r = findRecipeByName(kcalMatch[1]!, state.recipes);
     if (!r) return { reply: `Ich habe das Rezept ${kcalMatch[1]} nicht gefunden.` };
     if (typeof r.kcalPerPortion !== "number") {
-      return { reply: `Für ${r.nameDe || r.name} habe ich keine Kalorien-Angabe hinterlegt.` };
+      return { reply: `Für ${r.nameDe || r.name} habe ich keine Kalorien-Angabe hinterlegt.`, context: { recipe: r } };
     }
-    return { reply: `${r.nameDe || r.name} hat ca. ${Math.round(r.kcalPerPortion)} Kilokalorien pro Portion.` };
+    return {
+      reply: `${r.nameDe || r.name} hat ca. ${Math.round(r.kcalPerPortion)} Kilokalorien pro Portion.`,
+      context: { recipe: r },
+    };
   }
 
   // ── Recipe allergen lookup ─────────────────────────────────────────────
@@ -368,10 +833,10 @@ function handleSmartLookups(question: string, state: AppState): SmartLookupResul
     const r = findRecipeByName(allergenMatch[1]!, state.recipes);
     if (!r) return { reply: `Ich habe das Rezept ${allergenMatch[1]} nicht gefunden.` };
     if (!r.allergens || r.allergens.length === 0) {
-      return { reply: `${r.nameDe || r.name} enthält keine kennzeichnungspflichtigen Allergene.` };
+      return { reply: `${r.nameDe || r.name} enthält keine kennzeichnungspflichtigen Allergene.`, context: { recipe: r } };
     }
     const labels = r.allergens.map((a) => ALLERGEN_DE[a] ?? a);
-    return { reply: `${r.nameDe || r.name} enthält ${joinDeList(labels)}.` };
+    return { reply: `${r.nameDe || r.name} enthält ${joinDeList(labels)}.`, context: { recipe: r } };
   }
 
   // ── Recipe price lookup ────────────────────────────────────────────────
@@ -379,12 +844,14 @@ function handleSmartLookups(question: string, state: AppState): SmartLookupResul
   if (priceMatch) {
     const r = findRecipeByName(priceMatch[1]!, state.recipes);
     if (!r) return { reply: `Ich habe das Rezept ${priceMatch[1]} nicht gefunden.` };
-    if (!r.sellPrice) return { reply: `Für ${r.nameDe || r.name} ist kein Verkaufspreis hinterlegt.` };
-    return { reply: `${r.nameDe || r.name} kostet ${r.sellPrice.toFixed(2).replace(".", ",")} Euro.` };
+    if (!r.sellPrice) return { reply: `Für ${r.nameDe || r.name} ist kein Verkaufspreis hinterlegt.`, context: { recipe: r } };
+    return {
+      reply: `${r.nameDe || r.name} kostet ${r.sellPrice.toFixed(2).replace(".", ",")} Euro.`,
+      context: { recipe: r },
+    };
   }
 
   // ── Recipe diet check ──────────────────────────────────────────────────
-  // "Ist Schnitzel vegan?" → answers based on r.category.
   const dietMatch = lower.match(/^ist\s+(.+?)\s+(vegan|vegetarisch|fleisch|fisch)\??$/i);
   if (dietMatch) {
     const r = findRecipeByName(dietMatch[1]!, state.recipes);
@@ -398,21 +865,159 @@ function handleSmartLookups(question: string, state: AppState): SmartLookupResul
       (want === "fisch" && got === "fish");
     const catDe: Record<string, string> = { vegan: "vegan", vegetarian: "vegetarisch", meat: "ein Fleischgericht", fish: "ein Fischgericht", kids: "ein Kindergericht" };
     return {
-      reply: isMatch
-        ? `Ja, ${r.nameDe || r.name} ist ${catDe[got] ?? got}.`
-        : `Nein, ${r.nameDe || r.name} ist ${catDe[got] ?? got}.`,
+      reply: isMatch ? `Ja, ${r.nameDe || r.name} ist ${catDe[got] ?? got}.` : `Nein, ${r.nameDe || r.name} ist ${catDe[got] ?? got}.`,
+      context: { recipe: r },
+    };
+  }
+
+  // ── T016b: shift query ────────────────────────────────────────────────
+  // "Wer arbeitet heute / morgen / am Freitag"
+  if (/wer\s+arbeitet|wer\s+(?:hat|macht)\s+(?:heute|morgen|schicht)|schicht\s+(?:heute|morgen)/i.test(lower)) {
+    const day = parseSingleDay(lower) ?? { iso: new Date().toISOString().slice(0, 10), label: "heute" };
+    const shifts = (state.shifts ?? []).filter((s) => s.date === day.iso);
+    if (shifts.length === 0) return { reply: `${day.label[0]!.toUpperCase()}${day.label.slice(1)} sind keine Schichten eingeteilt.` };
+    const empMap = new Map((state.employees ?? []).map((e) => [e.id, e.name]));
+    const names = Array.from(new Set(shifts.map((s) => empMap.get(s.employeeId) || s.employeeId)));
+    return {
+      reply: `${day.label[0]!.toUpperCase()}${day.label.slice(1)} ${names.length === 1 ? "ist 1 Mitarbeiter eingeteilt" : `sind ${names.length} Mitarbeiter eingeteilt`}: ${joinDeList(names)}.`,
+    };
+  }
+
+  // ── T016b: waste cost in date range ───────────────────────────────────
+  if (/(?:wie\s+viel(?:e)?|wieviel)\s+(?:abfall|m[üu]ll|verschwendet|weggeworfen)|abfall.*kosten|wegwerf/i.test(lower)) {
+    const range = dateRangeFromPhrase(lower) ?? { from: new Date().toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10), label: "heute" };
+    const items = (state.waste ?? []).filter((w) => w.date >= range.from && w.date <= range.to);
+    const totalCost = items.reduce((n, w) => n + (w.cost ?? 0), 0);
+    const totalGrams = items.reduce((n, w) => n + (w.grams ?? 0), 0);
+    if (items.length === 0) return { reply: `${range.label[0]!.toUpperCase()}${range.label.slice(1)} wurde kein Abfall erfasst.` };
+    const kg = totalGrams >= 1000 ? `${(totalGrams / 1000).toFixed(1)} Kilo` : `${Math.round(totalGrams)} Gramm`;
+    return {
+      reply: `${range.label[0]!.toUpperCase()}${range.label.slice(1)} wurden ${kg} Abfall im Wert von ${totalCost.toFixed(2).replace(".", ",")} Euro erfasst.`,
+    };
+  }
+
+  // ── T016b: revenue / portion count ────────────────────────────────────
+  if (/umsatz|verdient|eingenommen|wieviele?\s+portion|wie\s+viele?\s+portion/i.test(lower)) {
+    const range = dateRangeFromPhrase(lower) ?? { from: new Date().toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10), label: "heute" };
+    const sales = state.sales.filter((s) => s.date >= range.from && s.date <= range.to);
+    if (sales.length === 0) return { reply: `${range.label[0]!.toUpperCase()}${range.label.slice(1)} wurden noch keine Verkäufe erfasst.` };
+    const portions = sales.reduce((n, s) => n + s.sold, 0);
+    const revenue = sales.reduce((n, s) => {
+      if (s.revenue && s.revenue > 0) return n + s.revenue;
+      const r = state.recipes.find((rc) => rc.id === s.recipeId);
+      return n + s.sold * (r?.sellPrice ?? 0);
+    }, 0);
+    if (/portion/i.test(lower)) {
+      return { reply: `${range.label[0]!.toUpperCase()}${range.label.slice(1)} wurden ${portions} Portionen verkauft.` };
+    }
+    return {
+      reply: `${range.label[0]!.toUpperCase()}${range.label.slice(1)}: ${portions} Portionen, ca. ${revenue.toFixed(0)} Euro Umsatz.`,
+    };
+  }
+
+  // ── T016b: top customer (catering aggregate) ──────────────────────────
+  if (/top\s+kund|gr[öo][ßs]te[rn]?\s+kund|wichtigste[rn]?\s+kund|umsatz.*kund|kund.*umsatz/i.test(lower)) {
+    const range = dateRangeFromPhrase(lower);
+    const events = (state.events ?? []).filter((e) => {
+      if (!e.clientName) return false;
+      if (!range) return true;
+      return e.eventDate >= range.from && e.eventDate <= range.to;
+    });
+    if (events.length === 0) return { reply: range ? `${range.label[0]!.toUpperCase()}${range.label.slice(1)} habe ich keine Veranstaltungen.` : "Ich habe noch keine Catering-Kunden erfasst." };
+    const agg = new Map<string, { count: number; revenue: number }>();
+    for (const e of events) {
+      const prev = agg.get(e.clientName) ?? { count: 0, revenue: 0 };
+      // CateringEvent revenue = sum of menuItems (pricePerPortion × portions).
+      // No flat perPersonCents on CateringEvent (that's CateringRequest).
+      const eventRevenue = (e.menuItems ?? []).reduce((n, m) => n + (m.pricePerPortion ?? 0) * (m.portions ?? 0), 0);
+      agg.set(e.clientName, { count: prev.count + 1, revenue: prev.revenue + eventRevenue });
+    }
+    const top = Array.from(agg.entries()).sort((a, b) => b[1].revenue - a[1].revenue || b[1].count - a[1].count)[0]!;
+    const label = range ? `${range.label} ` : "";
+    return {
+      reply: `Top-Kunde ${label}ist ${top[0]} mit ${top[1].count} Veranstaltung${top[1].count === 1 ? "" : "en"}${top[1].revenue > 0 ? `, ca. ${top[1].revenue.toFixed(0)} Euro` : ""}.`,
+    };
+  }
+
+  // ── T016d: NL recipe search (vegan, soup, ohne Gluten, unter X Euro) ──
+  const nlSearch = handleRecipeSearch(lower, state.recipes);
+  if (nlSearch) return { reply: nlSearch };
+
+  // ── T016f: Internet recipe search (delegates to AI) ───────────────────
+  // Trigger only when the user explicitly asks to search/idea/discover.
+  // Returns reply=null here — handled async in handleQuestion via a special
+  // marker because this path needs an AI round-trip.
+  const onlineMatch = lower.match(/(?:suche|finde|gib mir|brauche|hast du)\s+(?:eine?\s+)?(?:rezept|idee|inspiration)\s+(?:für|fuer)\s+(.+?)\??$/i)
+    ?? lower.match(/(?:rezept|idee)\s+für\s+(.+?)\??$/i);
+  if (onlineMatch) {
+    // Marker: empty reply + special pending kind. handleQuestion will detect
+    // and trigger the AI fetch + confirm flow.
+    return {
+      reply: "__T016F_FETCH__:" + onlineMatch[1]!.trim(),
+    };
+  }
+
+  // ── T016c: HACCP voice mutation ───────────────────────────────────────
+  const haccpParsed = parseHaccpFromText(lower);
+  if (haccpParsed) {
+    return {
+      reply: `Soll ich ${haccpParsed.summary} im HACCP-Protokoll erfassen? Sage Ja oder Nein.`,
+      pending: { kind: "addHaccpEntry", entry: haccpParsed.entry, summary: haccpParsed.summary },
+    };
+  }
+
+  // ── T016c: Inventory SET voice mutation ───────────────────────────────
+  const invSetRaw = parseInventorySet(lower, state.inventory);
+  // Dimension mismatch → speak a clear clarification, do NOT queue a pending
+  // action with corrupted units.
+  if (invSetRaw && "error" in invSetRaw) {
+    return {
+      reply: `Einheit passt nicht: ${invSetRaw.itemName} wird in ${invSetRaw.invUnit} geführt, du hast ${invSetRaw.spokenUnit} gesagt. Bitte nochmal mit passender Einheit.`,
+    };
+  }
+  const invSet = invSetRaw;
+  if (invSet) {
+    return {
+      reply: `Soll ich ${invSet.item.nameDe || invSet.item.name} auf ${invSet.qty} ${invSet.unit} setzen? Sage Ja oder Nein.`,
+      pending: { kind: "setInventoryQty", itemId: invSet.item.id, itemName: invSet.item.nameDe || invSet.item.name, qty: invSet.qty, unit: invSet.unit },
+      context: { inventoryItem: invSet.item },
+    };
+  }
+
+  // ── T016c: Inventory CONSUME voice mutation ───────────────────────────
+  const invConsumeRaw = parseInventoryConsume(lower, state.inventory);
+  if (invConsumeRaw && "error" in invConsumeRaw) {
+    return {
+      reply: `Einheit passt nicht: ${invConsumeRaw.itemName} wird in ${invConsumeRaw.invUnit} geführt, du hast ${invConsumeRaw.spokenUnit} gesagt. Bitte nochmal mit passender Einheit.`,
+    };
+  }
+  const invConsume = invConsumeRaw;
+  if (invConsume) {
+    // Parser already converted into inv.unit and validated dimension match.
+    const u = invConsume.unit;
+    const unitDe = u === "kg" ? "Kilo" : u === "g" ? "Gramm" : u === "l" ? "Liter" : u === "ml" ? "Milliliter" : "Stück";
+    return {
+      reply: `Soll ich ${invConsume.qty} ${unitDe} ${invConsume.item.nameDe || invConsume.item.name} vom Bestand abziehen? Sage Ja oder Nein.`,
+      pending: { kind: "consumeInventoryQty", itemId: invConsume.item.id, itemName: invConsume.item.nameDe || invConsume.item.name, qty: invConsume.qty, unit: invConsume.unit },
+      context: { inventoryItem: invConsume.item },
+    };
+  }
+
+  // ── T016c: Waste voice mutation ───────────────────────────────────────
+  const wasteParsed = parseWasteFromText(lower, state.inventory);
+  if (wasteParsed) {
+    return {
+      reply: `Soll ich ${wasteParsed.summary} als Abfall erfassen? Sage Ja oder Nein.`,
+      pending: { kind: "logWaste", entry: wasteParsed.entry, summary: wasteParsed.summary },
     };
   }
 
   // ── Order item: ADD ────────────────────────────────────────────────────
-  // "Füge 5 Liter Milch zur Bestellung hinzu" / "Tu Brot in die Bestellung"
-  const addMatch = lower.match(/(?:füge|fuege|tu|nimm|leg)\s+(.+?)\s+(?:zur|zum|in\s+die|in\s+den|in)\s+bestellung\s+(?:hinzu|dazu|rein)?/i);
+  const addMatch = question.toLowerCase().match(/(?:füge|fuege|tu|nimm|leg)\s+(.+?)\s+(?:zur|zum|in\s+die|in\s+den|in)\s+bestellung\s+(?:hinzu|dazu|rein)?/i);
   if (addMatch) {
     const draft = (state.orders ?? []).filter((o) => o.status === "draft")
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
-    if (!draft) {
-      return { reply: "Es gibt keine offene Bestellung. Öffne erst die Bestellvorschläge." };
-    }
+    if (!draft) return { reply: "Es gibt keine offene Bestellung. Öffne erst die Bestellvorschläge." };
     const { qty, unit, rest } = parseQtyUnit(addMatch[1]!);
     const inv = findInventoryByName(rest, state.inventory);
     const itemName = inv ? (inv.nameDe || inv.name) : rest;
@@ -427,23 +1032,19 @@ function handleSmartLookups(question: string, state: AppState): SmartLookupResul
     return {
       reply: `Soll ich ${qty} ${finalUnit} ${itemName} zur Bestellung bei ${draft.supplierName} hinzufügen? Sage Ja oder Nein.`,
       pending: { kind: "addOrderItem", order: draft, newItem, supplierName: draft.supplierName },
+      ...(inv ? { context: { inventoryItem: inv } } : {}),
     };
   }
 
   // ── Order item: REMOVE ─────────────────────────────────────────────────
-  // "Entferne Brot aus der Bestellung" / "Streiche Milch von der Bestellung"
   const removeMatch = lower.match(/(?:entferne|streiche|lösche|loesche|nimm)\s+(.+?)\s+(?:aus|von)\s+(?:der\s+)?bestellung/i);
   if (removeMatch) {
     const draft = (state.orders ?? []).filter((o) => o.status === "draft")
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
-    if (!draft || draft.items.length === 0) {
-      return { reply: "Es gibt keine offene Bestellung mit Artikeln." };
-    }
+    if (!draft || draft.items.length === 0) return { reply: "Es gibt keine offene Bestellung mit Artikeln." };
     const target = removeMatch[1]!.toLowerCase().trim();
     const idx = draft.items.findIndex((it) => it.name.toLowerCase().includes(target) || target.includes(it.name.toLowerCase()));
-    if (idx === -1) {
-      return { reply: `${removeMatch[1]} ist nicht in der Bestellung bei ${draft.supplierName}.` };
-    }
+    if (idx === -1) return { reply: `${removeMatch[1]} ist nicht in der Bestellung bei ${draft.supplierName}.` };
     const itemName = draft.items[idx]!.name;
     return {
       reply: `Soll ich ${itemName} aus der Bestellung bei ${draft.supplierName} entfernen? Sage Ja oder Nein.`,
@@ -592,6 +1193,8 @@ interface KiosRefs {
   /** TTL for the confirm window (auto-cancel on silence). */
   pendingTtl: ReturnType<typeof setTimeout> | null;
   state: AppState;
+  /** T016a — last referenced entity for anaphora resolution. */
+  lastContext: LastContext | null;
 }
 
 // Time windows (T015). Tuned for kitchen-floor reality:
@@ -632,6 +1235,7 @@ export function useKios() {
     pendingAction: null,
     pendingTtl: null,
     state,
+    lastContext: null,
   });
 
   r.current.state = state;
@@ -744,8 +1348,80 @@ export function useKios() {
     // ("kalorien hat X") deserve dedicated regex without competing with the
     // looser timer/portion patterns. A returned `pending` triggers the
     // Ja/Nein confirm phase.
-    const smart = handleSmartLookups(question, snap);
+    // T016a — pass the last-referenced entity for anaphora pre-resolver.
+    const smart = handleSmartLookups(question, snap, r.current.lastContext);
     if (smart) {
+      // T016a — anaphora context lifecycle:
+      //  - hit with `context` → refresh (extend TTL on the new entity)
+      //  - hit without `context` → clear (a non-entity intent just answered;
+      //    keeping a stale recipe/inv reference would let later "wie teuer
+      //    ist das?" resolve wrongly to it).
+      if (smart.context) {
+        r.current.lastContext = { ...smart.context, ts: Date.now() };
+      } else {
+        r.current.lastContext = null;
+      }
+
+      // T016f — internet recipe search marker. handleSmartLookups returns
+      // a marker reply; we kick off the AI fetch here, then queue a
+      // confirm-pending action ("Soll ich es hinzufügen?").
+      if (smart.reply.startsWith("__T016F_FETCH__:")) {
+        const query = smart.reply.slice("__T016F_FETCH__:".length).trim();
+        setStatus("speaking");
+        speakHQ(`Einen Moment, ich suche nach ${query}.`, locale, () => {
+          void (async () => {
+            try {
+              const gen = await generateRecipe({ idea: query, locale: "de" });
+              // generateRecipe returns allergens as string[]; the Recipe type
+              // requires the strict Allergen union. Filter to the known
+              // tokens (the AI prompt already constrains to this set, but a
+               // defensive filter prevents bad model output from breaking us).
+              const ALLERGEN_KEYS: ReadonlyArray<Allergen> = [
+                "gluten", "milk", "egg", "nuts", "soy", "fish", "shellfish",
+                "celery", "mustard", "sesame", "sulphite", "lupin", "mollusc", "peanut",
+              ];
+              const safeAllergens: Allergen[] = (gen.allergens ?? [])
+                .filter((a): a is Allergen => ALLERGEN_KEYS.includes(a as Allergen));
+              const recipe: Recipe = {
+                id: `kios-${Date.now().toString(36)}`,
+                name: gen.name,
+                nameDe: gen.nameDe,
+                type: gen.type,
+                category: gen.category,
+                meat: gen.meat,
+                portionGrams: gen.portionGrams,
+                ingredients: [],
+                allergens: safeAllergens,
+                steps: gen.steps,
+                stepsDe: gen.stepsDe,
+                basePrice: gen.basePrice,
+                sellPrice: gen.sellPrice,
+                cookTimeMin: gen.cookTimeMin,
+                ...(typeof gen.kcalPerPortion === "number" ? { kcalPerPortion: gen.kcalPerPortion } : {}),
+              };
+              r.current.pendingAction = { kind: "addRecipeFromOnline", recipe };
+              const kcalPart = typeof recipe.kcalPerPortion === "number" ? `, ${Math.round(recipe.kcalPerPortion)} Kalorien pro Portion` : "";
+              setStatus("speaking");
+              speakHQ(
+                `Vorschlag: ${recipe.nameDe}${kcalPart}. Soll ich es zu deinen Rezepten hinzufügen? Sage Ja oder Nein.`,
+                locale,
+                () => scheduleConfirm(200),
+                snap.kiosVoice,
+              );
+            } catch {
+              setStatus("speaking");
+              speakHQ(
+                "Ich konnte kein passendes Rezept generieren. Versuche es bitte später.",
+                locale,
+                () => scheduleFollowup(400),
+                snap.kiosVoice,
+              );
+            }
+          })();
+        }, snap.kiosVoice);
+        return;
+      }
+
       if (smart.pending) {
         r.current.pendingAction = smart.pending;
       }
@@ -773,12 +1449,16 @@ export function useKios() {
       return;
     }
 
-    // Quick command (instant nav)
+    // Quick command (instant nav).
+    // T016g — in rush hours (lunch/dinner service) Kios speaks the terse
+    // form ("Lager." instead of "Ich zeige dir den Lagerbestand.") to get
+    // the cook back to work faster.
     const quick = matchQuickCommand(question);
     if (quick) {
       if (NAV_MAP[quick.nav]) router.push(NAV_MAP[quick.nav] as never);
       setStatus("speaking");
-      speakHQ(quick.reply, locale, () => scheduleFollowup(300), snap.kiosVoice);
+      const replyText = isRushMode() ? terseQuickReply(quick.nav, quick.reply) : quick.reply;
+      speakHQ(replyText, locale, () => scheduleFollowup(300), snap.kiosVoice);
       return;
     }
 
@@ -838,37 +1518,109 @@ export function useKios() {
     const voice  = r.current.state.kiosVoice;
     setStatus("speaking");
 
-    const liveOrder = (r.current.state.orders ?? []).find((o) => o.id === pending.order.id);
-    if (!liveOrder || liveOrder.status !== "draft") {
-      speakHQ(
-        "Die Bestellung wurde inzwischen geändert oder gesendet. Aktion abgebrochen.",
-        locale, () => scheduleFollowup(400), voice,
-      );
-      return;
-    }
-
-    if (pending.kind === "addOrderItem") {
-      const next: OrderDraft = { ...liveOrder, items: [...liveOrder.items, pending.newItem] };
-      dispatch({ type: "updateOrder", order: next });
-      const it = pending.newItem;
-      speakHQ(`Erledigt: ${it.quantity} ${it.unit} ${it.name} hinzugefügt.`, locale, () => scheduleFollowup(300), voice);
-    } else {
-      const target = pending.itemName.toLowerCase();
-      const idx = liveOrder.items.findIndex((it) =>
-        it.name.toLowerCase() === target ||
-        it.name.toLowerCase().includes(target) ||
-        target.includes(it.name.toLowerCase()),
-      );
-      if (idx === -1) {
+    // ── Order mutations (T015) ─────────────────────────────────────────
+    if (pending.kind === "addOrderItem" || pending.kind === "removeOrderItem") {
+      const liveOrder = (r.current.state.orders ?? []).find((o) => o.id === pending.order.id);
+      if (!liveOrder || liveOrder.status !== "draft") {
         speakHQ(
-          `${pending.itemName} ist nicht mehr in der Bestellung. Aktion abgebrochen.`,
+          "Die Bestellung wurde inzwischen geändert oder gesendet. Aktion abgebrochen.",
           locale, () => scheduleFollowup(400), voice,
         );
         return;
       }
-      const next: OrderDraft = { ...liveOrder, items: liveOrder.items.filter((_, i) => i !== idx) };
-      dispatch({ type: "updateOrder", order: next });
-      speakHQ(`Erledigt: ${pending.itemName} entfernt.`, locale, () => scheduleFollowup(300), voice);
+      if (pending.kind === "addOrderItem") {
+        const next: OrderDraft = { ...liveOrder, items: [...liveOrder.items, pending.newItem] };
+        dispatch({ type: "updateOrder", order: next });
+        const it = pending.newItem;
+        speakHQ(`Erledigt: ${it.quantity} ${it.unit} ${it.name} hinzugefügt.`, locale, () => scheduleFollowup(300), voice);
+      } else {
+        const target = pending.itemName.toLowerCase();
+        const idx = liveOrder.items.findIndex((it) =>
+          it.name.toLowerCase() === target ||
+          it.name.toLowerCase().includes(target) ||
+          target.includes(it.name.toLowerCase()),
+        );
+        if (idx === -1) {
+          speakHQ(
+            `${pending.itemName} ist nicht mehr in der Bestellung. Aktion abgebrochen.`,
+            locale, () => scheduleFollowup(400), voice,
+          );
+          return;
+        }
+        const next: OrderDraft = { ...liveOrder, items: liveOrder.items.filter((_, i) => i !== idx) };
+        dispatch({ type: "updateOrder", order: next });
+        speakHQ(`Erledigt: ${pending.itemName} entfernt.`, locale, () => scheduleFollowup(300), voice);
+      }
+      return;
+    }
+
+    // ── T016c — HACCP entry ───────────────────────────────────────────
+    if (pending.kind === "addHaccpEntry") {
+      dispatch({ type: "addHaccp", log: pending.entry });
+      speakHQ(`Erledigt: ${pending.summary} im HACCP-Protokoll erfasst.`, locale, () => scheduleFollowup(300), voice);
+      return;
+    }
+
+    // ── T016c — Inventory SET ─────────────────────────────────────────
+    // Re-fetch by id: the item may have been edited or deleted in the
+    // 30-second confirm window. Never blindly overwrite using a stale
+    // snapshot — that's how voice mutations corrupt production data.
+    // Also abort if inv.unit changed since parse (qty was converted into
+    // the parse-time unit and would be wrong against the new unit).
+    if (pending.kind === "setInventoryQty") {
+      const inv = (r.current.state.inventory ?? []).find((i) => i.id === pending.itemId);
+      if (!inv) {
+        speakHQ(`Der Artikel ${pending.itemName} wurde inzwischen gelöscht. Aktion abgebrochen.`, locale, () => scheduleFollowup(400), voice);
+        return;
+      }
+      if (inv.unit !== pending.unit) {
+        speakHQ(`Die Einheit von ${inv.nameDe || inv.name} hat sich geändert. Bitte wiederhole den Befehl.`, locale, () => scheduleFollowup(400), voice);
+        return;
+      }
+      const next: InventoryItem = { ...inv, quantity: pending.qty };
+      dispatch({ type: "updateInventory", item: next });
+      speakHQ(`Erledigt: ${inv.nameDe || inv.name} auf ${pending.qty} ${pending.unit} gesetzt.`, locale, () => scheduleFollowup(300), voice);
+      return;
+    }
+
+    // ── T016c — Inventory CONSUME (decrement) ─────────────────────────
+    // pending.qty/.unit are already in the (parse-time) inv.unit. Re-check
+    // unit hasn't changed before applying.
+    if (pending.kind === "consumeInventoryQty") {
+      const inv = (r.current.state.inventory ?? []).find((i) => i.id === pending.itemId);
+      if (!inv) {
+        speakHQ(`Der Artikel ${pending.itemName} wurde inzwischen gelöscht. Aktion abgebrochen.`, locale, () => scheduleFollowup(400), voice);
+        return;
+      }
+      if (inv.unit !== pending.unit) {
+        speakHQ(`Die Einheit von ${inv.nameDe || inv.name} hat sich geändert. Bitte wiederhole den Befehl.`, locale, () => scheduleFollowup(400), voice);
+        return;
+      }
+      const newQty = Math.max(0, inv.quantity - pending.qty);
+      const next: InventoryItem = { ...inv, quantity: Math.round(newQty * 1000) / 1000 };
+      dispatch({ type: "updateInventory", item: next });
+      speakHQ(
+        `Erledigt: ${pending.itemName} verbraucht. Restbestand ${next.quantity} ${inv.unit}.`,
+        locale, () => scheduleFollowup(300), voice,
+      );
+      return;
+    }
+
+    // ── T016c — Waste log ─────────────────────────────────────────────
+    if (pending.kind === "logWaste") {
+      dispatch({ type: "addWaste", entry: pending.entry });
+      speakHQ(`Erledigt: ${pending.summary} als Abfall erfasst.`, locale, () => scheduleFollowup(300), voice);
+      return;
+    }
+
+    // ── T016f — Add recipe imported from internet search ─────────────
+    if (pending.kind === "addRecipeFromOnline") {
+      dispatch({ type: "addRecipe", recipe: pending.recipe });
+      speakHQ(
+        `Erledigt: ${pending.recipe.nameDe} zu deinen Rezepten hinzugefügt.`,
+        locale, () => scheduleFollowup(300), voice,
+      );
+      return;
     }
   }
 
@@ -923,11 +1675,19 @@ export function useKios() {
               void handleQuestion(afterWake);
             } else {
               r.current.phase = "question";
-              speakHQ("Ja?", r.current.state.locale, () => {
+              // T016g — in rush hours skip the "Ja?" prompt entirely and go
+              // straight to listening. Saves ~600 ms per command.
+              if (isRushMode()) {
                 if (r.current.status !== "off" && r.current.status !== "thinking") {
                   startListening("question");
                 }
-              }, r.current.state.kiosVoice);
+              } else {
+                speakHQ("Ja?", r.current.state.locale, () => {
+                  if (r.current.status !== "off" && r.current.status !== "thinking") {
+                    startListening("question");
+                  }
+                }, r.current.state.kiosVoice);
+              }
             }
           }
         } else if (r.current.phase === "question") {
@@ -973,8 +1733,16 @@ export function useKios() {
               clearAllTimers();
               cancelPendingAction(true);
             } else if (yes && no) {
-              // Ambiguous (e.g. "ja nicht" / "nein, ok"). Re-prompt and keep
-              // the confirm TTL alive — user gets one more chance to commit.
+              // Ambiguous (e.g. "ja nicht" / "nein, ok"). Re-prompt AND
+              // re-arm the confirm TTL so the action cannot expire while
+              // we're still speaking the clarification or waiting for the
+              // user's next attempt. Architect feedback: leaving the
+              // original TTL alive could fire mid-clarification, killing
+              // the pending action right before the user says "Ja".
+              if (r.current.pendingTtl !== null) {
+                clearTimeout(r.current.pendingTtl);
+                r.current.pendingTtl = null;
+              }
               setStatus("speaking");
               speakHQ(
                 "Bitte antworte nur mit Ja oder Nein.",
@@ -983,7 +1751,12 @@ export function useKios() {
                   if (r.current.status === "off") return;
                   setStatus("idle");
                   startListening("confirm");
-                  // Note: pendingTtl from scheduleConfirm is still armed.
+                  // Re-arm a fresh TTL after the clarification finishes.
+                  r.current.pendingTtl = setTimeout(() => {
+                    if (r.current.status === "off") return;
+                    r.current.pendingAction = null;
+                    if (r.current.phase === "confirm") r.current.phase = "wake";
+                  }, CONFIRM_WINDOW_MS);
                 },
                 r.current.state.kiosVoice,
               );
@@ -1029,7 +1802,37 @@ export function useKios() {
     // fetch latency can drop us outside the user-activation window.
     void prefetchKiosPhrases(state.kiosVoice);
     setStatus("idle");
-    startListening("wake");
+    // T016e — proactive morning briefing. If 12+ hours have passed since the
+    // last briefing AND there's something worth reporting (events / expiring
+    // items / low stock / yesterday waste), speak it once. Listening starts
+    // AFTER the briefing finishes so the spoken text doesn't get clipped by
+    // an overlapping wake-listener restart.
+    void (async () => {
+      let spoken = false;
+      try {
+        const raw = await AsyncStorage.getItem("kios:lastBriefingAt");
+        const last = raw ? Number(raw) : 0;
+        const now = Date.now();
+        if (!Number.isFinite(last) || now - last >= 12 * 3600 * 1000) {
+          const briefing = composeMorningBriefing(r.current.state);
+          if (briefing) {
+            spoken = true;
+            await AsyncStorage.setItem("kios:lastBriefingAt", String(now));
+            // Guard: if disable() races against this async block, status
+            // becomes "off" and we must NOT speak or restart listening.
+            if (r.current.status === "off") return;
+            setStatus("speaking");
+            speakHQ(briefing, r.current.state.locale, () => {
+              if (r.current.status === "off") return;
+              setStatus("idle");
+              startListening("wake");
+            }, r.current.state.kiosVoice);
+          }
+        }
+      } catch { /* briefing is best-effort; never block enable() */ }
+      // Same guard: don't restart listening if disable() ran during the await.
+      if (!spoken && r.current.status !== "off") startListening("wake");
+    })();
   }
 
   function disable() {
