@@ -13,7 +13,7 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { dgeStandardLabel } from "@/lib/dge";
 import { ensurePermissions, rescheduleAll } from "@/lib/notifications";
 import { resetState } from "@/lib/storage";
-import { speakHQ, prewarmTtsCache } from "@/lib/voice";
+import { speakHQ, prewarmTtsCache, primeAudio } from "@/lib/voice";
 import type { DgeStandard, KiosVoice, SubscriptionAddons, SubscriptionTier } from "@/types";
 
 const KIOS_VOICES: { id: KiosVoice; labelDe: string; labelEn: string; descDe: string; descEn: string }[] = [
@@ -236,6 +236,9 @@ export default function Settings() {
                   <Pressable
                     key={v.id}
                     onPress={() => {
+                      // Safari: prime a persistent audio element on this gesture
+                      // so the subsequent "Hören" test button can play.
+                      primeAudio();
                       dispatch({ type: "setKiosVoice", voice: v.id });
                       // Re-warm cache for the new voice in the background
                       void prewarmTtsCache({ preset: "kios-de", voice: v.id });
@@ -278,6 +281,9 @@ export default function Settings() {
                     <Pressable
                       onPress={(e) => {
                         e.stopPropagation();
+                        // Safari: prime audio in this gesture before any async
+                        // TTS fetch consumes the user-activation window.
+                        primeAudio();
                         speakHQ(
                           state.locale === "de"
                             ? "Hallo, ich bin Kios, dein Küchenassistent."

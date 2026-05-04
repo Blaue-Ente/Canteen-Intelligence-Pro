@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { askKios } from "@/lib/kios";
-import { speakHQ, stopSpeaking, isSafari, prewarmTtsCache } from "@/lib/voice";
+import { speakHQ, stopSpeaking, isSafari, prewarmTtsCache, primeAudio, prefetchKiosPhrases } from "@/lib/voice";
 import { useApp } from "@/contexts/AppContext";
 import {
   cancelAllTimers,
@@ -315,25 +315,6 @@ function isVoiceAvailable(): boolean {
   return Boolean(getWindowSR());
 }
 
-// ── Safari PWA audio unlock ──────────────────────────────────────────────────
-// iOS Safari (incl. PWA / standalone mode) blocks HTML5 Audio.play() unless it's
-// triggered by a user gesture. The user always taps to enable Kios, so we use
-// that gesture to "unlock" audio playback for the rest of the session.
-let _audioUnlocked = false;
-
-function unlockAudio(): void {
-  if (_audioUnlocked) return;
-  if (typeof window === "undefined" || typeof Audio === "undefined") return;
-  try {
-    // 1×1 silent MP3 — plays instantly, satisfies the gesture requirement.
-    const silent = new Audio(
-      "data:audio/mp3;base64,SUQzBAAAAAABEVRYWFgAAAAtAAADY29tbWVudABCaWdTb3VuZEJhbmsuY29tIC8gTGFTb25vdGhlcXVlLm9yZwBURU5DAAAAHQAAA1N3aXRjaCBQbHVzIMKpIE5DSCBTb2Z0d2FyZQBUSVQyAAAABgAAAzIyMzUAVFNTRQAAAA8AAANMYXZmNTcuODMuMTAwAAAAAAAAAAAAAAD/80DEAAAAA0gAAAAATEFNRTMuMTAwVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/zQsRbAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/zQMSkAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV"
-    );
-    silent.volume = 0;
-    silent.play().then(() => { _audioUnlocked = true; }).catch(() => { /* still ok */ });
-  } catch { /* ignore */ }
-}
-
 // ── Hook ─────────────────────────────────────────────────────────────────────
 export function useKios() {
   const { state } = useApp();
@@ -512,11 +493,18 @@ export function useKios() {
 
   function enable() {
     if (!isVoiceAvailable()) return;
-    unlockAudio();           // Safari PWA: prime audio while still in user gesture
-    // Pre-warm server TTS cache for all 40+ static Kios phrases. Fire-and-forget;
-    // returns immediately and the server generates them in the background. Result:
-    // every "Statistik wird geöffnet." / "Ja?" / etc plays instantly with no fetch.
+    // Safari iOS gesture-bless: create a persistent <audio> element and play a
+    // silent buffer on it RIGHT NOW (still inside the user's tap). All later
+    // speakHQ() calls reuse this same element so Safari permits playback even
+    // after async TTS fetches have consumed the original gesture.
+    primeAudio();
+    // Server-side warm: tell the API to pre-generate every static phrase MP3.
     void prewarmTtsCache({ preset: "kios-de", voice: state.kiosVoice });
+    // Client-side warm: fetch the hottest phrases into the browser blob cache
+    // so quick replies ("Ja?", "Statistik wird geöffnet.", …) play instantly
+    // with zero network latency — critical on Safari where even 200 ms of
+    // fetch latency can drop us outside the user-activation window.
+    void prefetchKiosPhrases(state.kiosVoice);
     setStatus("idle");
     startListening("wake");
   }
