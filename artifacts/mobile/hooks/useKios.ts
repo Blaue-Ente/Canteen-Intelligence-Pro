@@ -10,11 +10,14 @@ export type KiosStatus = "off" | "idle" | "awake" | "thinking" | "speaking";
 
 const NAV_MAP: Record<string, string> = {
   inventory: "/(tabs)/inventory",
-  stats: "/(tabs)/stats",
-  menu: "/(tabs)/menu",
-  home: "/(tabs)/",
-  chat: "/chat",
+  stats:     "/(tabs)/stats",
+  menu:      "/(tabs)/menu",
+  home:      "/(tabs)/",
+  chat:      "/chat",
 };
+
+// AI request timeout in ms
+const AI_TIMEOUT_MS = 15_000;
 
 // All mutable values accessed from speech recognition callbacks live here
 // to avoid stale-closure issues across React renders.
@@ -66,52 +69,77 @@ export function useKios() {
   /*  Core helpers                                                        */
   /* ------------------------------------------------------------------ */
 
-  function stopListening() {
+  function clearRestartTimer() {
     if (r.current.restartTimer !== null) {
       clearTimeout(r.current.restartTimer);
       r.current.restartTimer = null;
     }
+  }
+
+  function stopListening() {
+    clearRestartTimer();
     if (r.current.rec) {
-      try {
-        (r.current.rec as { abort(): void }).abort();
-      } catch {
-        // ignore
-      }
+      try { (r.current.rec as { abort(): void }).abort(); } catch { /* ignore */ }
       r.current.rec = null;
     }
+  }
+
+  function scheduleRestart(delayMs = 400) {
+    clearRestartTimer();
+    r.current.restartTimer = setTimeout(() => {
+      if (r.current.status !== "off") {
+        setStatus("idle");
+        startListening();
+      }
+    }, delayMs);
   }
 
   async function handleQuestion(question: string) {
     stopListening();
     setStatus("thinking");
     const snap = r.current.state;
+
+    // Wrap askKios with a hard timeout so we never freeze in "Denke nach…"
+    let result: Awaited<ReturnType<typeof askKios>> | null = null;
     try {
-      const result = await askKios(question, snap);
-      setStatus("speaking");
-      speak(result.answer, snap.locale);
-
-      const navKey = result.navigate && result.navigate !== "null" ? result.navigate : null;
-      if (navKey && NAV_MAP[navKey]) {
-        router.push(NAV_MAP[navKey] as never);
-      }
-
-      // Estimate speech duration (≈60 ms per character, min 3 s)
-      const delay = Math.max(3000, result.answer.length * 60);
-      r.current.restartTimer = setTimeout(() => {
-        if (r.current.status !== "off") {
-          setStatus("idle");
-          startListening();
-        }
-      }, delay);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+      result = await Promise.race([
+        askKios(question, snap),
+        new Promise<never>((_, reject) =>
+          controller.signal.addEventListener("abort", () =>
+            reject(new Error("timeout")),
+          ),
+        ),
+      ]);
+      clearTimeout(timeoutId);
     } catch {
-      speak("Entschuldigung, das hat leider nicht funktioniert.", snap.locale);
-      r.current.restartTimer = setTimeout(() => {
-        if (r.current.status !== "off") {
-          setStatus("idle");
-          startListening();
-        }
-      }, 3000);
+      // AI failed or timed out — speak error and resume
+      setStatus("speaking");
+      speak(
+        "Entschuldigung, das hat leider nicht funktioniert.",
+        snap.locale,
+        () => { scheduleRestart(500); },
+      );
+      return;
     }
+
+    if (!result) {
+      scheduleRestart(500);
+      return;
+    }
+
+    // Navigate first (non-blocking)
+    const navKey = result.navigate && result.navigate !== "null" ? result.navigate : null;
+    if (navKey && NAV_MAP[navKey]) {
+      router.push(NAV_MAP[navKey] as never);
+    }
+
+    setStatus("speaking");
+    speak(result.answer, snap.locale, () => {
+      // Called when TTS actually finishes (or falls back on iOS Safari)
+      scheduleRestart(300);
+    });
   }
 
   function startListening() {
@@ -136,11 +164,16 @@ export function useKios() {
         const lower = raw.toLowerCase().trim();
 
         if (r.current.phase === "wake") {
-          const kiosIdx = lower.indexOf("kios");
-          if (kiosIdx !== -1) {
+          if (lower.includes("kios")) {
             r.current.phase = "question";
             setStatus("awake");
-            speak("Ja?", r.current.state.locale);
+            // Speak "Ja?" — when TTS finishes, restart recognition for the question
+            speak("Ja?", r.current.state.locale, () => {
+              // After "Ja?" finishes, start a fresh session to capture the question
+              if (r.current.status !== "off" && r.current.status !== "thinking") {
+                startListening();
+              }
+            });
 
             // If the question follows immediately in the same utterance
             if (result.isFinal) {
@@ -169,20 +202,20 @@ export function useKios() {
         r.current.rec = null;
         return;
       }
-      // Other errors (no-speech, aborted) → will be handled by onend restart
+      // Other errors (no-speech, aborted, network) — let onend handle restart
     };
 
     rec.onend = () => {
       r.current.rec = null;
-      if (r.current.status === "off" || r.current.status === "thinking" || r.current.status === "speaking") {
-        return; // AI is handling things — don't restart here
+      // Don't restart if: turned off, AI is processing, TTS is playing,
+      // or we're waiting for "Ja?" TTS to finish (awake) — the speak() onEnd
+      // callback handles restart in that case.
+      const s = r.current.status;
+      if (s === "off" || s === "thinking" || s === "speaking" || s === "awake") {
+        return;
       }
-      // Auto-restart for continuous wake word detection
-      r.current.restartTimer = setTimeout(() => {
-        if (r.current.status !== "off" && r.current.status !== "thinking" && r.current.status !== "speaking") {
-          startListening();
-        }
-      }, 400);
+      // Idle — auto-restart for continuous wake-word detection
+      scheduleRestart(400);
     };
 
     try {
@@ -211,15 +244,12 @@ export function useKios() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (r.current.restartTimer !== null) clearTimeout(r.current.restartTimer);
+      clearRestartTimer();
       if (r.current.rec) {
-        try {
-          (r.current.rec as { abort(): void }).abort();
-        } catch {
-          // ignore
-        }
+        try { (r.current.rec as { abort(): void }).abort(); } catch { /* ignore */ }
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return {

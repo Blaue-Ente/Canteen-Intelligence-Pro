@@ -27,11 +27,15 @@ interface SpeechRecognitionEventLike {
 interface SpeechSynthesisInstance {
   cancel: () => void;
   speak: (utterance: SpeechSynthesisUtteranceInstance) => void;
+  speaking: boolean;
+  pending: boolean;
 }
 
 interface SpeechSynthesisUtteranceInstance {
   lang: string;
   rate: number;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
 }
 
 export function isVoiceSupported(): boolean {
@@ -89,24 +93,52 @@ export function startVoice(opts: {
   }
   return {
     stop: () => {
-      try {
-        rec.stop();
-      } catch {
-        // ignore
-      }
+      try { rec.stop(); } catch { /* ignore */ }
     },
   };
 }
 
-export function speak(text: string, locale: "de" | "en"): void {
-  if (!isTtsSupported()) return;
+/**
+ * Speak text via TTS.
+ * - onEnd fires when speech actually finishes (or on iOS Safari timeout fallback).
+ * - Uses setTimeout(100ms) before speak() — required on iOS Safari to avoid freeze.
+ */
+export function speak(text: string, locale: "de" | "en", onEnd?: () => void): void {
+  if (!isTtsSupported()) {
+    onEnd?.();
+    return;
+  }
   const w = window as unknown as AnyWindow;
-  if (!w.speechSynthesis || !w.SpeechSynthesisUtterance) return;
+  if (!w.speechSynthesis || !w.SpeechSynthesisUtterance) {
+    onEnd?.();
+    return;
+  }
+
   w.speechSynthesis.cancel();
+
   const u = new w.SpeechSynthesisUtterance(text);
   u.lang = locale === "de" ? "de-DE" : "en-US";
   u.rate = 1.0;
-  w.speechSynthesis.speak(u);
+
+  if (onEnd) {
+    let fired = false;
+    const done = () => {
+      if (fired) return;
+      fired = true;
+      onEnd();
+    };
+    u.onend = done;
+    u.onerror = done;
+    // Safety fallback: iOS Safari sometimes never fires onend.
+    // Estimate ≈80 ms/char, minimum 3 s, + 1.5 s buffer.
+    const fallbackMs = Math.max(3000, text.length * 80) + 1500;
+    setTimeout(done, fallbackMs);
+  }
+
+  // iOS Safari fix: calling speak() synchronously after cancel() freezes TTS.
+  setTimeout(() => {
+    w.speechSynthesis!.speak(u);
+  }, 100);
 }
 
 export function stopSpeaking(): void {
