@@ -1,13 +1,17 @@
-import React, { useMemo, useState } from "react";
-import { Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import { Platform, Pressable, ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Feather } from "@expo/vector-icons";
 
 import { BarChart, HBar, PieLegend } from "@/components/Chart";
 import { Card, Chip, SectionHeader, Stat } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 
-type Range = "today" | "week" | "month" | "day";
+type Range = "today" | "day" | "week" | "month" | "year";
+
+const DE_MONTHS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+const EN_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function dateKey(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -15,6 +19,11 @@ function dateKey(d: Date) {
 
 function withinRange(date: string, r: Range, pickedDay?: string): boolean {
   if (r === "day") return date === pickedDay;
+  if (r === "year") {
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    return date >= oneYearAgo.toISOString().slice(0, 10);
+  }
   const now = new Date();
   const diff = (now.getTime() - new Date(date).getTime()) / (24 * 3600 * 1000);
   if (r === "today") return diff < 1;
@@ -39,15 +48,34 @@ export default function Stats() {
 
   const [range, setRange] = useState<Range>("week");
   const [pickedDay, setPickedDay] = useState<string>(dateKey(new Date()));
+  // dayWindowStart = how many days ago the 14-day window starts (0 = most recent)
+  const [dayWindowStart, setDayWindowStart] = useState(0);
 
-  // Last 14 days for the day picker
+  // Reset window when entering day mode
+  useEffect(() => {
+    if (range === "day") {
+      setDayWindowStart(0);
+      setPickedDay(dateKey(new Date()));
+    }
+  }, [range]);
+
+  // 14-day window starting from dayWindowStart days ago
   const dayOptions = useMemo(() => {
     return Array.from({ length: 14 }).map((_, i) => {
       const d = new Date();
-      d.setDate(d.getDate() - i);
+      d.setDate(d.getDate() - dayWindowStart - i);
       return dateKey(d);
     });
-  }, []);
+  }, [dayWindowStart]);
+
+  // Ensure pickedDay is within the current window
+  useEffect(() => {
+    if (range === "day" && !dayOptions.includes(pickedDay)) {
+      setPickedDay(dayOptions[0]!);
+    }
+  }, [dayOptions, pickedDay, range]);
+
+  const MAX_WINDOW_START = 365 - 14; // can go back up to 1 year
 
   const sales = useMemo(
     () => state.sales.filter((s) => withinRange(s.date, range, pickedDay)),
@@ -113,6 +141,38 @@ export default function Stats() {
     return days;
   }, [state.sales]);
 
+  // Monthly aggregates for year view (last 12 months)
+  const byMonth = useMemo(() => {
+    if (range !== "year") return [];
+    const months = DE_MONTHS;
+    const enMonths = EN_MONTHS;
+    return Array.from({ length: 12 }).map((_, idx) => {
+      const d = new Date();
+      d.setDate(1);
+      d.setMonth(d.getMonth() - (11 - idx));
+      const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const monthSales = state.sales.filter((s) => s.date.startsWith(monthStr));
+      const soldTotal = monthSales.reduce((a, b) => a + b.sold, 0);
+      const cookedTotal = monthSales.reduce((a, b) => a + b.cooked, 0);
+      const label = state.locale === "de" ? months[d.getMonth()]! : enMonths[d.getMonth()]!;
+      return { label, value: soldTotal, altValue: cookedTotal };
+    });
+  }, [state.sales, state.locale, range]);
+
+  const revenueByMonth = useMemo(() => {
+    if (range !== "year") return [];
+    return Array.from({ length: 12 }).map((_, idx) => {
+      const d = new Date();
+      d.setDate(1);
+      d.setMonth(d.getMonth() - (11 - idx));
+      const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const monthSales = state.sales.filter((s) => s.date.startsWith(monthStr));
+      const rev = monthSales.reduce((a, b) => a + b.revenue, 0);
+      const label = state.locale === "de" ? DE_MONTHS[d.getMonth()]! : EN_MONTHS[d.getMonth()]!;
+      return { label, value: rev };
+    });
+  }, [state.sales, state.locale, range]);
+
   const maxBest = bySold[0]?.v ?? 1;
 
   // Per-recipe cooked vs sold
@@ -129,13 +189,26 @@ export default function Stats() {
   }, [sales]);
   const maxPerDish = perDish.reduce((m, x) => Math.max(m, x.cooked, x.sold), 1);
 
-  const rangeOptions: Range[] = ["today", "day", "week", "month"];
+  const rangeOptions: Range[] = ["today", "day", "week", "month", "year"];
   const rangeLabels: Record<Range, string> = {
     today: state.locale === "de" ? "Heute" : "Today",
     day: state.locale === "de" ? "Tag" : "Day",
     week: state.locale === "de" ? "Woche" : "Week",
     month: state.locale === "de" ? "Monat" : "Month",
+    year: state.locale === "de" ? "Jahr" : "Year",
   };
+
+  // Window label for day navigation
+  const windowLabel = useMemo(() => {
+    if (range !== "day") return "";
+    const from = dayOptions[dayOptions.length - 1]!;
+    const to = dayOptions[0]!;
+    const fmtShort = (iso: string) => {
+      const d = new Date(iso + "T12:00:00");
+      return `${d.getDate().toString().padStart(2, "0")}.${(d.getMonth() + 1).toString().padStart(2, "0")}`;
+    };
+    return `${fmtShort(from)} – ${fmtShort(to)}`;
+  }, [dayOptions, range]);
 
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
@@ -148,48 +221,94 @@ export default function Stats() {
         }}
       >
         {/* Header + range selector */}
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6, flexWrap: "wrap", gap: 6 }}>
           <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 22 }}>
             {t("stats")}
           </Text>
-          <View style={{ flexDirection: "row", gap: 6 }}>
+          <View style={{ flexDirection: "row", gap: 5, flexWrap: "wrap" }}>
             {rangeOptions.map((r) => (
               <Chip key={r} label={rangeLabels[r]} active={range === r} onPress={() => setRange(r)} />
             ))}
           </View>
         </View>
 
-        {/* Day picker strip */}
+        {/* Day picker strip with navigation */}
         {range === "day" && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 6, paddingVertical: 2 }}
-          >
-            {dayOptions.map((d) => (
-              <Pressable
-                key={d}
-                onPress={() => setPickedDay(d)}
-                style={({ pressed }) => [
-                  {
-                    paddingHorizontal: 10,
-                    paddingVertical: 8,
-                    borderRadius: 10,
-                    backgroundColor: pickedDay === d ? c.primary : c.card,
-                    borderWidth: 1,
-                    borderColor: pickedDay === d ? c.primary : c.border,
-                    alignItems: "center",
-                    minWidth: 60,
-                  },
-                  pressed && { opacity: 0.8 },
-                ]}
+          <View style={{ gap: 6 }}>
+            {/* Navigation row */}
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <TouchableOpacity
+                onPress={() => {
+                  const next = Math.min(dayWindowStart + 14, MAX_WINDOW_START);
+                  setDayWindowStart(next);
+                }}
+                disabled={dayWindowStart >= MAX_WINDOW_START}
+                style={{
+                  padding: 8,
+                  borderRadius: 10,
+                  backgroundColor: c.card,
+                  borderWidth: 1,
+                  borderColor: c.border,
+                  opacity: dayWindowStart >= MAX_WINDOW_START ? 0.3 : 1,
+                }}
               >
-                <Text style={{ color: pickedDay === d ? c.primaryForeground : c.foreground, fontFamily: "Inter_700Bold", fontSize: 12 }}>
-                  {fmtDay(d)}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
+                <Feather name="chevron-left" size={18} color={c.foreground} />
+              </TouchableOpacity>
+
+              <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 13 }}>
+                {windowLabel}
+              </Text>
+
+              <TouchableOpacity
+                onPress={() => {
+                  const prev = Math.max(dayWindowStart - 14, 0);
+                  setDayWindowStart(prev);
+                }}
+                disabled={dayWindowStart === 0}
+                style={{
+                  padding: 8,
+                  borderRadius: 10,
+                  backgroundColor: c.card,
+                  borderWidth: 1,
+                  borderColor: c.border,
+                  opacity: dayWindowStart === 0 ? 0.3 : 1,
+                }}
+              >
+                <Feather name="chevron-right" size={18} color={c.foreground} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Day chips */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 6, paddingVertical: 2 }}
+            >
+              {dayOptions.map((d) => (
+                <Pressable
+                  key={d}
+                  onPress={() => setPickedDay(d)}
+                  style={({ pressed }) => [
+                    {
+                      paddingHorizontal: 10,
+                      paddingVertical: 8,
+                      borderRadius: 10,
+                      backgroundColor: pickedDay === d ? c.primary : c.card,
+                      borderWidth: 1,
+                      borderColor: pickedDay === d ? c.primary : c.border,
+                      alignItems: "center",
+                      minWidth: 60,
+                    },
+                    pressed && { opacity: 0.8 },
+                  ]}
+                >
+                  <Text style={{ color: pickedDay === d ? c.primaryForeground : c.foreground, fontFamily: "Inter_700Bold", fontSize: 12 }}>
+                    {fmtDay(d)}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
         )}
 
         {/* KPI row */}
@@ -241,8 +360,41 @@ export default function Stats() {
           </Card>
         )}
 
-        {/* Weekly bar chart (hide for "day" view) */}
-        {range !== "day" && (
+        {/* Year view: monthly sold/cooked + revenue */}
+        {range === "year" && (
+          <>
+            <Card>
+              <SectionHeader title={state.locale === "de" ? "Portionen pro Monat (12 Monate)" : "Portions per Month (12 months)"} />
+              {byMonth.every((m) => m.value === 0 && m.altValue === 0) ? (
+                <Text style={{ color: c.mutedForeground, textAlign: "center", padding: 12, fontFamily: "Inter_400Regular" }}>
+                  {state.locale === "de" ? "Keine Daten vorhanden." : "No data available."}
+                </Text>
+              ) : (
+                <>
+                  <BarChart data={byMonth} showAlt height={180} />
+                  <View style={{ flexDirection: "row", gap: 14, marginTop: 8, justifyContent: "center" }}>
+                    <Legend color={c.chartA} label={t("sold")} />
+                    <Legend color={c.chartD} label={t("cooked")} />
+                  </View>
+                </>
+              )}
+            </Card>
+
+            <Card>
+              <SectionHeader title={state.locale === "de" ? "Umsatz pro Monat" : "Revenue per Month"} />
+              {revenueByMonth.every((m) => m.value === 0) ? (
+                <Text style={{ color: c.mutedForeground, textAlign: "center", padding: 12, fontFamily: "Inter_400Regular" }}>
+                  {state.locale === "de" ? "Keine Daten vorhanden." : "No data available."}
+                </Text>
+              ) : (
+                <BarChart data={revenueByMonth} height={170} />
+              )}
+            </Card>
+          </>
+        )}
+
+        {/* Weekly bar chart (hide for "day" and "year" views) */}
+        {range !== "day" && range !== "year" && (
           <Card>
             <SectionHeader title={t("cookedVsSold")} />
             <BarChart data={last7} showAlt height={170} />
@@ -253,37 +405,39 @@ export default function Stats() {
           </Card>
         )}
 
-        {/* Per-dish breakdown */}
-        <Card>
-          <SectionHeader title={t("perDish")} />
-          {perDish.length === 0 ? (
-            <Text style={{ color: c.mutedForeground, textAlign: "center", padding: 12, fontFamily: "Inter_400Regular" }}>
-              Keine Daten
-            </Text>
-          ) : (
-            perDish.map((p) => {
-              const r = state.recipes.find((x) => x.id === p.id);
-              if (!r) return null;
-              const waste = p.cooked > 0 ? Math.round(((p.cooked - p.sold) / p.cooked) * 100) : 0;
-              return (
-                <View key={p.id} style={{ marginBottom: 12 }}>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <Text numberOfLines={1} style={{ flex: 1, color: c.foreground, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
-                      {state.locale === "de" ? r.nameDe : r.name}
-                    </Text>
-                    <Text style={{ color: waste > 15 ? c.destructive : waste > 8 ? c.warning : c.success, fontFamily: "Inter_700Bold", fontSize: 12 }}>
-                      {waste}% Verlust
-                    </Text>
+        {/* Per-dish breakdown (hide for year view — too much noise) */}
+        {range !== "year" && (
+          <Card>
+            <SectionHeader title={t("perDish")} />
+            {perDish.length === 0 ? (
+              <Text style={{ color: c.mutedForeground, textAlign: "center", padding: 12, fontFamily: "Inter_400Regular" }}>
+                Keine Daten
+              </Text>
+            ) : (
+              perDish.map((p) => {
+                const r = state.recipes.find((x) => x.id === p.id);
+                if (!r) return null;
+                const waste = p.cooked > 0 ? Math.round(((p.cooked - p.sold) / p.cooked) * 100) : 0;
+                return (
+                  <View key={p.id} style={{ marginBottom: 12 }}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <Text numberOfLines={1} style={{ flex: 1, color: c.foreground, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
+                        {state.locale === "de" ? r.nameDe : r.name}
+                      </Text>
+                      <Text style={{ color: waste > 15 ? c.destructive : waste > 8 ? c.warning : c.success, fontFamily: "Inter_700Bold", fontSize: 12 }}>
+                        {waste}% Verlust
+                      </Text>
+                    </View>
+                    <View style={{ gap: 3 }}>
+                      <HBar label={t("cooked")} value={p.cooked} max={maxPerDish} />
+                      <HBar label={t("sold")} value={p.sold} max={maxPerDish} />
+                    </View>
                   </View>
-                  <View style={{ gap: 3 }}>
-                    <HBar label={t("cooked")} value={p.cooked} max={maxPerDish} />
-                    <HBar label={t("sold")} value={p.sold} max={maxPerDish} />
-                  </View>
-                </View>
-              );
-            })
-          )}
-        </Card>
+                );
+              })
+            )}
+          </Card>
+        )}
 
         <Card>
           <SectionHeader title={t("bestSellers")} />

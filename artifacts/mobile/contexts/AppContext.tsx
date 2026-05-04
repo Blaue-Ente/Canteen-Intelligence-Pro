@@ -156,8 +156,12 @@ function reducer(state: AppState, action: Action): AppState {
       const rotated = [recipeSets[recipeSets.length - 1]!, ...recipeSets.slice(0, -1)];
       return { ...state, menu: dates.map((d, i) => ({ date: d, recipeIds: rotated[i] ?? [] })) };
     }
-    case "addSale":
-      return { ...state, sales: [action.sale, ...state.sales] };
+    case "addSale": {
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+      const cutoff = oneYearAgo.toISOString().slice(0, 10);
+      return { ...state, sales: [action.sale, ...state.sales].filter((s) => s.date >= cutoff) };
+    }
     case "addSupplier":
       return { ...state, suppliers: [action.supplier, ...state.suppliers] };
     case "updateSupplier":
@@ -351,12 +355,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (mounted && loaded) {
         const pick = <K extends keyof AppState>(k: K): AppState[K] =>
           (loaded[k] !== undefined ? loaded[k] : seedState[k]) as AppState[K];
+        const salesCutoff = (() => {
+          const d = new Date();
+          d.setFullYear(d.getFullYear() - 1);
+          return d.toISOString().slice(0, 10);
+        })();
         const merged: AppState = {
           locale: pick("locale"),
           inventory: pick("inventory"),
           recipes: pick("recipes"),
           menu: pick("menu"),
-          sales: pick("sales"),
+          sales: (pick("sales") as import("@/types").SaleEntry[]).filter((s) => s.date >= salesCutoff),
           suppliers: pick("suppliers"),
           complaints: pick("complaints"),
           haccp: pick("haccp"),
