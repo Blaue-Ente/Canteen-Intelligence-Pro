@@ -1,61 +1,160 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Feather } from "@expo/vector-icons";
+import React, { useCallback, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Keyboard,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { useRouter } from "expo-router";
-import { Button, Card, Chip, SectionHeader } from "@/components/ui";
+import { Button, Card, Chip } from "@/components/ui";
 import { useApp } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
-import { apiFetch, type DiscoverSupplier } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import type { Supplier } from "@/types";
 
 const CATEGORIES: { id: string; label: string }[] = [
-  { id: "butcher", label: "Fleischerei" },
-  { id: "bakery", label: "Bäckerei" },
-  { id: "cheese", label: "Käse" },
-  { id: "greengrocer", label: "Obst & Gemüse" },
-  { id: "seafood", label: "Fisch" },
-  { id: "beverages", label: "Getränke" },
-  { id: "wholesale", label: "Großhandel" },
-  { id: "organic", label: "Bio-Markt" },
+  { id: "butcher",     label: "Fleischerei" },
+  { id: "bakery",     label: "Bäckerei" },
+  { id: "cheese",     label: "Käse" },
+  { id: "greengrocer",label: "Obst & Gemüse" },
+  { id: "seafood",    label: "Fisch" },
+  { id: "beverages",  label: "Getränke" },
+  { id: "wholesale",  label: "Großhandel" },
+  { id: "organic",    label: "Bio-Markt" },
 ];
+
+const RADIUS_STEPS = [5, 10, 25, 50, 100];
+
+interface DiscoverSupplier {
+  id: string;
+  name: string;
+  address: string | null;
+  lat: number | null;
+  lng: number | null;
+  phone: string | null;
+  website: string | null;
+  email?: string | null;
+  rating: number | null;
+  productGroups: string[];
+  distanceKm?: number;
+  isFallback?: boolean;
+}
 
 export default function DiscoverSuppliers() {
   const c = useColors();
   const router = useRouter();
   const { state, dispatch, newId } = useApp();
+
   const [category, setCategory] = useState("butcher");
   const [query, setQuery] = useState("");
+  const [plz, setPlz] = useState("");
+  const [plzCity, setPlzCity] = useState<string | null>(null);
+  const [radiusKm, setRadiusKm] = useState(25);
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [geocoding, setGeocoding] = useState(false);
   const [results, setResults] = useState<DiscoverSupplier[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [usingFallback, setUsingFallback] = useState(false);
+  const plzRef = useRef<TextInput>(null);
 
-  const load = useCallback(async (cat: string) => {
-    setLoading(true);
+  // ── Geocode PLZ → lat/lng ────────────────────────────────────────────────
+  const geocodePlz = useCallback(async (value: string) => {
+    if (!/^\d{5}$/.test(value)) return;
+    setGeocoding(true);
     setError(null);
     try {
-      const r = await apiFetch<{ results: DiscoverSupplier[] }>(
-        `/api/suppliers/discover?category=${encodeURIComponent(cat)}`,
+      const r = await apiFetch<{ lat: number; lng: number; city: string }>(
+        `/api/suppliers/geocode?plz=${encodeURIComponent(value)}`,
       );
-      setResults(r.results);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setResults([]);
+      setCoords({ lat: r.lat, lng: r.lng });
+      setPlzCity(r.city);
+    } catch {
+      setCoords(null);
+      setPlzCity(null);
+      setError("PLZ nicht gefunden. Bitte prüfen.");
     } finally {
-      setLoading(false);
+      setGeocoding(false);
     }
   }, []);
 
-  useEffect(() => {
-    void load(category);
-  }, [category, load]);
+  // ── Load results ─────────────────────────────────────────────────────────
+  const load = useCallback(
+    async (cat: string, overrideCoords?: { lat: number; lng: number } | null) => {
+      setLoading(true);
+      setError(null);
+      setUsingFallback(false);
+      const loc = overrideCoords !== undefined ? overrideCoords : coords;
+      try {
+        const params = new URLSearchParams({ category: cat });
+        if (loc) {
+          params.set("lat", String(loc.lat));
+          params.set("lng", String(loc.lng));
+          params.set("radiusKm", String(radiusKm));
+        }
+        const r = await apiFetch<{
+          results: DiscoverSupplier[];
+          usingFallback?: boolean;
+          count: number;
+        }>(`/api/suppliers/discover?${params.toString()}`);
+        setResults(r.results);
+        setUsingFallback(r.usingFallback ?? false);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        setResults([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [coords, radiusKm],
+  );
 
-  const filtered = query
-    ? results.filter(
-        (r) =>
-          r.name.toLowerCase().includes(query.toLowerCase()) ||
-          (r.address ?? "").toLowerCase().includes(query.toLowerCase()),
-      )
-    : results;
+  // ── PLZ + Search button ──────────────────────────────────────────────────
+  const handleSearch = async () => {
+    Keyboard.dismiss();
+    if (plz.length === 5 && !/^\d{5}$/.test(plz)) {
+      setError("PLZ muss 5 Ziffern haben.");
+      return;
+    }
+    if (plz.length === 5) {
+      setGeocoding(true);
+      setError(null);
+      try {
+        const r = await apiFetch<{ lat: number; lng: number; city: string }>(
+          `/api/suppliers/geocode?plz=${encodeURIComponent(plz)}`,
+        );
+        setCoords({ lat: r.lat, lng: r.lng });
+        setPlzCity(r.city);
+        await load(category, { lat: r.lat, lng: r.lng });
+      } catch {
+        setError("PLZ nicht gefunden. Bitte prüfen.");
+        setGeocoding(false);
+      } finally {
+        setGeocoding(false);
+      }
+    } else {
+      await load(category, null);
+    }
+  };
 
+  // ── Category change ──────────────────────────────────────────────────────
+  const handleCategory = (cat: string) => {
+    setCategory(cat);
+    void load(cat);
+  };
+
+  // ── Radius change ────────────────────────────────────────────────────────
+  const handleRadius = (km: number) => {
+    setRadiusKm(km);
+    if (coords) void load(category);
+  };
+
+  // ── Save supplier ────────────────────────────────────────────────────────
   const save = (r: DiscoverSupplier) => {
     const supplier: Supplier = {
       id: newId(),
@@ -68,7 +167,7 @@ export default function DiscoverSuppliers() {
       lng: r.lng ?? undefined,
       category: r.productGroups,
       rating: r.rating ?? 0,
-      notes: `Quelle: ${r.source.toUpperCase()}${r.website ? ` · ${r.website}` : ""}`,
+      notes: `Quelle: Google Places${r.website ? ` · ${r.website}` : ""}`,
     };
     const exists = state.suppliers.some(
       (s) => s.name.toLowerCase() === supplier.name.toLowerCase() && s.address === supplier.address,
@@ -81,102 +180,294 @@ export default function DiscoverSuppliers() {
     Alert.alert("Gespeichert", `${supplier.name} wurde zu deinen Lieferanten hinzugefügt.`);
   };
 
+  const filtered = query
+    ? results.filter(
+        (r) =>
+          r.name.toLowerCase().includes(query.toLowerCase()) ||
+          (r.address ?? "").toLowerCase().includes(query.toLowerCase()),
+      )
+    : results;
+
+  const subtitle = coords && plzCity
+    ? `${plzCity} · ${radiusKm} km Umkreis`
+    : "PLZ eingeben und Umkreis wählen";
+
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 60 }}>
-        <Card>
-          <SectionHeader title="Lieferanten in Berlin & Brandenburg" />
-          <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, marginBottom: 8 }}>
-            Quelle: OpenStreetMap (Overpass). Tippe auf eine Kategorie und durchsuche die Ergebnisse.
-          </Text>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-            {CATEGORIES.map((cat) => (
-              <Chip key={cat.id} label={cat.label} active={category === cat.id} onPress={() => setCategory(cat.id)} />
-            ))}
+
+        {/* ── Header card ──────────────────────────────────────────────── */}
+        <Card style={{ gap: 12 }}>
+          <View>
+            <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 17 }}>
+              Lieferanten finden
+            </Text>
+            <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 2 }}>
+              {subtitle}
+            </Text>
           </View>
+
+          {/* PLZ + Suchen row */}
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <TextInput
+                ref={plzRef}
+                value={plz}
+                onChangeText={(v) => {
+                  const digits = v.replace(/\D/g, "").slice(0, 5);
+                  setPlz(digits);
+                  if (digits.length < 5) { setCoords(null); setPlzCity(null); }
+                }}
+                placeholder="PLZ eingeben…"
+                placeholderTextColor={c.mutedForeground}
+                keyboardType="numeric"
+                maxLength={5}
+                returnKeyType="search"
+                onSubmitEditing={handleSearch}
+                style={{
+                  backgroundColor: c.muted,
+                  borderColor: coords ? "#059669" : c.border,
+                  borderWidth: 1.5,
+                  borderRadius: 10,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  color: c.foreground,
+                  fontFamily: "Inter_600SemiBold",
+                  fontSize: 16,
+                  letterSpacing: 1,
+                }}
+              />
+            </View>
+            <TouchableOpacity
+              onPress={handleSearch}
+              disabled={geocoding || loading}
+              style={{
+                backgroundColor: c.primary,
+                borderRadius: 10,
+                paddingHorizontal: 16,
+                justifyContent: "center",
+                alignItems: "center",
+                opacity: geocoding || loading ? 0.6 : 1,
+              }}
+            >
+              {geocoding ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Feather name="search" size={18} color="#fff" />
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* PLZ status */}
+          {coords && plzCity && (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Feather name="map-pin" size={12} color="#059669" />
+              <Text style={{ color: "#059669", fontFamily: "Inter_500Medium", fontSize: 12 }}>
+                {plzCity} ({plz}) gefunden
+              </Text>
+            </View>
+          )}
+
+          {/* Radius selector */}
+          <View style={{ gap: 6 }}>
+            <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 12 }}>
+              Umkreis
+            </Text>
+            <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+              {RADIUS_STEPS.map((km) => (
+                <TouchableOpacity
+                  key={km}
+                  onPress={() => handleRadius(km)}
+                  style={{
+                    paddingHorizontal: 14,
+                    paddingVertical: 7,
+                    borderRadius: 20,
+                    borderWidth: 1.5,
+                    borderColor: radiusKm === km ? c.primary : c.border,
+                    backgroundColor: radiusKm === km ? c.primary : "transparent",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: radiusKm === km ? "#fff" : c.foreground,
+                      fontFamily: "Inter_600SemiBold",
+                      fontSize: 13,
+                    }}
+                  >
+                    {km} km
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Category chips */}
+          <View style={{ gap: 6 }}>
+            <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 12 }}>
+              Kategorie
+            </Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+              {CATEGORIES.map((cat) => (
+                <Chip
+                  key={cat.id}
+                  label={cat.label}
+                  active={category === cat.id}
+                  onPress={() => handleCategory(cat.id)}
+                />
+              ))}
+            </View>
+          </View>
+
+          {/* Text search */}
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Suchen (Name, Stadt, PLZ…)"
+            placeholder="Filtern (Name, Adresse…)"
             placeholderTextColor={c.mutedForeground}
             style={{
-              marginTop: 12,
               backgroundColor: c.muted,
               borderColor: c.border,
               borderWidth: 1,
               borderRadius: 10,
               paddingHorizontal: 12,
-              paddingVertical: 10,
+              paddingVertical: 8,
               color: c.foreground,
               fontFamily: "Inter_500Medium",
-              fontSize: 15,
+              fontSize: 14,
             }}
           />
         </Card>
 
+        {/* ── Hint when no PLZ entered ─────────────────────────────────── */}
+        {!coords && !loading && !error && results.length === 0 && (
+          <Card style={{ alignItems: "center", gap: 10, paddingVertical: 24 }}>
+            <Feather name="map-pin" size={32} color={c.mutedForeground} />
+            <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 14, textAlign: "center" }}>
+              PLZ eingeben und auf {"\u{1F50D}"} tippen{"\n"}um Lieferanten in der Nähe zu finden.
+            </Text>
+          </Card>
+        )}
+
+        {/* ── Loading ──────────────────────────────────────────────────── */}
         {loading && (
-          <View style={{ paddingVertical: 24, alignItems: "center" }}>
+          <View style={{ paddingVertical: 24, alignItems: "center", gap: 8 }}>
             <ActivityIndicator color={c.primary} />
-            <Text style={{ marginTop: 8, color: c.mutedForeground, fontFamily: "Inter_400Regular" }}>
-              Daten werden geladen…
+            <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular" }}>
+              Suche läuft…
             </Text>
           </View>
         )}
 
+        {/* ── Error ────────────────────────────────────────────────────── */}
         {error && (
-          <Card>
-            <Text style={{ color: c.destructive, fontFamily: "Inter_500Medium" }}>Fehler: {error}</Text>
-            <Button label="Erneut versuchen" onPress={() => load(category)} variant="secondary" />
+          <Card style={{ gap: 10 }}>
+            <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+              <Feather name="alert-circle" size={16} color={c.destructive} />
+              <Text style={{ color: c.destructive, fontFamily: "Inter_500Medium", flex: 1 }}>
+                {error}
+              </Text>
+            </View>
+            <Button label="Erneut versuchen" onPress={handleSearch} variant="secondary" />
           </Card>
         )}
 
-        {!loading && !error && (
-          <>
-            <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", paddingHorizontal: 4 }}>
-              {filtered.length} Ergebnisse
+        {/* ── Fallback notice ───────────────────────────────────────────── */}
+        {usingFallback && !loading && !error && (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              backgroundColor: "#fffbeb",
+              borderColor: "#fde68a",
+              borderWidth: 1,
+              borderRadius: 10,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+            }}
+          >
+            <Feather name="wifi-off" size={13} color="#d97706" />
+            <Text style={{ color: "#92400e", fontFamily: "Inter_400Regular", fontSize: 12, flex: 1 }}>
+              Live-Suche nicht verfügbar — Beispieldaten werden angezeigt.
             </Text>
+          </View>
+        )}
+
+        {/* ── Results ──────────────────────────────────────────────────── */}
+        {!loading && !error && filtered.length > 0 && (
+          <>
+            <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 13, paddingHorizontal: 4 }}>
+              {filtered.length} Ergebnis{filtered.length !== 1 ? "se" : ""}
+              {coords && plzCity ? ` · ${plzCity}, ${radiusKm} km` : ""}
+            </Text>
+
             {filtered.map((r) => (
-              <TouchableOpacity
-                key={r.id}
-                onPress={() => save(r)}
-                activeOpacity={0.8}
-              >
-                <Card>
-                  <Text style={{ color: c.foreground, fontFamily: "Inter_600SemiBold", fontSize: 15 }}>{r.name}</Text>
-                  {r.address && (
-                    <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 13, marginTop: 2 }}>
-                      {r.address}
-                    </Text>
-                  )}
-                  <View style={{ flexDirection: "row", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
-                    {r.phone && (
-                      <Text style={{ color: c.primary, fontFamily: "Inter_500Medium", fontSize: 12 }}>📞 {r.phone}</Text>
-                    )}
-                    {r.website && (
+              <TouchableOpacity key={r.id} onPress={() => save(r)} activeOpacity={0.8}>
+                <Card style={{ gap: 6 }}>
+                  <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+                    <View
+                      style={{
+                        width: 38, height: 38, borderRadius: 10,
+                        backgroundColor: c.muted,
+                        alignItems: "center", justifyContent: "center", flexShrink: 0,
+                      }}
+                    >
+                      <Feather name="shopping-bag" size={16} color={c.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: c.foreground, fontFamily: "Inter_600SemiBold", fontSize: 15 }}>
+                        {r.name}
+                      </Text>
+                      {r.address ? (
+                        <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 2 }}>
+                          {r.address}
+                        </Text>
+                      ) : null}
+                    </View>
+                    {r.distanceKm != null ? (
+                      <View
+                        style={{
+                          paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20,
+                          backgroundColor: "#d1fae5", flexShrink: 0,
+                        }}
+                      >
+                        <Text style={{ color: "#065f46", fontFamily: "Inter_600SemiBold", fontSize: 11 }}>
+                          {r.distanceKm.toFixed(1)} km
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+
+                  <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+                    {r.phone ? (
+                      <Text style={{ color: c.primary, fontFamily: "Inter_500Medium", fontSize: 12 }}>
+                        📞 {r.phone}
+                      </Text>
+                    ) : null}
+                    {r.website ? (
                       <Text style={{ color: c.primary, fontFamily: "Inter_500Medium", fontSize: 12 }} numberOfLines={1}>
                         🌐 {r.website.replace(/^https?:\/\//, "").slice(0, 30)}
                       </Text>
-                    )}
-                    {r.rating != null && (
-                      <Text style={{ color: c.foreground, fontFamily: "Inter_500Medium", fontSize: 12 }}>★ {r.rating.toFixed(1)}</Text>
-                    )}
+                    ) : null}
+                    {r.rating != null ? (
+                      <Text style={{ color: c.foreground, fontFamily: "Inter_500Medium", fontSize: 12 }}>
+                        ★ {r.rating.toFixed(1)}
+                      </Text>
+                    ) : null}
                   </View>
-                  <View style={{ flexDirection: "row", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+
+                  <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
                     {r.productGroups.map((g) => (
                       <View
                         key={g}
-                        style={{
-                          paddingHorizontal: 8,
-                          paddingVertical: 3,
-                          borderRadius: 999,
-                          backgroundColor: c.muted,
-                        }}
+                        style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: c.muted }}
                       >
                         <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 11 }}>{g}</Text>
                       </View>
                     ))}
                   </View>
-                  <Text style={{ marginTop: 8, color: c.primary, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
+
+                  <Text style={{ color: c.primary, fontFamily: "Inter_600SemiBold", fontSize: 13, marginTop: 2 }}>
                     + Zu Lieferanten hinzufügen
                   </Text>
                 </Card>
