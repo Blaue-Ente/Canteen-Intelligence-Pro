@@ -19,8 +19,13 @@ localPort = 18115
 run = "pnpm --filter @workspace/mobile run dev"
 
 [services.production]
-build = [ "pnpm", "--filter", "@workspace/mobile", "run", "build" ]
-run = [ "pnpm", "--filter", "@workspace/mobile", "run", "serve" ]
+build = [ "sh", "artifacts/mobile/scripts/build-web.sh" ]
+publicDir = "artifacts/mobile/dist"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
 
 [services.env]
 PORT = "18115"
