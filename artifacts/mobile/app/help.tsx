@@ -153,7 +153,7 @@ export default function HelpScreen() {
               <Pressable
                 onPress={() => setQuery("")}
                 hitSlop={8}
-                accessibilityLabel="Suche leeren"
+                accessibilityLabel={t("helpClearSearch")}
               >
                 <Feather name="x-circle" size={18} color={c.mutedForeground} />
               </Pressable>
@@ -168,7 +168,7 @@ export default function HelpScreen() {
           contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
         >
           <FilterChip
-            label="Alle"
+            label={t("helpAll")}
             count={HELP_TOPICS.length}
             active={activeSection === "all"}
             onPress={() => setActiveSection("all")}
@@ -189,11 +189,7 @@ export default function HelpScreen() {
 
         {/* ── Topics ── */}
         {grouped.length === 0 ? (
-          <EmptyState
-            icon="search"
-            title={t("helpEmpty")}
-            description=""
-          />
+          <EmptyState icon="search" title={t("helpEmpty")} />
         ) : (
           grouped.map(({ section, topics }) => (
             <View key={section.id} style={{ gap: 8 }}>
@@ -251,7 +247,7 @@ export default function HelpScreen() {
                   fontSize: 14,
                 }}
               >
-                Schneller mit Kios
+                {t("helpFooterTitle")}
               </Text>
               <Text
                 style={{
@@ -261,9 +257,7 @@ export default function HelpScreen() {
                   lineHeight: 19,
                 }}
               >
-                Jede dieser Funktionen erreichst du auch per Sprache. Tippe das
-                Mikrofon-Symbol über der Tab-Leiste und sage z. B.
-                „Kios, Tagesabschluss" oder „Kios, wie ist mein DGE-Score".
+                {t("helpFooterBody")}
               </Text>
             </View>
           </View>

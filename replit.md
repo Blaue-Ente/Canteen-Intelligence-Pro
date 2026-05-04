@@ -155,6 +155,41 @@ Verpflegung). Никой конкурент (Apicbase, Foodics, MarketMan, Choco
   (+DgeStandardCard), `mobile/app/(tabs)/menu.tsx` (+live Badge), `mobile/app/
   (tabs)/more.tsx` (+DGE entry).
 
+### T-IA — Mehr-Menü Information-Architecture Reorg + Gebrauchsanleitung (May 2026)
+Преди: Mehr-меню имаше 8 секции от които една ("Operations") с 19 смесени
+entries, плюс 3 single-item секции (Filialen / Öko / Settings). Нови T013/T014
+екрани (production, cleaning, kasse, dge, wastecam, aushang) бяха разпръснати
+без структура, и липсваше in-app help screen.
+- **IA reorg**: 8 mental-model-conformant sections според ежедневния workflow на
+  кантинния lead — KI-Assistent / Tagesgeschäft / Küche & Produktion / Einkauf
+  & Lager / Gäste & Verkauf / Qualität & Recht / Insights & Berichte /
+  Administration. Всички section titles през i18n (`secKiAssistent`,
+  `secDailyOps`, `secKitchenProd`, `secPurchaseStock`, `secGuestsSales`,
+  `secComplianceQuality`, `secInsightsReports`, `secAdmin`). T013/T014 entries
+  (production, cleaning, kasse, dge, wastecam, aushang) интегрирани в правилните
+  секции. Нов Hilfe entry в Administration с tint #0ea5e9.
+- **Gebrauchsanleitung** (`/help`): structured in-app user manual за всички 41
+  функции. `constants/helpTopics.ts` (~620 lines) с HelpTopic[] (id, section,
+  icon, title, what, when, howTo[], tips[], optional screen, optional related[],
+  keywords). 8 секции огледално на Mehr-меню. `app/help.tsx` (~470 lines) —
+  client-side full-text search (title + keywords + content), section filter
+  chips с counts, accordion TopicCards с: 30-second elevator pitch ("what"),
+  use-case section ("when"), numbered how-to steps, yellow tip block
+  (#fef3c7/#fde68a/#92400e), related cross-jump bubbles (auto-expand при tap),
+  "Öffnen" shortcut button → router.push(screen), Kios footer card. Всички
+  данни client-side, no network, full-text search instant. Stack.Screen
+  registered с title "Gebrauchsanleitung".
+- **Tip-content guideline**: всеки topic има 1-3 практични съвета от реалния
+  кухненски ден (не product marketing); пример Production: "Pflicht ab 50
+  Portionen pro Tag in Gemeinschaftsverpflegung — bei Verdacht auf
+  Lebensmittelvergiftung sind sie der einzige Beweis."
+- **i18n**: добавени 8 section keys + 10 help keys + `team` (липсваше в DE/EN
+  dict) + `helpSearch` placeholder с escaped quotes за нативно cross-platform.
+- Files: `mobile/constants/i18n.ts` (+8 sec + 10 help + team keys per locale),
+  `mobile/constants/helpTopics.ts` (нов, ~620), `mobile/app/help.tsx` (нов, ~470),
+  `mobile/app/_layout.tsx` (+help Stack.Screen), `mobile/app/(tabs)/more.tsx`
+  (пренаписан с 8-section IA + Hilfe entry).
+
 ## System Architecture
 
 KItchenOS is built as a cross-platform Expo app for iOS, Android, and Web, complemented by an Express.js API server.

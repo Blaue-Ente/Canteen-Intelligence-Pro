@@ -40,17 +40,43 @@ export interface HelpTopic {
 }
 
 export const HELP_SECTIONS: { id: HelpSectionId; titleKey: string }[] = [
-  { id: "kiAssistent",        titleKey: "secKiAssistent" },
-  { id: "dailyOps",           titleKey: "secDailyOps" },
-  { id: "kitchenProd",        titleKey: "secKitchenProd" },
-  { id: "purchaseStock",      titleKey: "secPurchaseStock" },
-  { id: "guestsSales",        titleKey: "secGuestsSales" },
-  { id: "complianceQuality",  titleKey: "secComplianceQuality" },
-  { id: "insightsReports",    titleKey: "secInsightsReports" },
-  { id: "admin",              titleKey: "secAdmin" },
+  { id: "kiAssistent",       titleKey: "secKiAssistent" },
+  { id: "dailyOps",          titleKey: "secDailyOps" },
+  { id: "kitchenProd",       titleKey: "secKitchenProd" },
+  { id: "purchaseStock",     titleKey: "secPurchaseStock" },
+  { id: "guestsSales",       titleKey: "secGuestsSales" },
+  { id: "complianceQuality", titleKey: "secComplianceQuality" },
+  { id: "insightsReports",   titleKey: "secInsightsReports" },
+  { id: "admin",             titleKey: "secAdmin" },
 ];
 
 export const HELP_TOPICS: HelpTopic[] = [
+  // ─── 0. Statistik (Tab — global, vor allen Mehr-Sektionen erreichbar) ────
+  // Wird trotzdem in Sektion „Insights & Berichte" einsortiert, weil dort
+  // mental verortet.
+  {
+    id: "stats",
+    section: "insightsReports",
+    icon: "trending-up",
+    title: "Statistik (Tab)",
+    what:
+      "Live-Dashboard mit Tages-Umsatz, Top-Gerichten, Verschwendungs-Quote, Foodcost-Trend und Marge — der Schnell-Blick für die Geschäftsführung.",
+    when:
+      "Morgens als 'Wie war gestern?', mehrmals täglich um den Pulsschlag zu fühlen.",
+    howTo: [
+      "Tab 'Statistik' in der unteren Tab-Leiste oder 'Kios, Statistik'.",
+      "Zeitraum-Selector oben (heute / Woche / Monat).",
+      "Tap eine Kachel: Drill-Down in den entsprechenden Bericht.",
+    ],
+    tips: [
+      "Wenn das Dashboard leer wirkt: erst Tagesabschluss machen, dann erscheinen die Werte.",
+      "Top-Gericht-Liste hilft beim wöchentlichen Karten-Review — schwache Gerichte rotieren.",
+    ],
+    screen: "/(tabs)/stats",
+    related: ["sales", "reports", "dishanalysis"],
+    keywords: "statistik stats dashboard uebersicht overview kennzahlen kpi",
+  },
+
   // ─── 1. KI-Assistent ──────────────────────────────────────────────────────
   {
     id: "kios",
@@ -58,18 +84,18 @@ export const HELP_TOPICS: HelpTopic[] = [
     icon: "mic",
     title: "Kios — Sprach-Assistent",
     what:
-      "Always-on Sprachassistent für freihändigen Betrieb am iPad. Sage 'Kios, wie viel Milch?" und du erhältst sofort Antwort und Navigation.",
+      "Always-on Sprachassistent für freihändigen Betrieb am iPad. Sage 'Kios, wie viel Milch?' und du erhältst sofort Antwort und Navigation.",
     when:
       "Wenn deine Hände voll sind: bei der Vorbereitung, beim Service, beim Wareneingang oder am Pass.",
     howTo: [
       "Aktiviere Kios einmalig pro Sitzung: tippe auf das Mikrofon-Symbol über der Tab-Leiste.",
-      "Sage 'Kios" + deine Frage oder Anweisung in einem Satz.",
-      "Beispiele: 'Kios, mach den Tagesabschluss" · 'Kios, Rückstellprobe nehmen" · 'Kios, wie ist mein DGE-Score".",
+      "Sage 'Kios' + deine Frage oder Anweisung in einem Satz.",
+      "Beispiele: 'Kios, mach den Tagesabschluss' · 'Kios, Rückstellprobe nehmen' · 'Kios, wie ist mein DGE-Score'.",
       "Kios spricht die Antwort vor und navigiert ggf. zum passenden Bildschirm.",
     ],
     tips: [
-      "Kios kennt 38+ Bildschirme und reagiert auch auf umgangssprachliche Wendungen wie 'Was kochen wir morgen?".",
-      "Antworten kommen als Text + Sprachausgabe (ElevenLabs Premium-Stimme 'Sarah").",
+      "Kios kennt 38+ Bildschirme und reagiert auch auf umgangssprachliche Wendungen wie 'Was kochen wir morgen?'.",
+      "Antworten kommen als Text + Sprachausgabe (ElevenLabs Premium-Stimme 'Sarah').",
       "Schnellbefehle (Tagesabschluss, Lager, Rezept …) umgehen die KI-Anfrage und reagieren in unter 200 ms.",
     ],
     related: ["chat", "scan"],
@@ -90,7 +116,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       "Folgefragen halten den Kontext, du musst dich nicht wiederholen.",
     ],
     tips: [
-      "Ideal für: 'Schreibe mir 5 Schul-Menüs unter 3 € Foodcost", 'Erkläre meinem Azubi den Unterschied DGE Schule vs. Kita".",
+      "Ideal für: 'Schreibe mir 5 Schul-Menüs unter 3 € Foodcost', 'Erkläre meinem Azubi den Unterschied DGE Schule vs. Kita'.",
       "Wenn du eine konkrete Aktion willst (z. B. Bestellung absenden), nutze besser Kios oder den jeweiligen Bildschirm.",
     ],
     screen: "/chat",
@@ -107,7 +133,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     when:
       "Bei Wareneingang ohne Lieferschein, beim Inventarisieren neuer Produkte, beim Erfassen von Spontankäufen.",
     howTo: [
-      "Mehr → Scannen oder 'Kios, Scanner".",
+      "Mehr → Scannen oder 'Kios, Scanner'.",
       "Halte das Etikett mittig im Sucher, Tap auf den Auslöser.",
       "Prüfe den KI-Vorschlag (Name, Einheit, Menge, Allergene), passe an, speichere.",
     ],
@@ -131,16 +157,16 @@ export const HELP_TOPICS: HelpTopic[] = [
     when:
       "Direkt nach Service-Ende, bevor jemand den Posten verlässt — sonst gehen die Zahlen verloren.",
     howTo: [
-      "Mehr → Tagesgeschäft → Tagesabschluss oder 'Kios, Tagesabschluss".",
+      "Mehr → Tagesgeschäft → Tagesabschluss oder 'Kios, Tagesabschluss'.",
       "Pro heutiges Gericht: tippe gekocht und verkauft. Differenz = Rest.",
       "Speichern. Die Zahlen erscheinen sofort in Statistik, Marge und KI-Prognose.",
     ],
     tips: [
-      "Aktiviere in Einstellungen das 'Erfassungsfenster" — danach können Zahlen nur noch erhöht werden, nicht reduziert. Verhindert Manipulation während des Service.",
+      "Aktiviere in Einstellungen das 'Erfassungsfenster' — danach können Zahlen nur noch erhöht werden, nicht reduziert. Verhindert Manipulation während des Service.",
       "Wenn dir eine Schätzung fehlt: nutze Tablett-Foto-Analyse, um Reste über die Kamera zu schätzen.",
     ],
     screen: "/sales",
-    related: ["wastecam", "stats", "forecast"],
+    related: ["wastecam", "forecast"],
     keywords: "tagesabschluss verkauf portionen daily close eod cash report",
   },
   {
@@ -153,8 +179,8 @@ export const HELP_TOPICS: HelpTopic[] = [
     when:
       "Wenn du keine separate POS-Kasse hast und KitchenOS als rechtsverbindliche Registrierkasse nutzt.",
     howTo: [
-      "Erst in Einstellungen → App-Modus auf 'Full" wechseln und fiskaly-TSE konfigurieren.",
-      "Mehr → Tagesgeschäft → Kasse oder 'Kios, Kasse".",
+      "Erst in Einstellungen → App-Modus auf 'Full' wechseln und fiskaly-TSE konfigurieren.",
+      "Mehr → Tagesgeschäft → Kasse oder 'Kios, Kasse'.",
       "Gerichte tippen, Zahlart wählen, Bon drucken / mailen.",
       "Monatlich: DSFinV-K-Export für Steuerberater erzeugen.",
     ],
@@ -177,7 +203,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       "Wenn du Zettle als Kartenterminal einsetzt und Sales nicht händisch übertragen willst.",
     howTo: [
       "Einstellungen → Zahlungen → Zettle verbinden (OAuth).",
-      "Mehr → Tagesgeschäft → Zettle, Tap 'Sync".",
+      "Mehr → Tagesgeschäft → Zettle, Tap 'Sync'.",
       "Geprüfte Zeilen werden in den Tagesabschluss übernommen.",
     ],
     tips: [
@@ -204,7 +230,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     ],
     tips: [
       "KI kann den Text aus deinem Stichwort-Diktat formulieren — Tap auf Mikrofon.",
-      "Verwende Vorlagen für Wiederkehrendes ('Salatkühlung Sensor 4 erneut prüfen").",
+      "Verwende Vorlagen für Wiederkehrendes ('Salatkühlung Sensor 4 erneut prüfen').",
     ],
     screen: "/handover",
     related: ["dienstplan"],
@@ -221,7 +247,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       "Sonntag oder Montag für die kommende Woche; bei Krankmeldungen sofort.",
     howTo: [
       "Mehr → Tagesgeschäft → Dienstplan.",
-      "Kalenderwoche wählen, Drag & Drop oder 'KI-Vorschlag".",
+      "Kalenderwoche wählen, Drag & Drop oder 'KI-Vorschlag'.",
       "Veröffentlichen — alle bekommen eine Push-Benachrichtigung.",
     ],
     tips: [
@@ -244,13 +270,13 @@ export const HELP_TOPICS: HelpTopic[] = [
     when:
       "Donnerstag/Freitag für die Folgewoche, jederzeit für spontane Anpassungen.",
     howTo: [
-      "Tab 'Karte" oder 'Kios, Karte".",
+      "Tab 'Karte' oder 'Kios, Karte'.",
       "Tippe einen Tag, dann + → Rezept aus der Liste oder neu anlegen.",
       "Ziehe Rezepte zwischen Tagen, um Reste sinnvoll umzuverteilen.",
     ],
     tips: [
       "Wenn DGE aktiviert ist, siehst du in der Kopfzeile sofort den Wochen-Score und welche Kriterien fehlen.",
-      "'KI-Generieren" füllt eine ganze Woche basierend auf Saison, Foodcost-Ziel und Allergie-Bedarf vor.",
+      "'KI-Generieren' füllt eine ganze Woche basierend auf Saison, Foodcost-Ziel und Allergie-Bedarf vor.",
     ],
     screen: "/(tabs)/menu",
     related: ["dge", "calculator", "forecast"],
@@ -264,15 +290,15 @@ export const HELP_TOPICS: HelpTopic[] = [
     what:
       "Erfasse Produktions-Chargen (Wer, Was, Wann, Wieviel) und entnehme automatisch eine Rückstellprobe nach LMHV §11 (7 Tage Aufbewahrung).",
     when:
-      "Bei jeder Charge größer als 'eine Pfanne", besonders Catering, Schule, Kita.",
+      "Bei jeder Charge größer als 'eine Pfanne', besonders Catering, Schule, Kita.",
     howTo: [
-      "Mehr → Küche & Produktion → Produktion oder 'Kios, Produktion".",
+      "Mehr → Küche & Produktion → Produktion oder 'Kios, Produktion'.",
       "Charge anlegen: Rezept, Datum, Menge, Mitarbeiter:in.",
-      "Rückstellprobe: tippe 'nehmen", Foto + Etikett anbringen — das System trägt automatisch retentionUntil = Datum + 7 Tage.",
+      "Rückstellprobe: tippe 'nehmen', Foto + Etikett anbringen — das System trägt automatisch retentionUntil = Datum + 7 Tage.",
     ],
     tips: [
       "Lege in Einstellungen einen Standard-Probenkühlschrank fest, dann werden Proben automatisch zugeordnet.",
-      "Nach 7 Tagen markiert das System Proben automatisch als 'dürfen entsorgt werden" — kein händisches Mitzählen.",
+      "Nach 7 Tagen markiert das System Proben automatisch als 'dürfen entsorgt werden' — kein händisches Mitzählen.",
       "Pflicht ab 50 Portionen pro Tag in Gemeinschaftsverpflegung — bei Verdacht auf Lebensmittelvergiftung sind sie der einzige Beweis.",
     ],
     screen: "/production",
@@ -285,12 +311,12 @@ export const HELP_TOPICS: HelpTopic[] = [
     icon: "refresh-ccw",
     title: "Reste-Rezepte",
     what:
-      "Die KI schlägt aus deinen Übermengen 3–5 neue Gerichte vor — z. B. 'Aus 4 kg gekochten Kartoffeln: Rösti, Gratin, Suppe".",
+      "Die KI schlägt aus deinen Übermengen 3–5 neue Gerichte vor — z. B. 'Aus 4 kg gekochten Kartoffeln: Rösti, Gratin, Suppe'.",
     when:
       "Wenn nach dem Tagesabschluss erkennbare Reste übrig sind, oder vor Wochenend-Schließtagen.",
     howTo: [
       "Mehr → Küche & Produktion → Reste-Rezepte.",
-      "Top-Reste der letzten 3 Tage werden vorgeschlagen, Tap auf 'Ideen generieren".",
+      "Top-Reste der letzten 3 Tage werden vorgeschlagen, Tap auf 'Ideen generieren'.",
       "Wähle ein Rezept → in die Wochenkarte ziehen oder direkt produzieren.",
     ],
     tips: [
@@ -307,7 +333,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     icon: "dollar-sign",
     title: "Preiskalkulation",
     what:
-      "Berechnet Foodcost pro Portion, Wunschmarge, Verkaufspreis und MwSt — auch rückwärts: 'Welcher Foodcost erlaubt 35 % Marge bei 9,90 € VK?".",
+      "Berechnet Foodcost pro Portion, Wunschmarge, Verkaufspreis und MwSt — auch rückwärts: 'Welcher Foodcost erlaubt 35 % Marge bei 9,90 € VK?'.",
     when:
       "Vor Aufnahme eines neuen Gerichts in die Karte, bei Lieferantenwechsel, bei Preisanpassungen.",
     howTo: [
@@ -335,8 +361,8 @@ export const HELP_TOPICS: HelpTopic[] = [
     when:
       "Täglich morgens 1× kurz prüfen, vor jeder Bestellung gründlich.",
     howTo: [
-      "Tab 'Lager" oder 'Kios, Lager".",
-      "Sortiere nach 'kritisch zuerst" — rot markierte Artikel sind unter Mindestbestand.",
+      "Tab 'Lager' oder 'Kios, Lager'.",
+      "Sortiere nach 'kritisch zuerst' — rot markierte Artikel sind unter Mindestbestand.",
       "Tap auf einen Artikel: Bestandskorrektur, Foto, Lieferantenwechsel, Notiz.",
     ],
     tips: [
@@ -357,9 +383,9 @@ export const HELP_TOPICS: HelpTopic[] = [
     when:
       "Mo / Mi / Fr morgens — oder wenn die Startseite einen kritischen Bestand meldet.",
     howTo: [
-      "Mehr → Einkauf & Lager → Auto-Bestellung oder 'Kios, nachbestellen".",
+      "Mehr → Einkauf & Lager → Auto-Bestellung oder 'Kios, nachbestellen'.",
       "Pro Lieferant prüfen: Mengen anpassen, Position löschen, Notiz hinzufügen.",
-      "'Senden" — Bestellung geht per E-Mail / WhatsApp / EDI an den Lieferanten.",
+      "'Senden' — Bestellung geht per E-Mail / WhatsApp / EDI an den Lieferanten.",
     ],
     tips: [
       "Die KI berücksichtigt Wetter (z. B. mehr Salat bei Sommer-Hitze) — die Genauigkeit steigt nach 4 Wochen Lerndaten.",
@@ -379,7 +405,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     when:
       "Bei jeder Anlieferung — bevor der Fahrer geht.",
     howTo: [
-      "Mehr → Einkauf & Lager → Wareneingang oder 'Kios, Wareneingang".",
+      "Mehr → Einkauf & Lager → Wareneingang oder 'Kios, Wareneingang'.",
       "Bestellung wählen, Positionen abhaken, Differenzen tippen.",
       "Bei Mängel: Foto + Notiz — geht direkt als Reklamations-PDF an den Lieferanten.",
     ],
@@ -404,11 +430,11 @@ export const HELP_TOPICS: HelpTopic[] = [
       "Mehr → Einkauf & Lager → Inventur.",
       "Stichtag wählen, Lagerorte selektieren, Mitarbeiter:innen zuordnen.",
       "Pro Position: gezählter Wert eingeben oder per Sprache diktieren.",
-      "Abweichungen prüfen, dann 'Abschließen" → PDF erzeugt.",
+      "Abweichungen prüfen, dann 'Abschließen' → PDF erzeugt.",
     ],
     tips: [
       "Mehrere Personen können parallel zählen — jede:r bekommt einen Bereich zugewiesen.",
-      "Letzte Inventur als 'Vorlage" laden spart 70 % der Tippzeit.",
+      "Letzte Inventur als 'Vorlage' laden spart 70 % der Tippzeit.",
     ],
     screen: "/inventur",
     related: ["inventory", "reports"],
@@ -426,7 +452,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     howTo: [
       "Mehr → Einkauf & Lager → Lieferanten.",
       "Tap einen Lieferant: alle Bestellungen, Reklamationen, Pünktlichkeits-Score sichtbar.",
-      "'Lieferanten finden" sucht regional via PLZ + Kategorie.",
+      "'Lieferanten finden' sucht regional via PLZ + Kategorie.",
     ],
     tips: [
       "Score unter 70 sollte ein Re-Tender-Trigger sein — die App schlägt ab 50 automatisch Alternativen vor.",
@@ -472,10 +498,10 @@ export const HELP_TOPICS: HelpTopic[] = [
     howTo: [
       "Mehr → Gäste & Verkauf → Vorbestellungen.",
       "Pro Tag siehst du: Gerichte × bestellte Portionen, Zahlart, Notizen.",
-      "'Preorder schließen" 1 h vor Service hilft die Produktion zu fixieren.",
+      "'Preorder schließen' 1 h vor Service hilft die Produktion zu fixieren.",
     ],
     tips: [
-      "Hinterlege in Einstellungen Cutoff-Zeiten pro Gericht (z. B. 'Schnitzel nur bis 9:00").",
+      "Hinterlege in Einstellungen Cutoff-Zeiten pro Gericht (z. B. 'Schnitzel nur bis 9:00').",
       "Push-Erinnerung an Stammgäste am Vorabend hebt die Vorbestellquote um typischerweise 35 %.",
     ],
     screen: "/preorder",
@@ -494,7 +520,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     howTo: [
       "Mehr → Gäste & Verkauf → Geschäftskunden.",
       "Pro Anfrage: Bonität prüfen, Konditionen festlegen, freigeben.",
-      "Monatlich: 'Sammel-Rechnung erzeugen" pro Kunde.",
+      "Monatlich: 'Sammel-Rechnung erzeugen' pro Kunde.",
     ],
     tips: [
       "Kreditlimit + Zahlungsziel pflegen — sonst überschreiten Stammkunden das Limit unbemerkt.",
@@ -515,12 +541,12 @@ export const HELP_TOPICS: HelpTopic[] = [
       "Vor jedem Verkaufsgespräch, vor jeder Catering-Anfrage, bei Reklamation.",
     howTo: [
       "Mehr → Gäste & Verkauf → CRM.",
-      "Suche oder filtere nach Tag (z. B. 'Schule", 'Pflegeheim").",
+      "Suche oder filtere nach Tag (z. B. 'Schule', 'Pflegeheim').",
       "Kontakt-Karte: alle E-Mails, Bestellungen, Veranstaltungen, Notizen chronologisch.",
     ],
     tips: [
-      "Setze Wiedervorlagen für Cross-Sell ('3 Wochen nach Hochzeit: Geburtstagsangebot Ehepaar").",
-      "Verknüpfe E-Mails per Outlook-Integration — Korrespondenz erscheint automatisch.",
+      "Setze Wiedervorlagen für Cross-Sell ('3 Wochen nach Hochzeit: Geburtstagsangebot Ehepaar').",
+      "Notiz-Felder pro Kontakt — halte hier Sonderwünsche, Allergien, Lieblingsweine fest.",
     ],
     screen: "/crm",
     related: ["customers", "catering"],
@@ -536,14 +562,14 @@ export const HELP_TOPICS: HelpTopic[] = [
     when:
       "Bei jeder Catering-Anfrage außerhalb des regulären Service.",
     howTo: [
-      "Mehr → Gäste & Verkauf → Catering oder 'Kios, Catering".",
+      "Mehr → Gäste & Verkauf → Catering oder 'Kios, Catering'.",
       "Anfrage anlegen: Datum, Gäste, Wünsche, Allergene.",
       "Angebot generieren (KI schlägt Menü + Preis vor) → an Kunde mailen.",
       "Nach Bestätigung: Produktion + Lieferung + Rückstellprobe automatisch geplant.",
     ],
     tips: [
       "Mehrwertsteuer-Splitting (7 % vs. 19 %) automatisch nach Gerichtsart — manuell prüfen bei Mischauftrag.",
-      "Aus 'Veranstaltungen" wechseln, sobald > 80 Personen oder mehrtägig.",
+      "Aus 'Veranstaltungen' wechseln, sobald > 80 Personen oder mehrtägig.",
     ],
     screen: "/catering",
     related: ["events", "production"],
@@ -564,7 +590,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       "Tap das Event: Zeitplan (Anlieferung / Aufbau / Service / Abbau), Personal, Equipment.",
     ],
     tips: [
-      "Status-Workflow 'Anfrage → Entwurf → Bestätigt → Erbracht → Bezahlt" — auf der Startseite siehst du heute/morgen anstehende.",
+      "Status-Workflow 'Anfrage → Entwurf → Bestätigt → Erbracht → Bezahlt' — auf der Startseite siehst du heute/morgen anstehende.",
       "Demo-Daten haben 5 realistische Events für Onboarding-Training.",
     ],
     screen: "/events",
@@ -589,7 +615,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       "Bei Abweichung: System fragt Korrekturmaßnahme + dokumentiert mit Foto.",
     ],
     tips: [
-      "Lebensmittelkontrolle akzeptiert PDF-Export aus 'Inspektions-Modus" — generiert auf Tap.",
+      "Lebensmittelkontrolle akzeptiert PDF-Export aus 'Inspektions-Modus' — generiert auf Tap.",
       "Sensor-Batterien rechtzeitig wechseln — App warnt bei < 20 %.",
       "Manuelle Einträge sind weiterhin möglich, falls BLE ausfällt.",
     ],
@@ -608,9 +634,9 @@ export const HELP_TOPICS: HelpTopic[] = [
       "Bei öffentlichen Ausschreibungen (Schule, Kita, Klinik, Senioren), bei Re-Zertifizierungen, beim wöchentlichen Menü-Review.",
     howTo: [
       "Erst in Einstellungen → DGE-Standard den passenden auswählen (z. B. Schulverpflegung).",
-      "Mehr → Qualität & Recht → DGE-Qualitätsstandard oder 'Kios, DGE".",
-      "Score sehen, fehlende Kriterien lesen, 'Empfehlungen" umsetzen (z. B. '1× Seefisch in dieser Woche").",
-      "Bei Ausschreibung: 'Zertifikat erstellen (PDF)" — gibt einen unterschriftsfähigen Audit-Bogen.",
+      "Mehr → Qualität & Recht → DGE-Qualitätsstandard oder 'Kios, DGE'.",
+      "Score sehen, fehlende Kriterien lesen, 'Empfehlungen' umsetzen (z. B. '1× Seefisch in dieser Woche').",
+      "Bei Ausschreibung: 'Zertifikat erstellen (PDF)' — gibt einen unterschriftsfähigen Audit-Bogen.",
     ],
     tips: [
       "Live-Badge im Wochenkarte-Header zeigt sofort den aktuellen Score — grün ≥80, gelb 60–79, rot <60.",
@@ -633,8 +659,8 @@ export const HELP_TOPICS: HelpTopic[] = [
     howTo: [
       "Mehr → Qualität & Recht → Reinigungsplan.",
       "Bereich + Frequenz wählen (Küche/Kühlung/Boden/Abluft … × täglich/wöchentlich).",
-      "Beim Erledigen: Tap 'Erledigt" + optional Foto.",
-      "Lebensmittelkontrolle: 'Inspektions-PDF" generieren.",
+      "Beim Erledigen: Tap 'Erledigt' + optional Foto.",
+      "Lebensmittelkontrolle: 'Inspektions-PDF' generieren.",
     ],
     tips: [
       "Foto-Pflicht für Tiefen-Reinigung aktivieren — schützt bei Verfahren.",
@@ -676,7 +702,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     when:
       "Beim Abräumen am Pass — wenn händisches Zählen zu lange dauert.",
     howTo: [
-      "Mehr → Qualität & Recht → Tablett-Foto oder 'Kios, Tablett-Foto".",
+      "Mehr → Qualität & Recht → Tablett-Foto oder 'Kios, Tablett-Foto'.",
       "Foto machen — KI erkennt Gerichte und schätzt Restmenge in %.",
       "Bestätigen oder korrigieren, speichern.",
     ],
@@ -700,7 +726,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     when:
       "Vor jeder Auto-Bestellung, vor der Wochenkarten-Planung.",
     howTo: [
-      "Mehr → Insights & Berichte → KI-Prognose oder 'Kios, Prognose".",
+      "Mehr → Insights & Berichte → KI-Prognose oder 'Kios, Prognose'.",
       "Pro Tag siehst du erwartete Portionen mit Konfidenz-Intervall.",
       "Tap auf einen Tag: welche Faktoren den Wert beeinflussen (Wetter / Ferien / Event).",
     ],
@@ -723,12 +749,12 @@ export const HELP_TOPICS: HelpTopic[] = [
       "Wöchentlich, bei Lieferantenwechsel, vor Karten-Update.",
     howTo: [
       "Mehr → Insights & Berichte → Marge-Alerts.",
-      "Sortiere nach 'Verlust pro Portion".",
+      "Sortiere nach 'Verlust pro Portion'.",
       "Tap ein Gericht: Foodcost-Treiber + Vorschläge (Substitut / Preisanpassung / Streichen).",
     ],
     tips: [
       "Schwelle in Einstellungen pflegen — z. B. 30 % bei Vollservice, 25 % bei Schul-Verpflegung.",
-      "Aktion 'Preis erhöhen um X%" wirft live die neue Marge aus.",
+      "Aktion 'Preis erhöhen um X%' wirft live die neue Marge aus.",
     ],
     screen: "/margin",
     related: ["calculator", "dishanalysis"],
@@ -767,14 +793,14 @@ export const HELP_TOPICS: HelpTopic[] = [
       "Monatsende für Geschäftsführung, vor Bankgesprächen, bei Ausschreibungen.",
     howTo: [
       "Mehr → Insights & Berichte → Berichte.",
-      "Zeitraum wählen, Sektionen aktivieren, 'PDF erzeugen".",
+      "Zeitraum wählen, Sektionen aktivieren, 'PDF erzeugen'.",
     ],
     tips: [
-      "Vorlage 'Bank-Report" enthält alle Kennzahlen die für Kreditverhandlung relevant sind.",
-      "Vorlage 'Ausschreibung" enthält DGE-Score, Bio-Quote, Allergen-Statistik.",
+      "Vorlage 'Bank-Report' enthält alle Kennzahlen die für Kreditverhandlung relevant sind.",
+      "Vorlage 'Ausschreibung' enthält DGE-Score, Bio-Quote, Allergen-Statistik.",
     ],
     screen: "/reports",
-    related: ["dge", "okowizard", "stats"],
+    related: ["dge", "okowizard", "aggregate"],
     keywords: "berichte report monatsbericht wochenbericht pdf",
   },
   {
@@ -829,7 +855,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     what:
       "Pro Filiale, pro Tag: Umsatz, Portionen, Foodcost, Verschwendung — alles auf einem Bildschirm.",
     when:
-      "Morgens als 'Wie war gestern?", abends als 'Wie lief heute?".",
+      "Morgens als 'Wie war gestern?', abends als 'Wie lief heute?'.",
     howTo: [
       "Mehr → Insights & Berichte → Tagesübersicht.",
       "Tag wählen, Filiale wählen.",
@@ -839,7 +865,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       "Bei Multi-Standort: nutze Standortvergleich für synchrone Sicht.",
     ],
     screen: "/aggregate",
-    related: ["rollup", "stats"],
+    related: ["rollup", "reports"],
     keywords: "aggregate tagesuebersicht daily summary aggregate",
   },
   {
@@ -933,23 +959,22 @@ export const HELP_TOPICS: HelpTopic[] = [
     id: "aushang",
     section: "admin",
     icon: "printer",
-    title: "Wochenplan-Aushang (LMIV)",
+    title: "LMIV-Aushang pro Gericht",
     what:
-      "Automatischer Wochenkarten-Aushang mit allen LMIV-Pflichtangaben (Allergene, Zusatzstoffe) — Print-fertig.",
+      "Pro Gericht ein Print-fertiger Aushang mit allen LMIV-Pflichtangaben (Allergene, Zusatzstoffe, Nährwerte) — direkt aus dem Rezept generiert.",
     when:
-      "Sonntag/Montag für die Folgewoche, bei spontanen Karten-Änderungen.",
+      "Beim Aufnehmen eines neuen Gerichts in die Karte, bei Eltern-Information (Schule/Kita), bei Catering-Anlass.",
     howTo: [
-      "Mehr → Administration → Aushang.",
-      "Woche wählen → Vorlage wählen → PDF.",
-      "Drucken oder per Mail an Aushang-Verantwortliche.",
+      "Karte oder Wochenplan öffnen, Gericht antippen.",
+      "Im Rezept-Detail: 'LMIV-Aushang' wählen.",
+      "Vorschau prüfen, drucken oder als PDF teilen.",
     ],
     tips: [
-      "Vorlage 'Eltern-Information" (Schule/Kita) enthält Symbol-Legende für Kinder.",
-      "Allergene werden aus den Rezepten gezogen — pflege sie sauber, sonst hast du Lücken auf dem Aushang.",
+      "Allergene werden aus den Rezept-Zutaten gezogen — pflege sie sauber, sonst entstehen Lücken auf dem Aushang.",
+      "Für die ganze Woche: nutze die Print-Funktion direkt im Wochenplan — generiert alle aktuellen Aushänge in einem Durchgang.",
     ],
-    screen: "/aushang",
     related: ["menu", "haccp"],
-    keywords: "aushang wochenplan lmiv allergen ausdruck",
+    keywords: "aushang lmiv allergen ausdruck poster gericht",
   },
   {
     id: "settings",
@@ -961,15 +986,15 @@ export const HELP_TOPICS: HelpTopic[] = [
     when:
       "Initial beim Onboarding, danach bei jeder organisatorischen Änderung.",
     howTo: [
-      "Mehr → Administration → Einstellungen oder 'Kios, Einstellungen".",
+      "Mehr → Administration → Einstellungen oder 'Kios, Einstellungen'.",
       "Sektionen sind nach Häufigkeit sortiert (oft genutzt oben).",
     ],
     tips: [
-      "'Demo-Daten laden" befüllt eine leere Installation mit 5 realistischen Events + 1 Firmenprofil — perfekt für Onboarding-Schulung.",
+      "'Demo-Daten laden' befüllt eine leere Installation mit 5 realistischen Events + 1 Firmenprofil — perfekt für Onboarding-Schulung.",
       "Bei Wechsel von Lite → Full: TSE-Setup vorab mit Steuerberater abstimmen.",
     ],
     screen: "/settings",
-    related: ["help"],
+    related: ["team"],
     keywords: "einstellungen settings konfiguration optionen",
   },
 ];

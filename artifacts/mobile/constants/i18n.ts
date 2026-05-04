@@ -509,6 +509,7 @@ const dict = {
     salesWindowTo: "Bis",
     salesWindowToDesc: "Ende des gesperrten Zeitfensters",
     // ── Mehr-Menü Sektionen (T-IA, Mai 2026 Reorganisation) ──
+    team:                 "Team",
     secKiAssistent:       "KI-Assistent",
     secDailyOps:          "Tagesgeschäft",
     secKitchenProd:       "Küche & Produktion",
@@ -521,13 +522,17 @@ const dict = {
     help:               "Hilfe",
     helpTitle:          "Gebrauchsanleitung",
     helpSubtitle:       "Erkläre jede Funktion in 30 Sekunden",
-    helpSearch:         "Suchen — z. B. 'Rückstellprobe", 'DGE", 'Kasse"",
+    helpSearch:         "Suchen — z. B. 'Rückstellprobe', 'DGE', 'Kasse'",
     helpEmpty:          "Keine Treffer. Versuche einen anderen Suchbegriff.",
     helpTipLabel:       "Tipp",
     helpUseCaseLabel:   "Wann nutzen?",
     helpHowToLabel:     "So gehts",
     helpRelatedLabel:   "Verwandt",
     helpOpenScreen:     "Öffnen",
+    helpAll:            "Alle",
+    helpClearSearch:    "Suche leeren",
+    helpFooterTitle:    "Schneller mit Kios",
+    helpFooterBody:     "Jede dieser Funktionen erreichst du auch per Sprache. Tippe das Mikrofon-Symbol über der Tab-Leiste und sage z. B. 'Kios, Tagesabschluss' oder 'Kios, wie ist mein DGE-Score'.",
   },
   en: {
     appName: "KItchenOS",
@@ -1037,6 +1042,7 @@ const dict = {
     salesWindowTo: "Until",
     salesWindowToDesc: "End of the locked time window",
     // ── More-menu sections (IA reorg, May 2026) ──
+    team:                 "Team",
     secKiAssistent:       "AI Assistant",
     secDailyOps:          "Daily operations",
     secKitchenProd:       "Kitchen & production",
@@ -1056,6 +1062,10 @@ const dict = {
     helpHowToLabel:     "How to",
     helpRelatedLabel:   "Related",
     helpOpenScreen:     "Open",
+    helpAll:            "All",
+    helpClearSearch:    "Clear search",
+    helpFooterTitle:    "Faster with Kios",
+    helpFooterBody:     "Every feature here is also reachable by voice. Tap the microphone above the tab bar and say e.g. 'Kios, daily close' or 'Kios, what is my DGE score'.",
   },
 } as const;
 

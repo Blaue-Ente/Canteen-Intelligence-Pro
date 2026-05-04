@@ -120,7 +120,8 @@ export default function More() {
       items: [
         { icon: "users",          label: t("team"),       to: "/team" },
         { icon: "map-pin",        label: t("locations"),  to: "/locations" },
-        { icon: "printer",        label: "Aushang",       to: "/aushang" },
+        // LMIV-Aushang ist dish-specific (app/aushang/[id].tsx) — Einstieg über
+        // Karte → Rezept → Aushang. Kein Top-Level-Eintrag, kein generelles /aushang.
         { icon: "help-circle",    label: t("help"),       to: "/help",     tint: "#0ea5e9" },
         { icon: "settings",       label: t("settings"),   to: "/settings" },
       ],
