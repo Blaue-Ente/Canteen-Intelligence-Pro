@@ -93,6 +93,7 @@ interface JsonBody {
   prompt: string;
   schemaHint?: string;
   base64?: string;
+  base64Array?: string[];
 }
 
 // Generic JSON-mode endpoint: returns parsed JSON object.
@@ -116,7 +117,14 @@ router.post("/ai/json", async (req: Request, res: Response) => {
             : "\n\nReturn ONLY valid minified JSON."),
       },
     ];
-    if (body.base64) {
+    if (body.base64Array && body.base64Array.length > 0) {
+      for (const b64 of body.base64Array) {
+        userContent.push({
+          type: "image_url",
+          image_url: { url: `data:image/jpeg;base64,${b64}` },
+        });
+      }
+    } else if (body.base64) {
       userContent.push({
         type: "image_url",
         image_url: { url: `data:image/jpeg;base64,${body.base64}` },

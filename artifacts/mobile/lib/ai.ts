@@ -70,11 +70,12 @@ export async function generateJson<T>(
   prompt: string,
   schemaHint?: string,
   base64?: string,
+  base64Array?: string[],
 ): Promise<T> {
   const res = await expoFetch(`${API_BASE}/api/ai/json`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt, schemaHint, base64 }),
+    body: JSON.stringify({ prompt, schemaHint, base64, base64Array }),
   });
   if (!res.ok) throw new Error(`JSON failed: ${res.status}`);
   const json = (await res.json()) as { data: T };
@@ -101,9 +102,16 @@ export const CHEF_PERSONA =
 export interface ParsedReceiptItem {
   name: string;
   quantity: number;
-  unit: "kg" | "g" | "l" | "ml" | "pcs";
+  unit: string;
   pricePerUnit: number;
   category?: string;
+}
+
+export interface ParsedPfandItem {
+  name: string;
+  quantity: number;
+  unit: string;
+  pfandValue?: number;
 }
 
 export interface ParsedReceipt {
@@ -111,13 +119,52 @@ export interface ParsedReceipt {
   date?: string;
   total?: number;
   items: ParsedReceiptItem[];
+  pfandItems?: ParsedPfandItem[];
 }
 
-export async function parseReceiptImage(base64: string): Promise<ParsedReceipt> {
+export async function parseReceiptImage(pages: string[]): Promise<ParsedReceipt> {
+  const prompt = [
+    "You are a German restaurant accountant. Read this supplier receipt or Lieferschein (may span multiple pages/photos) and extract every line item.",
+    "Use German item names as printed. Convert pieces (Stk) to pcs, kilogramm to kg, liter to l. Estimate pricePerUnit if only total is shown.",
+    "category may be one of: meat, dairy, vegetable, fruit, dry, spice, drink, frozen, other.",
+    "IMPORTANT — Pfand/Leergut: separately identify any deposit or return items such as 'Pfand-Kiste', 'Pfandkiste', 'Rollbehälter', 'Rollbehälter-Pfand', 'Leergut', 'Pfandgut', 'Euro-Kiste', 'Gitterbox', 'Pfandflasche'. List them in pfandItems with their count, unit and pfandValue (€ per unit) when shown. Do NOT include Pfand items in the regular items array.",
+  ].join("\n");
   return generateJson<ParsedReceipt>(
-    "You are a German restaurant accountant. Read this supplier receipt or Lieferschein and extract every line item. Use German item names. Convert pieces (Stk) to pcs, kilogramm to kg, liter to l. Estimate price_per_unit_eur if only total is shown. category may be one of: meat, dairy, vegetable, fruit, dry, spice, drink, frozen, other.",
-    '{"supplier":"string","date":"YYYY-MM-DD","total":number,"items":[{"name":"string","quantity":number,"unit":"kg|g|l|ml|pcs","pricePerUnit":number,"category":"string"}]}',
-    base64,
+    prompt,
+    '{"supplier":"string","date":"YYYY-MM-DD","total":number,"items":[{"name":"string","quantity":number,"unit":"kg|g|l|ml|pcs|Kiste|Karton|Bund|Sack","pricePerUnit":number,"category":"string"}],"pfandItems":[{"name":"string","quantity":number,"unit":"string","pfandValue":number}]}',
+    undefined,
+    pages,
+  );
+}
+
+export interface OrderRequestItem {
+  name: string;
+  quantity: number;
+  unit: string;
+  note?: string;
+}
+
+export interface ParsedOrderRequest {
+  items: OrderRequestItem[];
+  supplierHint?: string;
+  deliveryDate?: string;
+}
+
+export async function parseOrderRequest(args: {
+  text: string;
+  locale: "de" | "en";
+}): Promise<ParsedOrderRequest> {
+  const lang = args.locale === "de" ? "Deutsch" : "English";
+  return generateJson<ParsedOrderRequest>(
+    [
+      `Du bist KItchenOS Bestellassistent. Analysiere den folgenden Freitext und extrahiere eine strukturierte Bestellliste (Bestellliste) für einen Lebensmittellieferanten. Antworte auf ${lang}.`,
+      `Erkenne Mengen, Einheiten (kg, g, l, ml, Stk, Kiste, Bund, Packung, Flasche, Kanister, Sack, Beutel, Karton, Palette) und Artikelnamen. Füge optionale Notizen pro Artikel hinzu wenn vorhanden.`,
+      `Erkenne auch Pfand-Rückgaben wie "Rollbehälter zurück", "Pfandkisten zurückgeben" und liste sie als Artikel mit negativer Menge ODER als Notiz.`,
+      `Wenn ein Lieferantenname erwähnt wird (z.B. "bei Metro bestellen", "Frischemarkt Müller"), gib ihn in supplierHint an.`,
+      `Wenn ein Lieferdatum genannt wird ("morgen", "Freitag", "15.05."), gib es als ISO-Datum (YYYY-MM-DD) in deliveryDate an.`,
+      `Freitext:\n"""${args.text}"""`,
+    ].join("\n\n"),
+    '{"items":[{"name":"string","quantity":number,"unit":"string","note":"string"}],"supplierHint":"string","deliveryDate":"YYYY-MM-DD"}',
   );
 }
 
