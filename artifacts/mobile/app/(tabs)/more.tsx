@@ -67,6 +67,7 @@ export default function More() {
       title: t("reports"),
       items: [
         { icon: "pie-chart", label: t("reportsTitle"), to: "/reports", tint: "#6366f1" },
+        { icon: "bar-chart", label: t("dishAnalysisTitle"), to: "/dishanalysis", tint: "#6366f1" },
       ],
     },
     {

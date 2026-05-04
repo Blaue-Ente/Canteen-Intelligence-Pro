@@ -514,6 +514,49 @@ export interface DishVisionResult {
   notes?: string;
 }
 
+// ---- Dish Performance Analysis ----
+
+export interface DishAnalysisInput {
+  recipeId: string;
+  nameDe: string;
+  category: string;
+  sold: number;
+  revenue: number;
+  marginPct: number;
+  wasteRatioPct: number;
+  daysOnMenu: number;
+}
+
+export interface DishAnalysisResult {
+  topDishes: { recipeId: string; reason: string }[];
+  dropDishes: { recipeId: string; reason: string }[];
+  tips: string[];
+}
+
+export async function aiDishAnalysis(args: {
+  dishes: DishAnalysisInput[];
+  locale: "de" | "en";
+}): Promise<DishAnalysisResult> {
+  const lang = args.locale === "de" ? "Deutsch" : "English";
+  const rows = args.dishes
+    .map(
+      (d) =>
+        `- ${d.nameDe} (${d.category}): ${d.sold} Port. verkauft, €${d.revenue.toFixed(0)} Umsatz, Marge ${d.marginPct.toFixed(0)}%, Verlustquote ${d.wasteRatioPct.toFixed(0)}%, ${d.daysOnMenu} Tage in Karte`,
+    )
+    .join("\n");
+  return generateJson<DishAnalysisResult>(
+    [
+      `Du bist KItchenOS Speisekarten-Analyst für eine deutsche Mensa. Antworte auf ${lang}.`,
+      `Analysiere die folgenden Gerichte nach Umsatz, Marge, Absatz und Verlustquote. Empfehle:`,
+      `- topDishes: 1-3 Gerichte, die weiterhin gesetzt werden sollten (hoher Absatz, gute Marge, niedriger Verlust)`,
+      `- dropDishes: 1-3 Gerichte, die vom Speiseplan gestrichen oder überarbeitet werden sollten (niedrige Marge, hoher Verlust, wenig Absatz)`,
+      `- tips: 2-4 konkrete Handlungsempfehlungen auf Basis der Daten (z.B. Portionsgröße anpassen, Preis erhöhen, Zutaten wechseln)`,
+      `Gerichte:\n${rows}`,
+    ].join("\n\n"),
+    '{"topDishes":[{"recipeId":"string","reason":"string"}],"dropDishes":[{"recipeId":"string","reason":"string"}],"tips":["string"]}',
+  );
+}
+
 export async function aiDishVision(args: {
   base64: string;
   locale: "de" | "en";
