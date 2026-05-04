@@ -4,6 +4,7 @@ import { ScrollView, Text, View } from "react-native";
 import { Badge, Card, Chip, Field, SectionHeader, Stat } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
+import { addMoney, mulMoney, pctOfMoney, roundMoney, sumMoney } from "@/lib/money";
 
 export default function Calculator() {
   const { state } = useApp();
@@ -19,17 +20,23 @@ export default function Calculator() {
   const result = useMemo(() => {
     if (!recipe) return null;
     const factor = (Number(portion) || recipe.portionGrams) / recipe.portionGrams;
-    const ingredientCost = recipe.ingredients.reduce((s, ing) => {
-      const inv = state.inventory.find((i) => i.id === ing.inventoryId);
-      if (!inv) return s;
-      const perGram = inv.unit === "kg" || inv.unit === "l" ? inv.pricePerUnit / 1000 : inv.pricePerUnit;
-      return s + perGram * ing.grams * factor;
-    }, 0);
-    const ovh = ingredientCost * (Number(overhead) / 100);
-    const totalCost = ingredientCost + ovh;
+    // Cost in EUR, rounded per-line to cents to match how invoices add up.
+    const ingredientCost = sumMoney(
+      recipe.ingredients.map((ing) => {
+        const inv = state.inventory.find((i) => i.id === ing.inventoryId);
+        if (!inv) return 0;
+        const perGram =
+          inv.unit === "kg" || inv.unit === "l" ? inv.pricePerUnit / 1000 : inv.pricePerUnit;
+        return mulMoney(perGram, ing.grams * factor);
+      }),
+    );
+    const ovh = pctOfMoney(ingredientCost, Number(overhead) || 0);
+    const totalCost = addMoney(ingredientCost, ovh);
     const desiredMargin = Number(margin) / 100;
-    const sell = totalCost / Math.max(0.05, 1 - desiredMargin);
-    const sellWithVat = sell * 1.19;
+    const sell = roundMoney(totalCost / Math.max(0.05, 1 - desiredMargin));
+    // VAT: still 19% default here (recipe-level VAT config arrives in T003);
+    // route through pctOfMoney so the cent-rounding is consistent.
+    const sellWithVat = addMoney(sell, pctOfMoney(sell, 19));
     return { ingredientCost, ovh, totalCost, sell, sellWithVat };
   }, [recipe, portion, margin, overhead, state.inventory]);
 

@@ -20,6 +20,7 @@ import { Card } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { generateEventOffer } from "@/lib/ai";
+import { addMoney, mulMoney, pctOfMoney, roundMoney, sumMoney } from "@/lib/money";
 import { eventInvoiceHtml, eventTransportChecklistHtml, sharePdf } from "@/lib/pdf";
 import type { CateringEvent, EventMenuItem, EventStatus, Recipe } from "@/types";
 
@@ -50,14 +51,26 @@ function calcTotals(
   vatPct: number,
   guestCount: number,
 ) {
-  const foodCost = items.reduce((s, i) => s + i.portions * i.pricePerPortion, 0);
-  const sub = foodCost + staffCost + equipmentCost + transportCost;
-  const overhead = sub * (overheadPct / 100);
-  const withOverhead = sub + overhead;
-  const vatAmount = withOverhead * (vatPct / 100);
-  const grandTotal = withOverhead + vatAmount;
-  const perPerson = guestCount > 0 ? grandTotal / guestCount : 0;
-  return { foodCost, staffCost, equipmentCost, transportCost, overhead, vatAmount, grandTotal, perPerson };
+  // All money arithmetic goes through lib/money.ts to avoid float drift
+  // (e.g. 0.1+0.2). This guarantees line totals match grand totals exactly,
+  // which is required for tax-compliant invoices.
+  const foodCost = sumMoney(items.map((i) => mulMoney(i.pricePerPortion, i.portions)));
+  const sub = sumMoney([foodCost, staffCost, equipmentCost, transportCost]);
+  const overhead = pctOfMoney(sub, overheadPct);
+  const withOverhead = addMoney(sub, overhead);
+  const vatAmount = pctOfMoney(withOverhead, vatPct);
+  const grandTotal = addMoney(withOverhead, vatAmount);
+  const perPerson = guestCount > 0 ? roundMoney(grandTotal / guestCount) : 0;
+  return {
+    foodCost,
+    staffCost: roundMoney(staffCost),
+    equipmentCost: roundMoney(equipmentCost),
+    transportCost: roundMoney(transportCost),
+    overhead,
+    vatAmount,
+    grandTotal,
+    perPerson,
+  };
 }
 
 export default function EventDetailScreen() {
@@ -585,7 +598,7 @@ export default function EventDetailScreen() {
                       textAlign: "right",
                     }}
                   >
-                    {(item.portions * item.pricePerPortion).toFixed(2)}
+                    {mulMoney(item.pricePerPortion, item.portions).toFixed(2)}
                   </Text>
                 </View>
               </View>

@@ -9,6 +9,7 @@ import React, {
 } from "react";
 
 import type {
+  AppMode,
   AppState,
   CateringEvent,
   CateringRequest,
@@ -104,6 +105,7 @@ type Action =
   // ---- Öko Wizard ----
   | { type: "setOkoEnabled"; enabled: boolean }
   | { type: "setKiosVoice"; voice: KiosVoice }
+  | { type: "setAppMode"; mode: AppMode }
   | { type: "completeOkoChallenge"; completion: OkoCompletion }
   | { type: "removeOkoCompletion"; id: string };
 
@@ -309,6 +311,8 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, okoEnabled: action.enabled };
     case "setKiosVoice":
       return { ...state, kiosVoice: action.voice };
+    case "setAppMode":
+      return { ...state, appMode: action.mode };
     case "completeOkoChallenge": {
       const POINTS: Record<OkoChallengeId, number> = {
         meatFreeDay: 20, useReste: 15, regionalOrder: 25, haccpToday: 10,
@@ -395,6 +399,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           okoEnabled: pick("okoEnabled"),
           okoProgress: pick("okoProgress"),
           kiosVoice: pick("kiosVoice"),
+          appMode: pick("appMode"),
         };
         dispatch({ type: "hydrate", state: merged });
       }

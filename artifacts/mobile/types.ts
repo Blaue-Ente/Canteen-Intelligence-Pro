@@ -432,10 +432,22 @@ export interface AppState {
   okoProgress: OkoProgress;
   // ---- Kios voice ----
   kiosVoice: KiosVoice;
+  // ---- Operating mode ----
+  /**
+   * Application operating mode:
+   * - "lite": Staff/operations assistant only — NO legally binding fiscal data.
+   *   For kitchens with a separate POS. Hides cash register, TSE signing, DSFinV-K export.
+   * - "full": Full cash register + tax-compliant mode (TSE/KassenSichV/DSFinV-K).
+   *   Sales become legally binding receipts; requires fiskaly TSE setup.
+   */
+  appMode: AppMode;
 }
 
 /** Voice options for the Kios assistant. Mapped to ElevenLabs voice IDs server-side. */
 export type KiosVoice = "sarah" | "charlotte" | "antoni";
+
+/** Operating mode — gates fiscal/cash-register features. See AppState.appMode. */
+export type AppMode = "lite" | "full";
 
 // ─── Öko Wizard ─────────────────────────────────────────────────────────────
 

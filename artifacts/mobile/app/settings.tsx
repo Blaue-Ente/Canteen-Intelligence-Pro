@@ -147,6 +147,58 @@ export default function Settings() {
           </View>
         </Card>
 
+        {/* Operating mode (Voll-Modus vs Light-Modus). Light = assistant only;
+            Full = cash register + TSE/KassenSichV (legally binding). */}
+        <Card>
+          <SectionHeader title={t("appMode")} />
+          <View style={{ gap: 8 }}>
+            {(["lite", "full"] as const).map((m) => {
+              const active = state.appMode === m;
+              const title = m === "lite" ? t("appModeLite") : t("appModeFull");
+              const desc  = m === "lite" ? t("appModeLiteDesc") : t("appModeFullDesc");
+              return (
+                <Pressable
+                  key={m}
+                  onPress={() => dispatch({ type: "setAppMode", mode: m })}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 10,
+                    paddingVertical: 10,
+                    paddingHorizontal: 12,
+                    borderRadius: 10,
+                    borderWidth: 1.5,
+                    borderColor: active ? c.primary : c.border,
+                    backgroundColor: active ? c.muted : "transparent",
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 18, height: 18, borderRadius: 9, borderWidth: 2,
+                      borderColor: active ? c.primary : c.border,
+                      alignItems: "center", justifyContent: "center",
+                    }}
+                  >
+                    {active && (
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c.primary }} />
+                    )}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={labelStyle}>{title}</Text>
+                    <Text style={subStyle}>{desc}</Text>
+                  </View>
+                  {m === "full" && (
+                    <Feather name="shield" size={16} color={active ? c.primary : c.mutedForeground} />
+                  )}
+                </Pressable>
+              );
+            })}
+            <Text style={[subStyle, { marginTop: 4, fontSize: 11 }]}>
+              {t("appModeHint")}
+            </Text>
+          </View>
+        </Card>
+
         {/* Kios voice picker (web only — Kios is web-only) */}
         {Platform.OS === "web" && (
           <Card>

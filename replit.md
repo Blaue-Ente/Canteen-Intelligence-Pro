@@ -4,10 +4,49 @@
 KItchenOS is an AI-driven kitchen operations application designed for German restaurants, canteens, and hotels. It aims to streamline various aspects of kitchen management, from menu generation and inventory to HACCP compliance, staff planning, and customer engagement. The project's vision is to leverage AI to optimize efficiency, reduce waste, and enhance the overall dining experience, tapping into the market potential of the hospitality sector. Key capabilities include multi-tenant account management, supplier discovery, client-side AI features for demand forecasting and recipe generation, and a comprehensive guest pre-order system with customer accounts and feedback mechanisms.
 
 ## User Preferences
-- **Communication Style**: I prefer simple language and detailed explanations.
-- **Workflow**: I want iterative development.
+- **Communication Style**: I prefer simple language and detailed explanations. Bulgarian conversational language; code/comments in DE/EN.
+- **Workflow**: I want iterative development with each step announced.
 - **Interaction**: Ask before making major changes.
 - **Codebase Changes**: Do not make changes to the `artifacts/mockup-sandbox/` folder.
+
+## Strategic Roadmap (May 2026 — synthesized from competitor audit)
+
+### Two-Mode Architecture (USER REQUESTED)
+The app must support two operating modes selectable in Settings:
+- **Voll-Modus (Full)**: cash register + financial/tax (TSE/KassenSichV/DSFinV-K) — legally binding data, official receipts
+- **Light-Modus (Lite, default)**: staff/operations assistant only, NO legally binding data — for kitchens that have a separate POS
+
+State: `appMode: "full" | "lite"` in `AppState`. Feature gating via `<FullModeOnly>` wrapper.
+
+### Competitor Positioning
+Target: "Apicbase parity + AI voice/vision at ½ price (€120-150/mo vs €250+ Apicbase)".
+KitchenOS uniquely has: Kios voice assistant, email→event AI bridge, OSM regional producer discovery — none of Apicbase/MarketMan/MarginEdge/Foodics/Choco have these.
+
+### Audit Findings (May 2026)
+**Critical bugs to fix:**
+- Float precision in money sums: `eventdetail.tsx:557-580`, `calculator.tsx`, `aggregate.tsx` (need lib/money.ts)
+- Manual time inputs without validation: `dienstplan.tsx:290,293`, HACCP
+- 401 raw error UX: `customers.tsx`, `aggregate.tsx`
+- Hardcoded 19% VAT: `types.ts:358`
+- Mocked Settings items: `settings.tsx:430-435`
+- i18n key bug: `inventur.tsx:136`
+
+**Professional gaps (vs Apicbase):**
+- TSE/KassenSichV missing — LEGAL requirement DE (Voll-Modus T011)
+- Allergen propagation from inventory→recipe missing (LMIV violation risk)
+- No production batch sheets (mise-en-place with yield scaling) — Apicbase core
+- No sub-recipe yield calc
+- No master cleaning schedule (only ad-hoc HACCP cleaning)
+- No theoretical vs actual food cost variance dashboard
+
+**5 differentiators to ship (none of competitors have):**
+1. Kios hands-free cooking commands (timer, recipe step read, portion math)
+2. Plate-photo AI waste detection (GPT-4 Vision before/after estimate)
+3. WhatsApp/Email supplier price ingest (Outlook integration available)
+4. Inspection mode one-tap PDF (combined HACCP+LMIV+cleaning printout)
+5. Live energy + CO₂ per dish (ESG-mandatory for DE corporate canteens 2025+)
+
+See `.local/session_plan.md` for full task breakdown T000-T012.
 
 ## System Architecture
 
