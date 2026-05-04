@@ -8,20 +8,71 @@ import type { AppState } from "@/types";
 
 export type KiosStatus = "off" | "idle" | "awake" | "thinking" | "speaking";
 
+// ── Navigation map ───────────────────────────────────────────────────────────
 const NAV_MAP: Record<string, string> = {
-  inventory: "/(tabs)/inventory",
-  stats:     "/(tabs)/stats",
-  menu:      "/(tabs)/menu",
-  home:      "/(tabs)/",
-  chat:      "/chat",
+  inventory:  "/(tabs)/inventory",
+  stats:      "/(tabs)/stats",
+  menu:       "/(tabs)/menu",
+  home:       "/(tabs)/",
+  more:       "/(tabs)/more",
+  chat:       "/chat",
+  suppliers:  "/suppliers",
+  producers:  "/producers",
+  customers:  "/customers",
 };
 
-// AI request timeout in ms
+// AI request timeout
 const AI_TIMEOUT_MS = 15_000;
 
-// All mutable values accessed from speech recognition callbacks live here
-// to avoid stale-closure issues across React renders.
-interface KiosMutableRefs {
+// ── Wake word variants ───────────────────────────────────────────────────────
+// "Kios" is commonly misrecognized by speech engines as these strings.
+const WAKE_VARIANTS = [
+  "kios",    // correct
+  "kiosk",   // most common misrecognition
+  "kias",    // phonetic variant
+  "kjos",    // typo variant
+  "kies",    // German "gravel" — sounds similar
+  "cios",    // Italian-style misread
+  "gios",    // voiced consonant swap
+  "quios",   // Iberian-influenced
+  "chiose",  // Italian-influenced
+];
+
+function detectWakeWord(lower: string): { found: boolean; endIndex: number } {
+  for (const v of WAKE_VARIANTS) {
+    const i = lower.indexOf(v);
+    if (i !== -1) return { found: true, endIndex: i + v.length };
+  }
+  return { found: false, endIndex: -1 };
+}
+
+// ── Quick commands (bypass AI for instant response) ───────────────────────────
+// These handle obvious navigation intents without an AI round-trip.
+const QUICK_COMMANDS: Array<{
+  patterns: RegExp[];
+  nav: keyof typeof NAV_MAP;
+  reply: string;
+}> = [
+  { patterns: [/lager|bestand|vorrat|inventar|inventory/i],         nav: "inventory",  reply: "Ich zeige dir den Lagerbestand." },
+  { patterns: [/statistik|stats?|umsatz|verkauf|absatz/i],          nav: "stats",      reply: "Statistik wird geöffnet." },
+  { patterns: [/men[üu]|karte|speise|gericht|rezept|menu/i],        nav: "menu",       reply: "Ich öffne die Speisekarte." },
+  { patterns: [/start|home|anfang|[üu]bersicht|hauptseite|zurück/i], nav: "home",      reply: "Zurück zur Übersicht." },
+  { patterns: [/chat|assistent|ki\b|ai\b|frag/i],                   nav: "chat",       reply: "KI-Assistent wird geöffnet." },
+  { patterns: [/lieferant|supplier/i],                               nav: "suppliers",  reply: "Ich zeige dir die Lieferanten." },
+  { patterns: [/erzeuger|produzent|producer|regional/i],             nav: "producers",  reply: "Ich zeige dir die regionalen Erzeuger." },
+  { patterns: [/kund|bestell.*genehmig|customer/i],                  nav: "customers",  reply: "Kundenbestellungen werden geöffnet." },
+  { patterns: [/mehr|more|einstellung|setting/i],                    nav: "more",       reply: "Ich öffne das Menü." },
+];
+
+function matchQuickCommand(question: string) {
+  for (const cmd of QUICK_COMMANDS) {
+    if (cmd.patterns.some((p) => p.test(question))) return cmd;
+  }
+  return null;
+}
+
+// ── Mutable refs (avoid stale closures in recognition callbacks) ─────────────
+interface KiosRefs {
   status: KiosStatus;
   phase: "wake" | "question" | "ai";
   rec: unknown;
@@ -44,12 +95,13 @@ function isVoiceAvailable(): boolean {
   return Boolean(getWindowSR());
 }
 
+// ── Hook ─────────────────────────────────────────────────────────────────────
 export function useKios() {
   const { state } = useApp();
-  const router = useRouter();
+  const router    = useRouter();
 
   const [status, setStatusState] = useState<KiosStatus>("off");
-  const r = useRef<KiosMutableRefs>({
+  const r = useRef<KiosRefs>({
     status: "off",
     phase: "wake",
     rec: null,
@@ -57,7 +109,7 @@ export function useKios() {
     state,
   });
 
-  // Keep state reference fresh — no re-render cost, just a ref update
+  // Keep state ref fresh without triggering re-renders
   r.current.state = state;
 
   const setStatus = (s: KiosStatus) => {
@@ -65,9 +117,7 @@ export function useKios() {
     setStatusState(s);
   };
 
-  /* ------------------------------------------------------------------ */
-  /*  Core helpers                                                        */
-  /* ------------------------------------------------------------------ */
+  // ── Helpers ────────────────────────────────────────────────────────────────
 
   function clearRestartTimer() {
     if (r.current.restartTimer !== null) {
@@ -89,99 +139,105 @@ export function useKios() {
     r.current.restartTimer = setTimeout(() => {
       if (r.current.status !== "off") {
         setStatus("idle");
-        startListening();
+        startListening("wake");
       }
     }, delayMs);
   }
 
+  // ── Answer a question ──────────────────────────────────────────────────────
+
   async function handleQuestion(question: string) {
     stopListening();
     setStatus("thinking");
-    const snap = r.current.state;
+    const snap   = r.current.state;
+    const locale = snap.locale;
 
-    // Wrap askKios with a hard timeout so we never freeze in "Denke nach…"
+    // ── Try quick command first (instant, no AI) ──────────────────────────
+    const quick = matchQuickCommand(question);
+    if (quick) {
+      if (NAV_MAP[quick.nav]) router.push(NAV_MAP[quick.nav] as never);
+      setStatus("speaking");
+      speak(quick.reply, locale, () => scheduleRestart(300));
+      return;
+    }
+
+    // ── AI round-trip ─────────────────────────────────────────────────────
     let result: Awaited<ReturnType<typeof askKios>> | null = null;
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+      const ac = new AbortController();
+      const tid = setTimeout(() => ac.abort(), AI_TIMEOUT_MS);
       result = await Promise.race([
         askKios(question, snap),
         new Promise<never>((_, reject) =>
-          controller.signal.addEventListener("abort", () =>
-            reject(new Error("timeout")),
-          ),
+          ac.signal.addEventListener("abort", () => reject(new Error("timeout"))),
         ),
       ]);
-      clearTimeout(timeoutId);
+      clearTimeout(tid);
     } catch {
-      // AI failed or timed out — speak error and resume
       setStatus("speaking");
       speak(
-        "Entschuldigung, das hat leider nicht funktioniert.",
-        snap.locale,
-        () => { scheduleRestart(500); },
+        locale === "de"
+          ? "Entschuldigung, das hat leider nicht geklappt."
+          : "Sorry, something went wrong.",
+        locale,
+        () => scheduleRestart(500),
       );
       return;
     }
 
-    if (!result) {
-      scheduleRestart(500);
-      return;
-    }
+    if (!result) { scheduleRestart(500); return; }
 
-    // Navigate first (non-blocking)
     const navKey = result.navigate && result.navigate !== "null" ? result.navigate : null;
-    if (navKey && NAV_MAP[navKey]) {
-      router.push(NAV_MAP[navKey] as never);
-    }
+    if (navKey && NAV_MAP[navKey]) router.push(NAV_MAP[navKey] as never);
 
     setStatus("speaking");
-    speak(result.answer, snap.locale, () => {
-      // Called when TTS actually finishes (or falls back on iOS Safari)
-      scheduleRestart(300);
-    });
+    speak(result.answer, locale, () => scheduleRestart(300));
   }
 
-  function startListening() {
+  // ── Recognition session ────────────────────────────────────────────────────
+  // initialPhase: "wake" = listen for wake word; "question" = listen for question
+  function startListening(initialPhase: "wake" | "question" = "wake") {
     if (!isVoiceAvailable()) return;
     stopListening();
 
     const SR = getWindowSR();
     if (!SR) return;
 
-    r.current.phase = "wake";
+    r.current.phase = initialPhase;
 
     const rec = new SR();
-    rec.lang = "de-DE";
-    rec.continuous = true;
+    rec.lang          = "de-DE";
+    rec.continuous    = true;
     rec.interimResults = true;
-    r.current.rec = rec;
+    r.current.rec     = rec;
 
     rec.onresult = (event: SpeechRecognitionEvent) => {
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i]!;
-        const raw = String(result[0]!.transcript);
-        const lower = raw.toLowerCase().trim();
+        const raw    = String(result[0]!.transcript);
+        const lower  = raw.toLowerCase().trim();
 
         if (r.current.phase === "wake") {
-          if (lower.includes("kios")) {
-            r.current.phase = "question";
+          const { found, endIndex } = detectWakeWord(lower);
+          if (found) {
             setStatus("awake");
-            // Speak "Ja?" — when TTS finishes, restart recognition for the question
-            speak("Ja?", r.current.state.locale, () => {
-              // After "Ja?" finishes, start a fresh session to capture the question
-              if (r.current.status !== "off" && r.current.status !== "thinking") {
-                startListening();
-              }
-            });
 
-            // If the question follows immediately in the same utterance
-            if (result.isFinal) {
-              const afterKios = raw.slice(raw.toLowerCase().indexOf("kios") + 4).trim();
-              if (afterKios.length > 2) {
-                r.current.phase = "ai";
-                void handleQuestion(afterKios);
-              }
+            // Check if question immediately follows wake word in same utterance
+            const afterWake = raw.slice(endIndex).replace(/^[\s,.\-:!?]+/, "").trim();
+
+            if (result.isFinal && afterWake.length > 3) {
+              // Full sentence captured — skip "Ja?" and go straight to AI
+              r.current.phase = "ai";
+              void handleQuestion(afterWake);
+            } else {
+              // Wait for the user's question — say "Ja?" first
+              r.current.phase = "question";
+              speak("Ja?", r.current.state.locale, () => {
+                // After "Ja?" finishes, start a QUESTION-mode session
+                if (r.current.status !== "off" && r.current.status !== "thinking") {
+                  startListening("question");
+                }
+              });
             }
           }
         } else if (r.current.phase === "question") {
@@ -207,32 +263,25 @@ export function useKios() {
 
     rec.onend = () => {
       r.current.rec = null;
-      // Don't restart if: turned off, AI is processing, TTS is playing,
-      // or we're waiting for "Ja?" TTS to finish (awake) — the speak() onEnd
-      // callback handles restart in that case.
       const s = r.current.status;
-      if (s === "off" || s === "thinking" || s === "speaking" || s === "awake") {
-        return;
-      }
-      // Idle — auto-restart for continuous wake-word detection
+      // Don't restart if:
+      //   - turned off
+      //   - AI is thinking
+      //   - TTS is playing (speak's onEnd handles restart)
+      //   - awake and waiting for "Ja?" to finish (speak's onEnd handles restart)
+      if (s === "off" || s === "thinking" || s === "speaking" || s === "awake") return;
       scheduleRestart(400);
     };
 
-    try {
-      rec.start();
-    } catch {
-      // Browser may refuse if permissions denied
-    }
+    try { rec.start(); } catch { /* permissions denied */ }
   }
 
-  /* ------------------------------------------------------------------ */
-  /*  Public API                                                          */
-  /* ------------------------------------------------------------------ */
+  // ── Public API ─────────────────────────────────────────────────────────────
 
   function enable() {
     if (!isVoiceAvailable()) return;
     setStatus("idle");
-    startListening();
+    startListening("wake");
   }
 
   function disable() {
@@ -241,7 +290,6 @@ export function useKios() {
     setStatus("off");
   }
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       clearRestartTimer();
@@ -252,17 +300,10 @@ export function useKios() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return {
-    status,
-    enable,
-    disable,
-    isSupported: isVoiceAvailable(),
-  };
+  return { status, enable, disable, isSupported: isVoiceAvailable() };
 }
 
-/* ------------------------------------------------------------------ */
-/*  Minimal type stubs for Web Speech API (not in @types/react-native)  */
-/* ------------------------------------------------------------------ */
+// ── Web Speech API type stubs ────────────────────────────────────────────────
 
 interface SpeechRec {
   lang: string;
@@ -277,10 +318,10 @@ interface SpeechRec {
 
 interface SpeechRecognitionEvent {
   resultIndex: number;
-  results: ArrayLike<SpeechRecognitionResult>;
+  results: ArrayLike<SpeechRecognitionResultItem>;
 }
 
-interface SpeechRecognitionResult {
+interface SpeechRecognitionResultItem {
   isFinal: boolean;
   0: { transcript: string };
 }

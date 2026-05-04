@@ -24,16 +24,31 @@ interface SpeechRecognitionEventLike {
   results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }>;
 }
 
+interface SpeechSynthesisVoiceLike {
+  lang: string;
+  name: string;
+  localService: boolean;
+  default: boolean;
+}
+
 interface SpeechSynthesisInstance {
   cancel: () => void;
   speak: (utterance: SpeechSynthesisUtteranceInstance) => void;
+  pause: () => void;
+  resume: () => void;
   speaking: boolean;
   pending: boolean;
+  paused: boolean;
+  getVoices: () => SpeechSynthesisVoiceLike[];
+  onvoiceschanged: (() => void) | null;
 }
 
 interface SpeechSynthesisUtteranceInstance {
   lang: string;
   rate: number;
+  volume: number;
+  pitch: number;
+  voice: SpeechSynthesisVoiceLike | null;
   onend: (() => void) | null;
   onerror: (() => void) | null;
 }
@@ -49,6 +64,50 @@ export function isTtsSupported(): boolean {
   if (Platform.OS !== "web") return false;
   if (typeof window === "undefined") return false;
   return Boolean((window as unknown as AnyWindow).speechSynthesis);
+}
+
+// ── Voice cache (loaded asynchronously by the browser) ──────────────────────
+let _voices: SpeechSynthesisVoiceLike[] = [];
+
+function loadVoices(): SpeechSynthesisVoiceLike[] {
+  if (Platform.OS !== "web" || typeof window === "undefined") return [];
+  const synth = (window as unknown as AnyWindow).speechSynthesis;
+  if (!synth) return [];
+  const v = synth.getVoices();
+  if (v.length > 0) _voices = v;
+  return _voices;
+}
+
+// Preload voices as soon as possible — Chrome loads them asynchronously
+if (Platform.OS === "web" && typeof window !== "undefined") {
+  const w = window as unknown as AnyWindow;
+  if (w.speechSynthesis) {
+    w.speechSynthesis.onvoiceschanged = () => { loadVoices(); };
+    loadVoices();
+    // Second attempt after 500ms for slow browsers
+    setTimeout(loadVoices, 500);
+  }
+}
+
+/**
+ * Pick the best available TTS voice for the given locale.
+ * Prefers Google/premium online voices over local ones for better quality.
+ */
+function pickVoice(locale: "de" | "en"): SpeechSynthesisVoiceLike | null {
+  const voices = loadVoices();
+  if (!voices.length) return null;
+  const lang = locale === "de" ? "de-DE" : "en-US";
+  const prefix = lang.split("-")[0]!;
+  return (
+    // Best: exact locale + Google/natural/premium
+    voices.find((v) => v.lang === lang && /google|natural|premium|enhanced/i.test(v.name)) ??
+    // Good: exact locale
+    voices.find((v) => v.lang === lang) ??
+    // Fallback: same language prefix (e.g. de-AT, de-CH)
+    voices.find((v) => v.lang.startsWith(prefix)) ??
+    // Last resort: any voice
+    null
+  );
 }
 
 export interface VoiceSession {
@@ -100,44 +159,66 @@ export function startVoice(opts: {
 
 /**
  * Speak text via TTS.
- * - onEnd fires when speech actually finishes (or on iOS Safari timeout fallback).
- * - Uses setTimeout(100ms) before speak() — required on iOS Safari to avoid freeze.
+ *
+ * Fixes applied:
+ * - Explicit voice selection (German preferred) to avoid silent/wrong voice.
+ * - volume = 1 explicitly set.
+ * - setTimeout(100ms) before speak() — required on iOS Safari to avoid freeze.
+ * - Chrome keep-alive: pause/resume every 12 s to prevent Chrome's 15 s cutoff bug.
+ * - onEnd fires when speech finishes, with a safety fallback timer.
  */
 export function speak(text: string, locale: "de" | "en", onEnd?: () => void): void {
-  if (!isTtsSupported()) {
-    onEnd?.();
-    return;
-  }
+  if (!isTtsSupported()) { onEnd?.(); return; }
   const w = window as unknown as AnyWindow;
-  if (!w.speechSynthesis || !w.SpeechSynthesisUtterance) {
-    onEnd?.();
-    return;
-  }
+  if (!w.speechSynthesis || !w.SpeechSynthesisUtterance) { onEnd?.(); return; }
 
-  w.speechSynthesis.cancel();
+  const synth = w.speechSynthesis;
+  synth.cancel();
 
   const u = new w.SpeechSynthesisUtterance(text);
-  u.lang = locale === "de" ? "de-DE" : "en-US";
-  u.rate = 1.0;
+  u.lang   = locale === "de" ? "de-DE" : "en-US";
+  u.rate   = 1.05;   // slightly faster — more natural for kitchen use
+  u.pitch  = 1.0;
+  u.volume = 1.0;    // always explicit — some browsers default below 1
 
-  if (onEnd) {
-    let fired = false;
-    const done = () => {
-      if (fired) return;
-      fired = true;
-      onEnd();
-    };
-    u.onend = done;
-    u.onerror = done;
-    // Safety fallback: iOS Safari sometimes never fires onend.
-    // Estimate ≈80 ms/char, minimum 3 s, + 1.5 s buffer.
-    const fallbackMs = Math.max(3000, text.length * 80) + 1500;
-    setTimeout(done, fallbackMs);
-  }
+  // Pick the best available voice
+  const voice = pickVoice(locale);
+  if (voice) u.voice = voice;
+
+  let fired = false;
+  let keepAlive: ReturnType<typeof setInterval> | null = null;
+
+  const done = () => {
+    if (fired) return;
+    fired = true;
+    if (keepAlive !== null) { clearInterval(keepAlive); keepAlive = null; }
+    onEnd?.();
+  };
+
+  u.onend  = done;
+  u.onerror = done;
+
+  // Safety fallback: iOS Safari sometimes never fires onend.
+  // Estimate ≈75 ms/char, minimum 2.5 s, + 1.5 s buffer.
+  const fallbackMs = Math.max(2500, text.length * 75) + 1500;
+  const fallbackTimer = setTimeout(done, fallbackMs);
+
+  // Wrap fallback timer in done so it's cleared on real onend too
+  const originalDone = done;
+  u.onend = () => { clearTimeout(fallbackTimer); originalDone(); };
+  u.onerror = () => { clearTimeout(fallbackTimer); originalDone(); };
 
   // iOS Safari fix: calling speak() synchronously after cancel() freezes TTS.
   setTimeout(() => {
-    w.speechSynthesis!.speak(u);
+    synth.speak(u);
+
+    // Chrome keep-alive: Chrome stops TTS after ~15 s of continuous speech.
+    // Pause/resume every 12 s to reset the internal timer.
+    keepAlive = setInterval(() => {
+      if (!synth.speaking) { clearInterval(keepAlive!); keepAlive = null; return; }
+      synth.pause();
+      synth.resume();
+    }, 12_000);
   }, 100);
 }
 
