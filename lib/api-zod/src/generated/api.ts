@@ -118,7 +118,7 @@ export const PublishMenuResponse = zod.object({
 });
 
 /**
- * @summary Guest creates an order (no auth, returns access token for status polling).
+ * @summary Authenticated business customer creates a pre-order (requires Clerk auth + business_approved account; cutoff 08:00 Europe/Berlin of wantedFor date).
  */
 export const CreateGuestOrderBody = zod.object({
   locationCode: zod.string(),

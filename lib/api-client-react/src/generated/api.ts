@@ -302,7 +302,7 @@ export const usePublishMenu = <
 };
 
 /**
- * @summary Guest creates an order (no auth, returns access token for status polling).
+ * @summary Authenticated business customer creates a pre-order (requires Clerk auth + business_approved account; cutoff 08:00 Europe/Berlin of wantedFor date).
  */
 export const getCreateGuestOrderUrl = () => {
   return `/api/preorder/orders`;
@@ -365,7 +365,7 @@ export type CreateGuestOrderMutationBody = BodyType<CreateOrderBody>;
 export type CreateGuestOrderMutationError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Guest creates an order (no auth, returns access token for status polling).
+ * @summary Authenticated business customer creates a pre-order (requires Clerk auth + business_approved account; cutoff 08:00 Europe/Berlin of wantedFor date).
  */
 export const useCreateGuestOrder = <
   TError = ErrorType<ErrorResponse>,

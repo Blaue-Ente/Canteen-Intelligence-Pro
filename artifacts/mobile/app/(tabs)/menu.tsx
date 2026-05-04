@@ -434,6 +434,41 @@ export default function Menu() {
               <Chip key={k} label={k} active={filter === k} onPress={() => setFilter(k)} />
             ))}
           </ScrollView>
+          {/* Selected count bar */}
+          {entry.recipeIds.length > 0 && (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingHorizontal: 16,
+                paddingVertical: 8,
+                backgroundColor: c.accent,
+                borderBottomWidth: 1,
+                borderColor: c.border,
+              }}
+            >
+              <Text style={{ color: c.primary, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
+                {entry.recipeIds.length} {state.locale === "de" ? "Gericht(e) ausgewählt" : "dish(es) selected"}
+              </Text>
+              <Pressable
+                onPress={() => setPicker(false)}
+                style={({ pressed }) => [
+                  {
+                    backgroundColor: c.primary,
+                    borderRadius: 8,
+                    paddingHorizontal: 14,
+                    paddingVertical: 7,
+                  },
+                  pressed && { opacity: 0.8 },
+                ]}
+              >
+                <Text style={{ color: c.primaryForeground, fontFamily: "Inter_700Bold", fontSize: 13 }}>
+                  {state.locale === "de" ? "Fertig" : "Done"}
+                </Text>
+              </Pressable>
+            </View>
+          )}
           <ScrollView contentContainerStyle={{ padding: 16, gap: 8, paddingBottom: insets.bottom + 30 }}>
             {filteredRecipes.map((r) => {
               const inMenu = entry.recipeIds.includes(r.id);
@@ -441,24 +476,50 @@ export default function Menu() {
                 <Card
                   key={r.id}
                   onPress={() => {
-                    if (inMenu) return;
+                    const newIds = inMenu
+                      ? entry.recipeIds.filter((x) => x !== r.id)
+                      : [...entry.recipeIds, r.id];
                     dispatch({
                       type: "setMenu",
-                      entry: { date: selectedDate, recipeIds: [...entry.recipeIds, r.id] },
+                      entry: { date: selectedDate, recipeIds: newIds },
                     });
-                    setPicker(false);
                   }}
-                  style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 12,
+                    borderWidth: inMenu ? 1.5 : 0,
+                    borderColor: inMenu ? c.primary : "transparent",
+                    backgroundColor: inMenu ? c.accent : c.card,
+                  }}
                 >
+                  <View
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 16,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: inMenu ? c.primary : c.muted,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Feather
+                      name={inMenu ? "check" : "plus"}
+                      size={16}
+                      color={inMenu ? c.primaryForeground : c.mutedForeground}
+                    />
+                  </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: c.foreground, fontFamily: "Inter_600SemiBold", fontSize: 14 }}>
                       {state.locale === "de" ? r.nameDe : r.name}
                     </Text>
-                    <View style={{ flexDirection: "row", gap: 6, marginTop: 4 }}>
+                    <View style={{ flexDirection: "row", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
                       <Badge label={t(r.type)} />
                       <Badge label={t(r.category)} tone="accent" />
+                      <Badge label={`€${r.sellPrice.toFixed(2)}`} tone="success" />
                       {((state.locale === "de" ? r.stepsDe : r.steps)?.length ?? 0) > 0 ? (
-                        <Badge label={`${(state.locale === "de" ? r.stepsDe : r.steps).length} ${t("steps")}`} tone="success" />
+                        <Badge label={`${(state.locale === "de" ? r.stepsDe : r.steps).length} ${t("steps")}`} />
                       ) : null}
                     </View>
                   </View>
@@ -476,7 +537,6 @@ export default function Menu() {
                   >
                     <Feather name="info" size={16} color={c.foreground} />
                   </Pressable>
-                  <Feather name={inMenu ? "check-circle" : "plus-circle"} size={20} color={inMenu ? c.success : c.primary} />
                 </Card>
               );
             })}

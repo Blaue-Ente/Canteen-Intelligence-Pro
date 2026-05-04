@@ -83,7 +83,7 @@ function ProfileForm() {
     }
   };
 
-  const canRequest = profile.accountType === "regular";
+  const canRequest = profile.accountType === "regular" || profile.accountType === "rejected";
 
   return (
     <section className="bg-card rounded-2xl border border-border p-6 space-y-6">
@@ -151,7 +151,7 @@ function ProfileForm() {
       )}
       {profile.accountType === "rejected" && (
         <p className="text-xs text-destructive">
-          Ihr Antrag wurde abgelehnt. Bitte sprechen Sie das Kantinen-Team direkt an.
+          Ihr Antrag wurde abgelehnt. Sie können einen neuen Antrag stellen oder das Kantinen-Team ansprechen.
         </p>
       )}
     </section>
