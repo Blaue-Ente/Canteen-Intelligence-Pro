@@ -493,10 +493,11 @@ export function useKios() {
 
   function enable() {
     if (!isVoiceAvailable()) return;
-    // Safari iOS gesture-bless: create a persistent <audio> element and play a
-    // silent buffer on it RIGHT NOW (still inside the user's tap). All later
-    // speakHQ() calls reuse this same element so Safari permits playback even
-    // after async TTS fetches have consumed the original gesture.
+    // Safari iOS gesture-bless: create + .resume() the shared AudioContext
+    // RIGHT NOW (still inside the user's tap). Once unlocked here, the context
+    // stays blessed for the entire page lifetime — every subsequent speakHQ()
+    // call (from async fetches, recognition callbacks, timers) plays through
+    // a fresh AudioBufferSourceNode without needing another user gesture.
     primeAudio();
     // Server-side warm: tell the API to pre-generate every static phrase MP3.
     void prewarmTtsCache({ preset: "kios-de", voice: state.kiosVoice });

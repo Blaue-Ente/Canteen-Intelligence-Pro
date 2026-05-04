@@ -236,8 +236,9 @@ export default function Settings() {
                   <Pressable
                     key={v.id}
                     onPress={() => {
-                      // Safari: prime a persistent audio element on this gesture
-                      // so the subsequent "Hören" test button can play.
+                      // Safari: unlock the shared AudioContext on this gesture
+                      // so the subsequent "Hören" test button (and any later
+                      // speakHQ from async callbacks) can play.
                       primeAudio();
                       dispatch({ type: "setKiosVoice", voice: v.id });
                       // Re-warm cache for the new voice in the background

@@ -214,19 +214,30 @@ function speakWebSpeech(text: string, locale: "de" | "en", onEnd?: () => void): 
   }, 100);
 }
 
-// ── HQ TTS via OpenAI (premium voice) ─────────────────────────────────────
+// ── HQ TTS via ElevenLabs + Web Audio API (Safari-resilient) ──────────────
 // Strategy:
-//   1) Try cached audio
-//   2) Fetch MP3 from /api/ai/tts (OpenAI tts-1)
-//   3) On any failure, fall back to Web Speech (always available offline)
+//   1) Try cached AudioBuffer
+//   2) Fetch MP3 from /api/ai/tts → decodeAudioData via AudioContext
+//   3) Play through a fresh AudioBufferSourceNode each utterance
+//   4) On any failure, fall back to Web Speech (always available offline)
 //
-// Cache: small LRU keyed by "voice|text" — most Kios responses repeat (e.g. "Ja?",
-//   "Ich öffne die Speisekarte.") so cache massively reduces network calls + cost.
+// Why Web Audio (not <audio>): Safari iOS strips user-activation grants from
+// HTMLAudioElement instances after the first playback ends — even from a
+// "persistent" element with src swapping. AudioContext, by contrast, is
+// blessed PERMANENTLY once .resume() is awaited inside a user gesture; all
+// subsequent BufferSourceNode.start() calls play immediately, no gesture
+// required. This is the documented Safari workaround
+// (https://webkit.org/blog/6784/new-video-policies-for-ios/).
+//
+// Cache: small LRU keyed by "voice|text" — most Kios responses repeat (e.g.
+// "Ja?", "Ich öffne die Speisekarte.") so cache massively reduces network
+// calls + cost. We cache the DECODED AudioBuffer so playback skips both the
+// network round-trip AND the ~5–20 ms decode step.
 
-const TTS_CACHE = new Map<string, string>(); // key → blob: URL
+const TTS_CACHE = new Map<string, AudioBuffer>();
 const TTS_CACHE_MAX = 30;
 
-function cacheGet(key: string): string | undefined {
+function cacheGet(key: string): AudioBuffer | undefined {
   const v = TTS_CACHE.get(key);
   if (v !== undefined) {
     // True LRU: reinsert to bump recency
@@ -235,76 +246,70 @@ function cacheGet(key: string): string | undefined {
   }
   return v;
 }
-function cacheSet(key: string, url: string): void {
+function cacheSet(key: string, buf: AudioBuffer): void {
   if (TTS_CACHE.size >= TTS_CACHE_MAX) {
     const first = TTS_CACHE.keys().next().value;
-    if (first !== undefined) {
-      const old = TTS_CACHE.get(first);
-      if (old) try { URL.revokeObjectURL(old); } catch { /* ignore */ }
-      TTS_CACHE.delete(first);
-    }
+    if (first !== undefined) TTS_CACHE.delete(first);
   }
-  TTS_CACHE.set(key, url);
+  TTS_CACHE.set(key, buf);
 }
 
-// ── Persistent audio element (Safari iOS gesture-bless workaround) ────────
-// Safari treats `new Audio()` instances as fresh resources requiring a fresh
-// user gesture, even after a prior unlock with a silent buffer. The fix is to
-// keep ONE element alive that was play()'d during the user's tap on the Kios
-// enable button — Safari then permits arbitrary src changes + play() on that
-// same element for the rest of the page lifetime.
-let _persistentAudio: HTMLAudioElement | null = null;
-let _audioPrimed = false;
-
-// 1×1 silent MP3 — plays instantly, satisfies Safari's gesture requirement.
-const SILENT_MP3 =
-  "data:audio/mp3;base64,SUQzBAAAAAABEVRYWFgAAAAtAAADY29tbWVudABCaWdTb3VuZEJhbmsuY29tIC8gTGFTb25vdGhlcXVlLm9yZwBURU5DAAAAHQAAA1N3aXRjaCBQbHVzIMKpIE5DSCBTb2Z0d2FyZQBUSVQyAAAABgAAAzIyMzUAVFNTRQAAAA8AAANMYXZmNTcuODMuMTAwAAAAAAAAAAAAAAD/80DEAAAAA0gAAAAATEFNRTMuMTAwVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/zQsRbAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/zQMSkAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV";
-
-/**
- * MUST be called synchronously inside a user gesture (e.g. button onPress).
- * Creates a persistent <audio> element and primes it with silent audio so that
- * Safari iOS / Safari macOS will allow programmatic playback on it later — even
- * when the actual TTS arrives async (server fetch or AI round-trip) and the
- * original gesture has been "consumed" by the time we want to speak.
- *
- * Idempotent — only the first call has effect.
- */
-export function primeAudio(): void {
-  if (Platform.OS !== "web") return;
-  if (typeof window === "undefined" || typeof Audio === "undefined") return;
-  if (_audioPrimed && _persistentAudio) return;
-  try {
-    if (!_persistentAudio) {
-      _persistentAudio = new Audio();
-      _persistentAudio.preload = "auto";
-    }
-    _persistentAudio.src = SILENT_MP3;
-    _persistentAudio.volume = 1.0;
-    _persistentAudio.muted = false;
-    const p = _persistentAudio.play();
-    if (p && typeof p.then === "function") {
-      p.then(() => { _audioPrimed = true; }).catch(() => { /* still try later */ });
-    } else {
-      _audioPrimed = true;
-    }
-  } catch { /* ignore */ }
-}
-
-let _currentAudio: HTMLAudioElement | null = null;
+// ── AudioContext (Safari iOS gesture-bless: the canonical workaround) ─────
+// Single shared AudioContext for the entire page lifetime. Created and
+// .resume()'d synchronously inside the first user gesture (Kios pill tap,
+// settings voice picker, "Hören" test button). After this one resume(),
+// Safari treats the context as permanently unlocked — we can play arbitrary
+// AudioBufferSourceNodes from async callbacks, timers, or speech-recognition
+// events without any further gesture.
+let _audioCtx: AudioContext | null = null;
+let _currentSource: AudioBufferSourceNode | null = null;
 // Sequence guard: every speakHQ() call increments this; only the latest token
 // is allowed to start playback. Prevents stale TTS fetches from speaking older
 // text after the user has moved on to a new utterance.
 let _speakSeq = 0;
 
-function stopHqAudio(): void {
-  if (_currentAudio) {
-    try { _currentAudio.pause(); } catch { /* ignore */ }
-    // The persistent element must NOT be destroyed — only paused. Resetting
-    // currentTime on a non-persistent element is fine.
-    if (_currentAudio !== _persistentAudio) {
-      try { _currentAudio.currentTime = 0; } catch { /* ignore */ }
+type AudioCtxCtor = typeof AudioContext;
+function getAudioCtxCtor(): AudioCtxCtor | null {
+  if (typeof window === "undefined") return null;
+  const w = window as unknown as { AudioContext?: AudioCtxCtor; webkitAudioContext?: AudioCtxCtor };
+  return w.AudioContext ?? w.webkitAudioContext ?? null;
+}
+
+/**
+ * MUST be called synchronously inside a user gesture (e.g. button onPress).
+ * Creates the shared AudioContext, calls .resume() to bless it, and plays a
+ * 1-sample silent buffer to confirm the unlock. After this returns, all
+ * subsequent speakHQ() calls — even from async callbacks long after the
+ * gesture has expired — will play through this same AudioContext without
+ * Safari blocking them.
+ *
+ * Idempotent — repeat calls cheaply re-resume() if Safari has suspended the
+ * context (e.g. after backgrounding the tab).
+ */
+export function primeAudio(): void {
+  if (Platform.OS !== "web") return;
+  const Ctor = getAudioCtxCtor();
+  if (!Ctor) return;
+  try {
+    if (!_audioCtx) _audioCtx = new Ctor();
+    if (_audioCtx.state === "suspended") {
+      void _audioCtx.resume().catch(() => { /* ignore */ });
     }
-    _currentAudio = null;
+    // Play a 1-sample silent buffer to confirm the unlock landed.
+    const silent = _audioCtx.createBuffer(1, 1, 22050);
+    const src = _audioCtx.createBufferSource();
+    src.buffer = silent;
+    src.connect(_audioCtx.destination);
+    src.start(0);
+  } catch { /* ignore */ }
+}
+
+function stopHqAudio(): void {
+  if (_currentSource) {
+    try { _currentSource.onended = null; } catch { /* ignore */ }
+    try { _currentSource.stop(); } catch { /* ignore — already stopped or not started */ }
+    try { _currentSource.disconnect(); } catch { /* ignore */ }
+    _currentSource = null;
   }
 }
 
@@ -322,8 +327,16 @@ function ttsBaseUrl(): string {
   return typeof baseRaw === "string" ? baseRaw.replace(/\/+$/, "") : "";
 }
 
-async function fetchTts(text: string, voice: string): Promise<string | null> {
+/**
+ * Fetch + decode a TTS phrase into an AudioBuffer ready for instant playback.
+ * Returns null on any failure (network, server config, decode error). Decoding
+ * happens here so the playback path stays synchronous — important on Safari
+ * where AudioBufferSourceNode.start() must run promptly inside the same task
+ * as the resume()/event-handler chain.
+ */
+async function fetchTts(text: string, voice: string): Promise<AudioBuffer | null> {
   if (typeof window === "undefined" || typeof fetch === "undefined") return null;
+  if (!_audioCtx) return null; // can't decode without a context — primeAudio() must run first
   if (_ttsServerAvailable === false && Date.now() - _ttsLastChecked < TTS_RECHECK_MS) {
     return null; // known-unavailable; skip network
   }
@@ -346,12 +359,16 @@ async function fetchTts(text: string, voice: string): Promise<string | null> {
       if (resp.status === 502) _ttsServerAvailable = false;
       return null;
     }
-    const blob = await resp.blob();
-    if (blob.size < 200) { _ttsServerAvailable = false; return null; }
+    const arrayBuffer = await resp.arrayBuffer();
+    if (arrayBuffer.byteLength < 200) { _ttsServerAvailable = false; return null; }
+    // decodeAudioData wants its own copy — we pass the original buffer; some
+    // older Safari versions detach it on success, which is fine since we
+    // never reference it again here.
+    const audioBuffer = await _audioCtx.decodeAudioData(arrayBuffer);
     _ttsServerAvailable = true;
-    return URL.createObjectURL(blob);
+    return audioBuffer;
   } catch {
-    // Network errors (timeout, offline) — short suppression window
+    // Network errors (timeout, offline) or decode errors — short suppression window
     _ttsServerAvailable = false;
     _ttsLastChecked = Date.now();
     return null;
@@ -392,8 +409,8 @@ export async function prewarmTtsCache(opts?: {
 
 /**
  * Speak text with the highest available quality:
- *   1) OpenAI TTS (warm "nova" voice) — natural, near-human
- *   2) Web Speech API — fallback when network/server unavailable
+ *   1) ElevenLabs TTS via AudioContext — natural, near-human, Safari-resilient
+ *   2) Web Speech API — fallback when network/server/AudioContext unavailable
  *
  * Always calls onEnd exactly once.
  */
@@ -403,7 +420,14 @@ export function speakHQ(
   onEnd?: () => void,
   voice: string = "sarah",
 ): void {
-  if (Platform.OS !== "web" || typeof window === "undefined" || typeof Audio === "undefined") {
+  if (Platform.OS !== "web" || typeof window === "undefined") {
+    speakWebSpeech(text, locale, onEnd);
+    return;
+  }
+  // No AudioContext yet — primeAudio() never ran (e.g. user navigated here
+  // without tapping Kios). Web Speech is the only path that doesn't need a
+  // gesture-blessed context.
+  if (!_audioCtx) {
     speakWebSpeech(text, locale, onEnd);
     return;
   }
@@ -414,8 +438,9 @@ export function speakHQ(
   const key = `${voice}|${text}`;
   const cached = cacheGet(key);
 
-  const playUrl = (objectUrl: string) => {
+  const playBuffer = (buf: AudioBuffer) => {
     if (isStale()) { onEnd?.(); return; }
+    if (!_audioCtx) { speakWebSpeech(text, locale, onEnd); return; }
     let fired = false;
     let safety: ReturnType<typeof setTimeout> | null = null;
     const clearSafety = () => {
@@ -427,61 +452,55 @@ export function speakHQ(
       clearSafety();
       onEnd?.();
     };
-    // Fallback to Web Speech when MP3 playback fails (load error, decode error,
-    // or play() rejected). MUST clear the safety timer first — otherwise it
-    // could fire mid-Web-Speech and signal completion before Web Speech is
-    // actually done speaking, restarting recognition over the spoken reply.
+    // Fallback to Web Speech when Web Audio playback fails. MUST clear the
+    // safety timer first — otherwise it could fire mid-Web-Speech and signal
+    // completion before Web Speech is actually done, restarting recognition
+    // over the spoken reply.
     const fallback = () => {
       clearSafety();
       speakWebSpeech(text, locale, done);
     };
-    try {
-      // Prefer the persistent element (primed during user gesture). Safari iOS
-      // will only auto-play on elements already blessed by a real user tap.
-      let audio: HTMLAudioElement;
-      if (_persistentAudio) {
-        audio = _persistentAudio;
-        // Detach old handlers BEFORE swapping src to silence spurious
-        // "abort"/"error" events from the previous source.
-        audio.onended = null;
-        audio.onerror = null;
-        try { audio.pause(); } catch { /* ignore */ }
-        try { audio.currentTime = 0; } catch { /* ignore */ }
-        audio.src = objectUrl;
-        try { audio.load(); } catch { /* ignore */ }
-      } else {
-        audio = new Audio(objectUrl);
+    // Safari occasionally suspends a previously-resumed AudioContext when the
+    // tab backgrounds or after audio interruptions (calls, Siri, …). If we
+    // call start(0) on a suspended context, Safari silently drops the playback
+    // (no error, no onended) — this is the exact "first reply works, then
+    // nothing" failure mode we are fixing. So when suspended, we MUST await
+    // resume() before scheduling start(). Use the same `myToken` staleness
+    // guard inside the async branch so a newer speakHQ can still preempt us.
+    const startSource = (): void => {
+      if (isStale() || !_audioCtx) { done(); return; }
+      try {
+        const src = _audioCtx.createBufferSource();
+        src.buffer = buf;
+        src.connect(_audioCtx.destination);
+        src.onended = done;
+        _currentSource = src;
+        safety = setTimeout(() => {
+          if (!fired) {
+            stopHqAudio();
+            done();
+          }
+        }, Math.ceil(buf.duration * 1000) + 1500);
+        src.start(0);
+      } catch {
+        fallback();
       }
-      audio.volume = 1.0;
-      audio.onended = done;
-      audio.onerror = fallback;
-      _currentAudio = audio;
-      // Safety fallback for stuck audio (network stalls, decode hang, …).
-      // `done()` self-clears this so it cannot double-fire after onended.
-      safety = setTimeout(() => {
-        if (!fired) {
-          stopHqAudio();
-          done();
-        }
-      }, Math.max(4000, text.length * 90) + 2500);
-      audio.play().catch(fallback);
-    } catch {
-      fallback();
+    };
+    if (_audioCtx.state === "suspended") {
+      _audioCtx.resume().then(startSource).catch(fallback);
+    } else {
+      startSource();
     }
   };
 
-  if (cached) { playUrl(cached); return; }
+  if (cached) { playBuffer(cached); return; }
 
   void (async () => {
-    const objectUrl = await fetchTts(text, voice);
-    if (isStale()) {
-      // Newer speakHQ() call superseded us. Drop the result.
-      if (objectUrl) try { URL.revokeObjectURL(objectUrl); } catch { /* ignore */ }
-      return;
-    }
-    if (objectUrl) {
-      cacheSet(key, objectUrl);
-      playUrl(objectUrl);
+    const buf = await fetchTts(text, voice);
+    if (isStale()) return;
+    if (buf) {
+      cacheSet(key, buf);
+      playBuffer(buf);
     } else {
       // Server unavailable — fall back to Web Speech
       speakWebSpeech(text, locale, onEnd);
@@ -518,14 +537,15 @@ let _prefetchedKey: string | null = null;
 
 export async function prefetchKiosPhrases(voice: string = "sarah"): Promise<void> {
   if (typeof window === "undefined" || typeof fetch === "undefined") return;
+  if (!_audioCtx) return; // primeAudio() must run first; pointless without a context
   const key = `client|${voice}`;
   if (_prefetchedKey === key) return;
   const results = await Promise.all(
     KIOS_HOT_PHRASES_DE.map(async (text): Promise<boolean> => {
       const cacheKey = `${voice}|${text}`;
       if (TTS_CACHE.has(cacheKey)) return true;
-      const url = await fetchTts(text, voice);
-      if (url) { cacheSet(cacheKey, url); return true; }
+      const buf = await fetchTts(text, voice);
+      if (buf) { cacheSet(cacheKey, buf); return true; }
       return false;
     }),
   );
