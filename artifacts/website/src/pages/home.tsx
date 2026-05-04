@@ -2,57 +2,43 @@ import { Link } from "wouter";
 import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Check, Clock, Leaf, Sparkles, ShieldCheck, ArrowRight } from "lucide-react";
+import {
+  Check,
+  Sparkles,
+  ArrowRight,
+  Award,
+  Mic,
+  Receipt,
+  Database,
+} from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL;
 
 const screenshots = [
-  {
-    src: `${BASE}screenshots/screen-home.png`,
-    labelDe: "Dashboard",
-    labelEn: "Dashboard",
-  },
-  {
-    src: `${BASE}screenshots/screen-karte.png`,
-    labelDe: "Wochenkarte",
-    labelEn: "Weekly menu",
-  },
-  {
-    src: `${BASE}screenshots/screen-lager.png`,
-    labelDe: "Lager",
-    labelEn: "Inventory",
-  },
-  {
-    src: `${BASE}screenshots/screen-statistik.png`,
-    labelDe: "Statistik",
-    labelEn: "Statistics",
-  },
-  {
-    src: `${BASE}screenshots/screen-bestellungen.png`,
-    labelDe: "Bestellungen",
-    labelEn: "Orders",
-  },
-  {
-    src: `${BASE}screenshots/screen-preiskalkulation.png`,
-    labelDe: "Preiskalkulation",
-    labelEn: "Pricing",
-  },
-  {
-    src: `${BASE}screenshots/screen-mehr.png`,
-    labelDe: "Alle Funktionen",
-    labelEn: "All features",
-  },
+  { src: `${BASE}screenshots/screen-home.png`,            labelDe: "Dashboard",        labelEn: "Dashboard" },
+  { src: `${BASE}screenshots/screen-karte.png`,           labelDe: "Wochenkarte",      labelEn: "Weekly menu" },
+  { src: `${BASE}screenshots/screen-lager.png`,           labelDe: "Lager",            labelEn: "Inventory" },
+  { src: `${BASE}screenshots/screen-statistik.png`,       labelDe: "Statistik",        labelEn: "Statistics" },
+  { src: `${BASE}screenshots/screen-bestellungen.png`,    labelDe: "Bestellungen",     labelEn: "Orders" },
+  { src: `${BASE}screenshots/screen-preiskalkulation.png`, labelDe: "Preiskalkulation", labelEn: "Pricing" },
+  { src: `${BASE}screenshots/screen-mehr.png`,            labelDe: "Alle Funktionen",  labelEn: "All features" },
 ];
 
 export default function Home() {
   const { t, lang } = useI18n();
   const why = [
-    { Icon: Leaf, title: t("why1Title"), body: t("why1Body") },
-    { Icon: Clock, title: t("why2Title"), body: t("why2Body") },
-    { Icon: ShieldCheck, title: t("why3Title"), body: t("why3Body") },
-    { Icon: Sparkles, title: t("why4Title"), body: t("why4Body") },
+    { Icon: Award, title: t("why1Title"), body: t("why1Body") },
+    { Icon: Mic, title: t("why2Title"), body: t("why2Body") },
+    { Icon: Receipt, title: t("why3Title"), body: t("why3Body") },
+    { Icon: Database, title: t("why4Title"), body: t("why4Body") },
   ];
-  const points = [t("heroPoint1"), t("heroPoint2"), t("heroPoint3")];
+  const points = [t("heroPoint1"), t("heroPoint2"), t("heroPoint3"), t("heroPoint4")];
+  const stats = [
+    { value: t("stat1"), label: t("stat1Label") },
+    { value: t("stat2"), label: t("stat2Label") },
+    { value: t("stat3"), label: t("stat3Label") },
+    { value: t("stat4"), label: t("stat4Label") },
+  ];
 
   return (
     <>
@@ -62,7 +48,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-20 grid gap-10 lg:grid-cols-2 lg:items-center">
           <div>
             <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 text-primary px-3 py-1 text-xs font-medium">
-              <Sparkles className="w-3 h-3" /> {t("tagline")}
+              <Sparkles className="w-3 h-3" /> {t("heroBadge")}
             </span>
             <h1 className="mt-5 text-4xl sm:text-5xl lg:text-6xl font-serif font-bold tracking-tight leading-[1.05]">
               {t("heroTitle")}
@@ -70,8 +56,9 @@ export default function Home() {
             <p className="mt-5 text-lg text-muted-foreground max-w-xl">{t("heroSub")}</p>
             <ul className="mt-6 space-y-2">
               {points.map((p) => (
-                <li key={p} className="flex items-center gap-2 text-sm">
-                  <Check className="w-4 h-4 text-primary" /> {p}
+                <li key={p} className="flex items-start gap-2 text-sm">
+                  <Check className="w-4 h-4 mt-0.5 text-primary shrink-0" />
+                  <span>{p}</span>
                 </li>
               ))}
             </ul>
@@ -81,8 +68,8 @@ export default function Home() {
                   {t("ctaDemo")} <ArrowRight className="w-4 h-4" />
                 </Button>
               </Link>
-              <Link href="/features">
-                <Button size="lg" variant="outline">{t("navFeatures")}</Button>
+              <Link href="/compare">
+                <Button size="lg" variant="outline">{t("navCompare")}</Button>
               </Link>
             </div>
           </div>
@@ -102,15 +89,18 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Social proof bar */}
-      <section className="py-12 border-y border-border/60 bg-muted/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <p className="text-center text-xs uppercase tracking-widest text-muted-foreground mb-6">
-            {t("socialProofTitle")}
+      {/* Stats strip */}
+      <section className="border-y border-border/60 bg-muted/20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12">
+          <p className="text-center text-xs uppercase tracking-widest text-muted-foreground mb-8">
+            {t("statsTitle")}
           </p>
-          <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-4 opacity-70">
-            {["Werkskantine GmbH", "Stadtschule Mitte", "PflegeHaus Sonne", "EventCater AG", "Bauer Catering", "Klinik Nord"].map((n) => (
-              <div key={n} className="text-sm font-medium tracking-wide">{n}</div>
+          <div className="grid gap-6 grid-cols-2 lg:grid-cols-4">
+            {stats.map((s) => (
+              <div key={s.label} className="text-center">
+                <div className="text-3xl sm:text-4xl font-serif font-bold text-primary">{s.value}</div>
+                <div className="mt-1 text-sm text-muted-foreground">{s.label}</div>
+              </div>
             ))}
           </div>
         </div>

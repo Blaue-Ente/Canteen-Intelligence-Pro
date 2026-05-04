@@ -2,17 +2,27 @@ import { Link } from "wouter";
 import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Building2, GraduationCap, Heart, PartyPopper } from "lucide-react";
+import {
+  Building2, GraduationCap, Stethoscope,
+  HeartPulse, PartyPopper, Hotel,
+} from "lucide-react";
 
 export default function ForOperators() {
   const { t } = useI18n();
   const segments = [
-    { Icon: Building2, title: t("opCanteenTitle"), body: t("opCanteenBody") },
-    { Icon: GraduationCap, title: t("opSchoolTitle"), body: t("opSchoolBody") },
-    { Icon: Heart, title: t("opCareTitle"), body: t("opCareBody") },
-    { Icon: PartyPopper, title: t("opCateringTitle"), body: t("opCateringBody") },
+    { Icon: Building2,    title: t("opCanteenTitle"),  body: t("opCanteenBody") },
+    { Icon: GraduationCap, title: t("opSchoolTitle"),  body: t("opSchoolBody") },
+    { Icon: Stethoscope,  title: t("opCareTitle"),     body: t("opCareBody") },
+    { Icon: HeartPulse,   title: t("opSeniorTitle"),   body: t("opSeniorBody") },
+    { Icon: PartyPopper,  title: t("opCateringTitle"), body: t("opCateringBody") },
+    { Icon: Hotel,        title: t("opHotelTitle"),    body: t("opHotelBody") },
   ];
-  const stats = [t("opStat1"), t("opStat2"), t("opStat3"), t("opStat4")];
+  const stats = [
+    { value: t("opStat1"), label: t("opStat1Label") },
+    { value: t("opStat2"), label: t("opStat2Label") },
+    { value: t("opStat3"), label: t("opStat3Label") },
+    { value: t("opStat4"), label: t("opStat4Label") },
+  ];
   return (
     <>
       <section className="bg-gradient-to-b from-primary/5 to-background border-b border-border/60">
@@ -23,7 +33,7 @@ export default function ForOperators() {
       </section>
 
       <section className="max-w-7xl mx-auto px-4 sm:px-6 py-16">
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {segments.map(({ Icon, title, body }) => (
             <Card key={title} className="border-border/60">
               <CardContent className="p-6">
@@ -43,8 +53,9 @@ export default function ForOperators() {
           <h2 className="text-3xl font-serif font-bold tracking-tight text-center">{t("opStatTitle")}</h2>
           <div className="mt-10 grid gap-6 grid-cols-2 lg:grid-cols-4">
             {stats.map((s) => (
-              <div key={s} className="text-center p-6 rounded-xl bg-background border border-border/60">
-                <div className="text-2xl sm:text-3xl font-serif font-bold text-primary">{s}</div>
+              <div key={s.label} className="text-center p-6 rounded-xl bg-background border border-border/60">
+                <div className="text-2xl sm:text-3xl font-serif font-bold text-primary">{s.value}</div>
+                <div className="mt-1 text-sm text-muted-foreground">{s.label}</div>
               </div>
             ))}
           </div>
@@ -55,8 +66,8 @@ export default function ForOperators() {
         <h2 className="text-2xl sm:text-3xl font-serif font-bold">{t("finalCtaTitle")}</h2>
         <p className="mt-3 text-muted-foreground">{t("finalCtaSub")}</p>
         <div className="mt-6 flex justify-center gap-3">
-          <Link href="/demo"><Button size="lg">{t("ctaDemo")}</Button></Link>
-          <Link href="/contact"><Button size="lg" variant="outline">{t("ctaTalk")}</Button></Link>
+          <Button size="lg" asChild><Link href="/demo">{t("ctaDemo")}</Link></Button>
+          <Button size="lg" variant="outline" asChild><Link href="/contact">{t("ctaTalk")}</Link></Button>
         </div>
       </section>
     </>

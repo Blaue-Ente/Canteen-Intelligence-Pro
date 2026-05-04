@@ -1,5 +1,4 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "junJ6FmJqiPRB4jwb9vu-"
@@ -12,3 +11,15 @@ id = "9p0i3touOf3D2Ou4fjka9"
 uri = "file://artifacts/preorder/public/hero-canteen.png"
 type = "image"
 title = "Appetizing canteen food"
+
+[[outputs]]
+id = "uvY-iRZZv9cqgGqpV5G21"
+uri = "file://artifacts/website/public/downloads/sales-emails.pdf"
+type = "pdf"
+title = "Sales-E-Mail-Vorlagen (DE) — 8 Outreach-Templates"
+
+[[outputs]]
+id = "BT8npVTKwFCfWO_oDTUqR"
+uri = "file://artifacts/website/public/downloads/lead-list.pdf"
+type = "pdf"
+title = "Ziel-Liste DE-B2B — 40 reale Operator und Träger"

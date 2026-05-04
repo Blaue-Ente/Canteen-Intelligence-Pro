@@ -39,7 +39,7 @@ export default function Contact() {
 
       <section className="border-t border-border/60 bg-muted/20">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 py-16">
-          <h2 className="text-2xl font-serif font-bold tracking-tight">{t("imprintTitle")}</h2>
+          <h2 id="imprint" className="text-2xl font-serif font-bold tracking-tight scroll-mt-20">{t("imprintTitle")}</h2>
           <p className="mt-4 text-sm text-muted-foreground leading-relaxed">{t("imprintBody")}</p>
         </div>
       </section>

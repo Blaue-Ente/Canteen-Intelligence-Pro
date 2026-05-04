@@ -10,12 +10,12 @@ export function Layout({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
 
   const nav: Array<[string, string]> = [
-    ["/", t("navHome")],
     ["/features", t("navFeatures")],
     ["/for-operators", t("navOperators")],
+    ["/compare", t("navCompare")],
+    ["/standards", t("navStandards")],
     ["/pricing", t("navPricing")],
     ["/about", t("navAbout")],
-    ["/contact", t("navContact")],
   ];
 
   return (
@@ -54,9 +54,9 @@ export function Layout({ children }: { children: ReactNode }) {
             >
               {t("langSwitch")}
             </Button>
-            <Link href="/demo" className="hidden sm:inline-flex">
-              <Button size="sm">{t("ctaDemo")}</Button>
-            </Link>
+            <Button size="sm" asChild className="hidden sm:inline-flex">
+              <Link href="/demo">{t("ctaDemo")}</Link>
+            </Button>
             <Button
               variant="ghost"
               size="icon"
@@ -81,9 +81,9 @@ export function Layout({ children }: { children: ReactNode }) {
                   {label}
                 </Link>
               ))}
-              <Link href="/demo" onClick={() => setOpen(false)}>
-                <Button size="sm" className="w-full mt-2">{t("ctaDemo")}</Button>
-              </Link>
+              <Button size="sm" className="w-full mt-2" asChild>
+                <Link href="/demo" onClick={() => setOpen(false)}>{t("ctaDemo")}</Link>
+              </Button>
             </nav>
           </div>
         )}
@@ -106,24 +106,26 @@ export function Layout({ children }: { children: ReactNode }) {
             <h4 className="text-sm font-semibold mb-3">{t("navFeatures")}</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li><Link href="/features" className="hover:text-foreground">{t("navFeatures")}</Link></li>
-              <li><Link href="/for-operators" className="hover:text-foreground">{t("navOperators")}</Link></li>
+              <li><Link href="/compare" className="hover:text-foreground">{t("navCompare")}</Link></li>
+              <li><Link href="/standards" className="hover:text-foreground">{t("navStandards")}</Link></li>
               <li><Link href="/pricing" className="hover:text-foreground">{t("navPricing")}</Link></li>
             </ul>
           </div>
           <div>
             <h4 className="text-sm font-semibold mb-3">{t("brand")}</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
+              <li><Link href="/for-operators" className="hover:text-foreground">{t("navOperators")}</Link></li>
               <li><Link href="/about" className="hover:text-foreground">{t("navAbout")}</Link></li>
-              <li><Link href="/contact" className="hover:text-foreground">{t("navContact")}</Link></li>
+              <li><Link href="/downloads" className="hover:text-foreground">{t("navDownloads")}</Link></li>
               <li><Link href="/demo" className="hover:text-foreground">{t("navDemo")}</Link></li>
             </ul>
           </div>
           <div>
-            <h4 className="text-sm font-semibold mb-3">{t("contactTitle")}</h4>
+            <h4 className="text-sm font-semibold mb-3">{t("contactTitleFooter")}</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li>hello@kitchenos.de</li>
               <li>+49 30 1234567</li>
-              <li><Link href="/contact" className="hover:text-foreground">{t("footerImprint")}</Link></li>
+              <li><Link href="/contact#imprint" className="hover:text-foreground">{t("footerImprint")}</Link></li>
             </ul>
           </div>
         </div>
