@@ -17,9 +17,18 @@ localPort = 18115
 [services.development]
 run = "pnpm --filter @workspace/mobile run dev"
 
-[services.production]
-build = [ "sh", "artifacts/mobile/scripts/build-web.sh" ]
-run = [ "pnpm", "--filter", "@workspace/mobile", "run", "serve:web" ]
+[services.production.build]
+args = ["sh", "artifacts/mobile/scripts/build-web.sh"]
+
+[services.production.run]
+args = ["node", "artifacts/mobile/server/serve-web.js"]
+
+[services.production.run.env]
+PORT = "18115"
+NODE_ENV = "production"
+
+[services.production.health.startup]
+path = "/"
 
 [services.env]
 PORT = "18115"
