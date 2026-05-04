@@ -1,5 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -18,14 +18,14 @@ import { apiFetch } from "@/lib/api";
 import type { Supplier } from "@/types";
 
 const CATEGORIES: { id: string; label: string }[] = [
-  { id: "butcher",     label: "Fleischerei" },
-  { id: "bakery",     label: "Bäckerei" },
-  { id: "cheese",     label: "Käse" },
-  { id: "greengrocer",label: "Obst & Gemüse" },
-  { id: "seafood",    label: "Fisch" },
-  { id: "beverages",  label: "Getränke" },
-  { id: "wholesale",  label: "Großhandel" },
-  { id: "organic",    label: "Bio-Markt" },
+  { id: "butcher",      label: "Fleischerei" },
+  { id: "bakery",      label: "Bäckerei" },
+  { id: "cheese",      label: "Käse" },
+  { id: "greengrocer", label: "Obst & Gemüse" },
+  { id: "seafood",     label: "Fisch" },
+  { id: "beverages",   label: "Getränke" },
+  { id: "wholesale",   label: "Großhandel" },
+  { id: "organic",     label: "Bio-Markt" },
 ];
 
 const RADIUS_STEPS = [5, 10, 25, 50, 100];
@@ -63,39 +63,18 @@ export default function DiscoverSuppliers() {
   const [usingFallback, setUsingFallback] = useState(false);
   const plzRef = useRef<TextInput>(null);
 
-  // ── Geocode PLZ → lat/lng ────────────────────────────────────────────────
-  const geocodePlz = useCallback(async (value: string) => {
-    if (!/^\d{5}$/.test(value)) return;
-    setGeocoding(true);
-    setError(null);
-    try {
-      const r = await apiFetch<{ lat: number; lng: number; city: string }>(
-        `/api/suppliers/geocode?plz=${encodeURIComponent(value)}`,
-      );
-      setCoords({ lat: r.lat, lng: r.lng });
-      setPlzCity(r.city);
-    } catch {
-      setCoords(null);
-      setPlzCity(null);
-      setError("PLZ nicht gefunden. Bitte prüfen.");
-    } finally {
-      setGeocoding(false);
-    }
-  }, []);
-
-  // ── Load results ─────────────────────────────────────────────────────────
+  // ── Load results ──────────────────────────────────────────────────────────
   const load = useCallback(
-    async (cat: string, overrideCoords?: { lat: number; lng: number } | null) => {
+    async (cat: string, loc: { lat: number; lng: number } | null, radius: number) => {
       setLoading(true);
       setError(null);
       setUsingFallback(false);
-      const loc = overrideCoords !== undefined ? overrideCoords : coords;
       try {
         const params = new URLSearchParams({ category: cat });
         if (loc) {
           params.set("lat", String(loc.lat));
           params.set("lng", String(loc.lng));
-          params.set("radiusKm", String(radiusKm));
+          params.set("radiusKm", String(radius));
         }
         const r = await apiFetch<{
           results: DiscoverSupplier[];
@@ -111,50 +90,56 @@ export default function DiscoverSuppliers() {
         setLoading(false);
       }
     },
-    [coords, radiusKm],
+    [],
   );
 
-  // ── PLZ + Search button ──────────────────────────────────────────────────
+  // Initial load: show fallback data right away without PLZ
+  useEffect(() => {
+    void load(category, null, radiusKm);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── PLZ + Search button ───────────────────────────────────────────────────
   const handleSearch = async () => {
     Keyboard.dismiss();
-    if (plz.length === 5 && !/^\d{5}$/.test(plz)) {
+    if (plz.length === 0) {
+      void load(category, null, radiusKm);
+      return;
+    }
+    if (!/^\d{5}$/.test(plz)) {
       setError("PLZ muss 5 Ziffern haben.");
       return;
     }
-    if (plz.length === 5) {
-      setGeocoding(true);
-      setError(null);
-      try {
-        const r = await apiFetch<{ lat: number; lng: number; city: string }>(
-          `/api/suppliers/geocode?plz=${encodeURIComponent(plz)}`,
-        );
-        setCoords({ lat: r.lat, lng: r.lng });
-        setPlzCity(r.city);
-        await load(category, { lat: r.lat, lng: r.lng });
-      } catch {
-        setError("PLZ nicht gefunden. Bitte prüfen.");
-        setGeocoding(false);
-      } finally {
-        setGeocoding(false);
-      }
-    } else {
-      await load(category, null);
+    setGeocoding(true);
+    setError(null);
+    try {
+      const r = await apiFetch<{ lat: number; lng: number; city: string }>(
+        `/api/suppliers/geocode?plz=${encodeURIComponent(plz)}`,
+      );
+      const loc = { lat: r.lat, lng: r.lng };
+      setCoords(loc);
+      setPlzCity(r.city);
+      await load(category, loc, radiusKm);
+    } catch {
+      setError("PLZ nicht gefunden. Bitte prüfen.");
+    } finally {
+      setGeocoding(false);
     }
   };
 
-  // ── Category change ──────────────────────────────────────────────────────
+  // ── Category change ───────────────────────────────────────────────────────
   const handleCategory = (cat: string) => {
     setCategory(cat);
-    void load(cat);
+    void load(cat, coords, radiusKm);
   };
 
-  // ── Radius change ────────────────────────────────────────────────────────
+  // ── Radius change ─────────────────────────────────────────────────────────
   const handleRadius = (km: number) => {
     setRadiusKm(km);
-    if (coords) void load(category);
+    void load(category, coords, km);
   };
 
-  // ── Save supplier ────────────────────────────────────────────────────────
+  // ── Save supplier ─────────────────────────────────────────────────────────
   const save = (r: DiscoverSupplier) => {
     const supplier: Supplier = {
       id: newId(),
@@ -167,7 +152,7 @@ export default function DiscoverSuppliers() {
       lng: r.lng ?? undefined,
       category: r.productGroups,
       rating: r.rating ?? 0,
-      notes: `Quelle: Google Places${r.website ? ` · ${r.website}` : ""}`,
+      notes: `Quelle: Lieferantensuche${r.website ? ` · ${r.website}` : ""}`,
     };
     const exists = state.suppliers.some(
       (s) => s.name.toLowerCase() === supplier.name.toLowerCase() && s.address === supplier.address,
@@ -188,22 +173,22 @@ export default function DiscoverSuppliers() {
       )
     : results;
 
-  const subtitle = coords && plzCity
+  const locationLabel = coords && plzCity
     ? `${plzCity} · ${radiusKm} km Umkreis`
-    : "PLZ eingeben und Umkreis wählen";
+    : "Ganz Deutschland / Berlin–Brandenburg";
 
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 60 }}>
 
-        {/* ── Header card ──────────────────────────────────────────────── */}
+        {/* ── Header card ─────────────────────────────────────────────── */}
         <Card style={{ gap: 12 }}>
           <View>
             <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 17 }}>
               Lieferanten finden
             </Text>
             <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 2 }}>
-              {subtitle}
+              {locationLabel}
             </Text>
           </View>
 
@@ -218,7 +203,7 @@ export default function DiscoverSuppliers() {
                   setPlz(digits);
                   if (digits.length < 5) { setCoords(null); setPlzCity(null); }
                 }}
-                placeholder="PLZ eingeben…"
+                placeholder="PLZ (optional)"
                 placeholderTextColor={c.mutedForeground}
                 keyboardType="numeric"
                 maxLength={5}
@@ -258,20 +243,26 @@ export default function DiscoverSuppliers() {
             </TouchableOpacity>
           </View>
 
-          {/* PLZ status */}
+          {/* PLZ confirmed */}
           {coords && plzCity && (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
               <Feather name="map-pin" size={12} color="#059669" />
               <Text style={{ color: "#059669", fontFamily: "Inter_500Medium", fontSize: 12 }}>
-                {plzCity} ({plz}) gefunden
+                {plzCity} ({plz}) · Umkreissuche aktiv
               </Text>
+              <TouchableOpacity
+                onPress={() => { setCoords(null); setPlzCity(null); setPlz(""); void load(category, null, radiusKm); }}
+                style={{ marginLeft: "auto" }}
+              >
+                <Feather name="x" size={14} color={c.mutedForeground} />
+              </TouchableOpacity>
             </View>
           )}
 
           {/* Radius selector */}
           <View style={{ gap: 6 }}>
             <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 12 }}>
-              Umkreis
+              Umkreis {coords ? "" : "(nach PLZ-Eingabe aktiv)"}
             </Text>
             <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
               {RADIUS_STEPS.map((km) => (
@@ -338,17 +329,7 @@ export default function DiscoverSuppliers() {
           />
         </Card>
 
-        {/* ── Hint when no PLZ entered ─────────────────────────────────── */}
-        {!coords && !loading && !error && results.length === 0 && (
-          <Card style={{ alignItems: "center", gap: 10, paddingVertical: 24 }}>
-            <Feather name="map-pin" size={32} color={c.mutedForeground} />
-            <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 14, textAlign: "center" }}>
-              PLZ eingeben und auf {"\u{1F50D}"} tippen{"\n"}um Lieferanten in der Nähe zu finden.
-            </Text>
-          </Card>
-        )}
-
-        {/* ── Loading ──────────────────────────────────────────────────── */}
+        {/* ── Loading ─────────────────────────────────────────────────── */}
         {loading && (
           <View style={{ paddingVertical: 24, alignItems: "center", gap: 8 }}>
             <ActivityIndicator color={c.primary} />
@@ -358,7 +339,7 @@ export default function DiscoverSuppliers() {
           </View>
         )}
 
-        {/* ── Error ────────────────────────────────────────────────────── */}
+        {/* ── Error ───────────────────────────────────────────────────── */}
         {error && (
           <Card style={{ gap: 10 }}>
             <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
@@ -371,7 +352,7 @@ export default function DiscoverSuppliers() {
           </Card>
         )}
 
-        {/* ── Fallback notice ───────────────────────────────────────────── */}
+        {/* ── Fallback notice ─────────────────────────────────────────── */}
         {usingFallback && !loading && !error && (
           <View
             style={{
@@ -386,14 +367,14 @@ export default function DiscoverSuppliers() {
               paddingVertical: 8,
             }}
           >
-            <Feather name="wifi-off" size={13} color="#d97706" />
+            <Feather name="info" size={13} color="#d97706" />
             <Text style={{ color: "#92400e", fontFamily: "Inter_400Regular", fontSize: 12, flex: 1 }}>
-              Live-Suche nicht verfügbar — Beispieldaten werden angezeigt.
+              Beispieldaten — PLZ eingeben für echte Ergebnisse in deiner Nähe.
             </Text>
           </View>
         )}
 
-        {/* ── Results ──────────────────────────────────────────────────── */}
+        {/* ── Results ─────────────────────────────────────────────────── */}
         {!loading && !error && filtered.length > 0 && (
           <>
             <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 13, paddingHorizontal: 4 }}>
@@ -425,12 +406,7 @@ export default function DiscoverSuppliers() {
                       ) : null}
                     </View>
                     {r.distanceKm != null ? (
-                      <View
-                        style={{
-                          paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20,
-                          backgroundColor: "#d1fae5", flexShrink: 0,
-                        }}
-                      >
+                      <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, backgroundColor: "#d1fae5", flexShrink: 0 }}>
                         <Text style={{ color: "#065f46", fontFamily: "Inter_600SemiBold", fontSize: 11 }}>
                           {r.distanceKm.toFixed(1)} km
                         </Text>
@@ -458,10 +434,7 @@ export default function DiscoverSuppliers() {
 
                   <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
                     {r.productGroups.map((g) => (
-                      <View
-                        key={g}
-                        style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: c.muted }}
-                      >
+                      <View key={g} style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: c.muted }}>
                         <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 11 }}>{g}</Text>
                       </View>
                     ))}

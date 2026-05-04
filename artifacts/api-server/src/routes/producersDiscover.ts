@@ -274,6 +274,7 @@ router.get("/producers/discover", async (req, res: Response) => {
   const q = String(req.query.q ?? "").toLowerCase().trim();
   const lat = req.query.lat ? Number(req.query.lat) : null;
   const lng = req.query.lng ? Number(req.query.lng) : null;
+  const radiusKm = req.query.radiusKm ? Math.min(200, Math.max(1, Number(req.query.radiusKm))) : null;
 
   if (!PRODUCER_CATEGORIES[category]) {
     res.status(400).json({ error: "invalid category", categories: Object.keys(PRODUCER_CATEGORIES) });
@@ -362,7 +363,7 @@ router.get("/producers/discover", async (req, res: Response) => {
   }
 
   if (lat !== null && lng !== null && Number.isFinite(lat) && Number.isFinite(lng)) {
-    const distKm = (a: number, b: number, c: number, d: number) => {
+    const calcDistKm = (a: number, b: number, c: number, d: number) => {
       const R = 6371;
       const toRad = (n: number) => (n * Math.PI) / 180;
       const dLat = toRad(c - a);
@@ -375,8 +376,13 @@ router.get("/producers/discover", async (req, res: Response) => {
     results = results
       .map((r) => ({
         ...r,
-        distanceKm: r.lat !== null && r.lng !== null ? distKm(lat, lng, r.lat, r.lng) : null,
+        distanceKm: r.lat !== null && r.lng !== null ? calcDistKm(lat, lng, r.lat, r.lng) : null,
       }))
+      .filter((r) => {
+        if (radiusKm === null) return true;
+        if (r.distanceKm === null || r.distanceKm === undefined) return true;
+        return r.distanceKm <= radiusKm;
+      })
       .sort((a, b) => {
         if (a.distanceKm === null || a.distanceKm === undefined) return 1;
         if (b.distanceKm === null || b.distanceKm === undefined) return -1;
