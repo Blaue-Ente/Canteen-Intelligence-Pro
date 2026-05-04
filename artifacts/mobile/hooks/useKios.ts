@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { askKios } from "@/lib/kios";
-import { speakHQ, stopSpeaking, isSafari } from "@/lib/voice";
+import { speakHQ, stopSpeaking, isSafari, prewarmTtsCache } from "@/lib/voice";
 import { useApp } from "@/contexts/AppContext";
 import type { AppState } from "@/types";
 
@@ -73,49 +73,54 @@ function detectWakeWord(lower: string): { found: boolean; endIndex: number } {
 }
 
 // ── Quick commands (instant nav, no AI round-trip) ───────────────────────────
+// Patterns are deliberately loose to catch natural phrasing:
+//   "geh ins Lager", "öffne den Lagerbestand", "wie viel haben wir auf Lager",
+//   "zeig mir die Bestände" → all match `/lager|bestand|vorrat|inventar/`.
+// Matched in order — put more specific patterns first.
 const QUICK_COMMANDS: Array<{ patterns: RegExp[]; nav: keyof typeof NAV_MAP; reply: string }> = [
-  // Tabs
-  { patterns: [/lager|bestand|vorrat|inventar|inventory/i],                 nav: "inventory",   reply: "Ich zeige dir den Lagerbestand." },
-  { patterns: [/statistik|stats?\b|umsatz|verkauf|absatz|kennzahl/i],       nav: "stats",       reply: "Statistik wird geöffnet." },
-  { patterns: [/men[üu]|karte|speise|gericht|wochenplan/i],                 nav: "menu",        reply: "Ich öffne die Speisekarte." },
-  { patterns: [/start|home|anfang|[üu]bersicht|hauptseite|zur[üu]ck/i],     nav: "home",        reply: "Zurück zur Übersicht." },
-  { patterns: [/^mehr$|men[üu] mehr|einstellungs?menü/i],                   nav: "more",        reply: "Ich öffne das Menü." },
-  // Operations
-  { patterns: [/tagesabschluss|abschluss|tagesreport|kasse schließen/i],    nav: "sales",       reply: "Tagesabschluss wird geöffnet." },
-  { patterns: [/zettle|kartenterminal|kasse/i],                             nav: "zettle",      reply: "Ich öffne Zettle." },
-  { patterns: [/wareneingang|lieferung|bestellung erhalten/i],              nav: "orders",      reply: "Wareneingänge werden geöffnet." },
-  { patterns: [/auto.?bestell|nachbestell|procurement|bestellvorschlag/i],  nav: "procurement", reply: "Bestellvorschläge werden geladen." },
-  { patterns: [/inventur|bestandsaufnahme|z[äa]hlen/i],                     nav: "inventur",    reply: "Inventur wird geöffnet." },
-  { patterns: [/dienstplan|schichtplan|personalplan/i],                     nav: "dienstplan",  reply: "Dienstplan wird geöffnet." },
-  { patterns: [/lieferant|supplier/i],                                      nav: "suppliers",   reply: "Ich zeige dir die Lieferanten." },
-  { patterns: [/erzeuger|produzent|producer|regional/i],                    nav: "producers",   reply: "Ich zeige dir die regionalen Erzeuger." },
-  { patterns: [/catering|veranstaltung|event\b/i],                          nav: "catering",    reply: "Catering wird geöffnet." },
-  { patterns: [/preisrechner|kalkulation|calculator|kostenrechnung/i],      nav: "calculator",  reply: "Preisrechner wird geöffnet." },
-  { patterns: [/abfall|m[üu]ll|waste|verschwend/i],                         nav: "waste",       reply: "Abfall wird geöffnet." },
-  { patterns: [/reste|leftover|verwert/i],                                  nav: "reste",       reply: "Reste-Rezepte werden geladen." },
-  { patterns: [/vorbestellung|preorder|app.?bestell/i],                     nav: "preorder",    reply: "Vorbestellungen werden geöffnet." },
-  { patterns: [/kund|gast.?konto|genehmig/i],                               nav: "customers",   reply: "Kundenbestellungen werden geöffnet." },
-  { patterns: [/tagesaggregat|tageszusammenfassung|aggregate/i],            nav: "aggregate",   reply: "Tagesaggregat wird geöffnet." },
-  { patterns: [/standorte vergleich|filial.?vergleich|rollup/i],            nav: "rollup",      reply: "Standortvergleich wird geöffnet." },
-  { patterns: [/preisserver|preisliste server|price server/i],              nav: "priceserver", reply: "Preisserver wird geöffnet." },
-  { patterns: [/crm|kundenpfleg|kontakt/i],                                 nav: "crm",         reply: "CRM wird geöffnet." },
+  // Specific operations (must match before generic words)
+  { patterns: [/tagesabschluss|tages.?abschluss|abschluss|tagesreport|kasse schließen|tag beenden/i], nav: "sales",       reply: "Tagesabschluss wird geöffnet." },
+  { patterns: [/zettle|kartenterminal|karten.?lesen|terminal/i],                     nav: "zettle",      reply: "Ich öffne Zettle." },
+  { patterns: [/wareneingang|waren.?eingang|lieferung erhalten|lieferung gekommen|liefer.?annahme/i], nav: "orders",      reply: "Wareneingänge werden geöffnet." },
+  { patterns: [/auto.?bestell|nach.?bestell|bestell.?vorschlag|procurement|nachschub/i],              nav: "procurement", reply: "Bestellvorschläge werden geladen." },
+  { patterns: [/inventur|bestands.?aufnahme|z[äa]hlen|stichtag/i],                                    nav: "inventur",    reply: "Inventur wird geöffnet." },
+  { patterns: [/dienstplan|schichtplan|personalplan|wer arbeitet|wer hat schicht/i],                  nav: "dienstplan",  reply: "Dienstplan wird geöffnet." },
+  { patterns: [/lieferant|supplier|gro[ßs]h[äa]ndler/i],                             nav: "suppliers",   reply: "Ich zeige dir die Lieferanten." },
+  { patterns: [/erzeuger|produzent|producer|regional|bauer|hof/i],                  nav: "producers",   reply: "Ich zeige dir die regionalen Erzeuger." },
+  { patterns: [/catering|cater\b/i],                                                 nav: "catering",    reply: "Catering wird geöffnet." },
+  { patterns: [/veranstaltung|event\b|hochzeit|firmenfeier|geburtstag|jubil/i],     nav: "events",      reply: "Veranstaltungen werden geöffnet." },
+  { patterns: [/preisrechner|kalkulation|calculator|kosten.?rechnung|preis.?berechn/i], nav: "calculator", reply: "Preisrechner wird geöffnet." },
+  { patterns: [/abfall|m[üu]ll|waste|verschwend|food.?waste|wegwerf/i],             nav: "waste",       reply: "Abfall wird geöffnet." },
+  { patterns: [/reste|leftover|verwert|reste.?rezept|reste.?verwertung/i],          nav: "reste",       reply: "Reste-Rezepte werden geladen." },
+  { patterns: [/vorbestell|preorder|pre.?order|app.?bestell|online.?bestell/i],     nav: "preorder",    reply: "Vorbestellungen werden geöffnet." },
+  { patterns: [/kund|gast.?konto|gen[eä]hmig|freischalt|business.?freigab/i],       nav: "customers",   reply: "Kundenbestellungen werden geöffnet." },
+  { patterns: [/tages.?aggregat|tages.?zusammenfassung|aggregate|tages.?bilanz/i],  nav: "aggregate",   reply: "Tagesaggregat wird geöffnet." },
+  { patterns: [/standorte? vergleich|filial.?vergleich|rollup|filialen vergleichen/i], nav: "rollup",   reply: "Standortvergleich wird geöffnet." },
+  { patterns: [/preisserver|preis.?server|preisliste server|price server/i],         nav: "priceserver", reply: "Preisserver wird geöffnet." },
+  { patterns: [/^crm$|kunden.?pfleg|kontakt.?datenbank|kunden.?stamm/i],            nav: "crm",         reply: "CRM wird geöffnet." },
   // KI / Insights
-  { patterns: [/prognose|forecast|vorhersage|wettervorhersage/i],           nav: "forecast",    reply: "Prognose wird geöffnet." },
-  { patterns: [/[üu]bergabe|handover|schichtwechsel/i],                     nav: "handover",    reply: "Schichtübergabe wird geöffnet." },
-  { patterns: [/marge|margin|gewinn|deckungsbeitrag/i],                     nav: "margin",      reply: "Marge-Alerts werden geöffnet." },
-  { patterns: [/leaderboard|rangliste|top mitarbeiter/i],                   nav: "leaderboard", reply: "Leaderboard wird geöffnet." },
-  { patterns: [/bericht|report|auswert/i],                                  nav: "reports",     reply: "Berichte werden geöffnet." },
-  { patterns: [/gerichtsanalyse|dish.?analy|dish.?score/i],                 nav: "dishanalysis",reply: "Gerichtsanalyse wird geöffnet." },
-  { patterns: [/[öo]ko.?wizard|nachhaltig|co2|bio.?wizard/i],               nav: "okowizard",   reply: "Öko-Wizard wird geöffnet." },
-  // Other
-  { patterns: [/standort|location|filiale/i],                               nav: "locations",   reply: "Standorte werden geöffnet." },
-  { patterns: [/haccp|hygiene|temperatur.?protokoll|legal/i],               nav: "haccp",       reply: "HACCP wird geöffnet." },
-  { patterns: [/scann?en|barcode|kamera|foto/i],                            nav: "scan",        reply: "Scanner wird geöffnet." },
-  { patterns: [/chat|assistent|^ki\b|^ai\b|frag mich|frag den/i],           nav: "chat",        reply: "KI-Assistent wird geöffnet." },
-  { patterns: [/rezept anlegen|neues rezept|rezeptdetail/i],                nav: "recipe",      reply: "Rezept wird geöffnet." },
-  { patterns: [/team|mitarbeiter|personal\b/i],                             nav: "team",        reply: "Team wird geöffnet." },
-  { patterns: [/einstellung|setting|konfiguration/i],                       nav: "settings",    reply: "Einstellungen werden geöffnet." },
-  { patterns: [/aushang|wochenplan.?ausdruck|men[üu].?aushang/i],           nav: "aushang",     reply: "Aushang wird geöffnet." },
+  { patterns: [/prognose|forecast|vorhersage|wetter.?vorhersage|absatz.?prognose/i], nav: "forecast",   reply: "Prognose wird geöffnet." },
+  { patterns: [/[üu]bergabe|handover|schicht.?wechsel|schicht.?[üu]bergabe/i],      nav: "handover",    reply: "Schichtübergabe wird geöffnet." },
+  { patterns: [/marge|margin|gewinn|deckungs.?beitrag|verlust.?gericht/i],          nav: "margin",      reply: "Marge-Alerts werden geöffnet." },
+  { patterns: [/leaderboard|rangliste|top mitarbeiter|beste mitarbeiter/i],         nav: "leaderboard", reply: "Leaderboard wird geöffnet." },
+  { patterns: [/bericht|report|auswert|monatsbericht|wochenbericht/i],              nav: "reports",     reply: "Berichte werden geöffnet." },
+  { patterns: [/gerichts.?analy|dish.?analy|dish.?score|gericht.?bewert/i],         nav: "dishanalysis",reply: "Gerichtsanalyse wird geöffnet." },
+  { patterns: [/[öo]ko.?wizard|nachhaltig|co2|bio.?wizard|klima.?bilanz/i],         nav: "okowizard",   reply: "Öko-Wizard wird geöffnet." },
+  // Locations / utilities
+  { patterns: [/standort|location|filiale|niederlassung/i],                          nav: "locations",   reply: "Standorte werden geöffnet." },
+  { patterns: [/haccp|hygiene|temperatur.?protokoll|k[üu]hl.?temperatur|legal/i],   nav: "haccp",       reply: "HACCP wird geöffnet." },
+  { patterns: [/scann?en|scanner|barcode|kamera|foto|qr.?code/i],                    nav: "scan",        reply: "Scanner wird geöffnet." },
+  { patterns: [/^chat$|assistent|^ki\b|^ai\b|frag mich|frag den|sprich mit/i],      nav: "chat",        reply: "KI-Assistent wird geöffnet." },
+  { patterns: [/rezept anlegen|neues rezept|rezept.?detail|rezept hinzuf/i],        nav: "recipe",      reply: "Rezept wird geöffnet." },
+  { patterns: [/^team$|mitarbeiter|personal\b|kollegen/i],                          nav: "team",        reply: "Team wird geöffnet." },
+  { patterns: [/einstellung|setting|konfiguration|optionen/i],                       nav: "settings",    reply: "Einstellungen werden geöffnet." },
+  { patterns: [/aushang|wochenplan.?ausdruck|men[üu].?aushang|aushangs.?plan/i],    nav: "aushang",     reply: "Aushang wird geöffnet." },
+  // Tabs (least specific — match last)
+  { patterns: [/lager|bestand|vorrat|inventar|inventory|warenbestand/i],            nav: "inventory",   reply: "Ich zeige dir den Lagerbestand." },
+  { patterns: [/statistik|^stats?\b|umsatz|verkauf|absatz|kennzahl|wie viel.*verdient|wie viel.*umsatz/i], nav: "stats", reply: "Statistik wird geöffnet." },
+  { patterns: [/men[üu]|karte|speise|gericht|wochenplan|tagesgericht|essen heute/i], nav: "menu",        reply: "Ich öffne die Speisekarte." },
+  { patterns: [/^start$|^home$|anfang|[üu]bersicht|hauptseite|^zur[üu]ck$|dashboard/i], nav: "home",    reply: "Zurück zur Übersicht." },
+  { patterns: [/^mehr$|men[üu] mehr|einstellungs?men[üu]|^extras?$/i],               nav: "more",        reply: "Ich öffne das Menü." },
 ];
 
 function matchQuickCommand(question: string) {
@@ -334,6 +339,10 @@ export function useKios() {
   function enable() {
     if (!isVoiceAvailable()) return;
     unlockAudio();           // Safari PWA: prime audio while still in user gesture
+    // Pre-warm server TTS cache for all 40+ static Kios phrases. Fire-and-forget;
+    // returns immediately and the server generates them in the background. Result:
+    // every "Statistik wird geöffnet." / "Ja?" / etc plays instantly with no fetch.
+    void prewarmTtsCache({ preset: "kios-de" });
     setStatus("idle");
     startListening("wake");
   }

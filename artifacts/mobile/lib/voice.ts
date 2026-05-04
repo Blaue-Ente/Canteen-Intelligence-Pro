@@ -260,24 +260,26 @@ function stopHqAudio(): void {
   }
 }
 
-// Server availability: once we know the TTS endpoint isn't available
-// (e.g. proxy doesn't expose /audio/speech), short-circuit subsequent calls
-// straight to Web Speech — avoids 661ms+ network delay before every utterance.
-// Reset after 5 minutes in case the server gains support.
+// Server availability: after a hard 502 (e.g. ELEVENLABS_API_KEY missing),
+// pause network attempts for 60 s to avoid speech delay on every utterance.
+// The server returns MP3 in <300 ms when working — much faster than Web Speech
+// — so we keep the recheck window short. Successful fetch always re-enables.
 let _ttsServerAvailable: boolean | null = null;
 let _ttsLastChecked = 0;
-const TTS_RECHECK_MS = 5 * 60_000;
+const TTS_RECHECK_MS = 60_000;
+
+function ttsBaseUrl(): string {
+  if (typeof window === "undefined") return "";
+  const baseRaw = (window as unknown as { __BASE_URL__?: string }).__BASE_URL__;
+  return typeof baseRaw === "string" ? baseRaw.replace(/\/+$/, "") : "";
+}
 
 async function fetchTts(text: string, voice: string): Promise<string | null> {
   if (typeof window === "undefined" || typeof fetch === "undefined") return null;
   if (_ttsServerAvailable === false && Date.now() - _ttsLastChecked < TTS_RECHECK_MS) {
     return null; // known-unavailable; skip network
   }
-  // Mobile preorder app uses BASE_URL; on web Kios runs in mobile artifact
-  // which is mounted at /mobile but talks to /api directly via the shared proxy.
-  const baseRaw = (window as unknown as { __BASE_URL__?: string }).__BASE_URL__;
-  const base = typeof baseRaw === "string" ? baseRaw.replace(/\/+$/, "") : "";
-  const url = `${base}/api/ai/tts`;
+  const url = `${ttsBaseUrl()}/api/ai/tts`;
   try {
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), 8_000);
@@ -290,7 +292,10 @@ async function fetchTts(text: string, voice: string): Promise<string | null> {
     clearTimeout(timer);
     _ttsLastChecked = Date.now();
     if (!resp.ok) {
-      _ttsServerAvailable = false;
+      // Only mark "server unavailable" on hard config errors (502 = misconfigured,
+      // missing key). Transient errors (429 rate limit, 503 upstream) should not
+      // suppress future attempts — Web Speech is used for *this* utterance only.
+      if (resp.status === 502) _ttsServerAvailable = false;
       return null;
     }
     const blob = await resp.blob();
@@ -298,10 +303,36 @@ async function fetchTts(text: string, voice: string): Promise<string | null> {
     _ttsServerAvailable = true;
     return URL.createObjectURL(blob);
   } catch {
+    // Network errors (timeout, offline) — short suppression window
     _ttsServerAvailable = false;
     _ttsLastChecked = Date.now();
     return null;
   }
+}
+
+/**
+ * Pre-warm the server cache for an entire batch of phrases. Returns immediately;
+ * generation runs async on the server. The phrases will be served instantly the
+ * next time speakHQ() asks for them. Safe to call multiple times.
+ *
+ * preset = "kios-de" warms all 40+ static Kios German phrases.
+ */
+let _prewarmed = false;
+export async function prewarmTtsCache(opts?: {
+  preset?: "kios-de" | "kios-en" | "kios-all";
+  phrases?: { text: string; voice?: string }[];
+}): Promise<boolean> {
+  if (typeof window === "undefined" || typeof fetch === "undefined") return false;
+  if (_prewarmed && !opts?.phrases) return true; // preset already warmed
+  try {
+    const resp = await fetch(`${ttsBaseUrl()}/api/ai/tts/prewarm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ preset: opts?.preset ?? "kios-de", phrases: opts?.phrases }),
+    });
+    if (resp.ok) { _prewarmed = true; return true; }
+    return false;
+  } catch { return false; }
 }
 
 /**

@@ -1,8 +1,41 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import pdfParse from "pdf-parse/lib/pdf-parse.js";
+import {
+  generateTts,
+  prewarmPhrases,
+  ElevenLabsError,
+  ELEVEN_VOICE_DE_FEMALE,
+  ELEVEN_VOICE_DE_FEMALE_2,
+  ELEVEN_VOICE_DE_MALE,
+  KIOS_STATIC_PHRASES_DE,
+  KIOS_STATIC_PHRASES_EN,
+} from "../lib/tts";
 
 const router: IRouter = Router();
+
+// Map a friendly voice name → ElevenLabs voice ID.
+// Default = Sarah (warm German female), best for canteen Kios.
+function resolveVoiceId(voice?: string): string {
+  switch (voice) {
+    case "sarah":
+    case "nova":
+    case "female":
+      return ELEVEN_VOICE_DE_FEMALE;
+    case "charlotte":
+    case "shimmer":
+    case "female2":
+      return ELEVEN_VOICE_DE_FEMALE_2;
+    case "antoni":
+    case "onyx":
+    case "male":
+      return ELEVEN_VOICE_DE_MALE;
+    default:
+      // If caller passed a raw 20-char voice ID, honour it
+      if (voice && /^[A-Za-z0-9]{20}$/.test(voice)) return voice;
+      return ELEVEN_VOICE_DE_FEMALE;
+  }
+}
 
 interface ChatBody {
   messages: { role: "user" | "assistant" | "system"; content: string }[];
@@ -210,12 +243,13 @@ router.post("/ai/parse-menu-pdf", async (req: Request, res: Response) => {
   }
 });
 
-// ── TTS via OpenAI (premium voice for Kios) ────────────────────────────────
-// Returns MP3 audio. Best German voices: "nova" (warm female), "shimmer" (soft female),
-// "onyx" (deep male), "echo" (clear male). Defaults to "nova".
+// ── TTS via ElevenLabs (premium voice for Kios) ────────────────────────────
+// Returns MP3 audio. Multilingual Turbo v2.5 model — ~250 ms TTFB, native German.
+// Server-side disk cache means repeat phrases are served in <2 ms with zero
+// upstream cost. Browser HTTP cache covers the same phrase across reloads.
 interface TtsBody {
   text: string;
-  voice?: "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer";
+  voice?: string; // friendly name ("nova", "sarah", "male") or raw EL voice ID
 }
 
 router.post("/ai/tts", async (req: Request, res: Response) => {
@@ -225,23 +259,114 @@ router.post("/ai/tts", async (req: Request, res: Response) => {
     res.status(400).json({ error: "text required" });
     return;
   }
-  const voice = body?.voice ?? "nova";
+  const voiceId = resolveVoiceId(body?.voice);
+
+  if (!process.env["ELEVENLABS_API_KEY"]) {
+    req.log.warn({}, "ELEVENLABS_API_KEY not set — tts unavailable");
+    res.status(502).json({ error: "tts_unavailable" });
+    return;
+  }
+
   try {
-    const speech = await openai.audio.speech.create({
-      model: "tts-1",
-      voice,
-      input: text.slice(0, 4000),
-      response_format: "mp3",
-      speed: 1.0,
-    });
-    const buffer = Buffer.from(await speech.arrayBuffer());
+    const { buffer, cached } = await generateTts(text, voiceId);
     res.setHeader("Content-Type", "audio/mpeg");
-    res.setHeader("Cache-Control", "private, max-age=60");
+    // POST responses are not cached by browsers/CDNs by default; we rely on the
+    // server-side disk cache for cross-session reuse and the in-memory client
+    // cache for in-session reuse. Header signals intent for any compatible cache.
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.setHeader("X-TTS-Cache", cached ? "HIT" : "MISS");
     res.send(buffer);
   } catch (err) {
-    req.log.warn({ err }, "ai tts unavailable, client should fall back");
-    res.status(502).json({ error: "tts_unavailable" });
+    if (err instanceof ElevenLabsError) {
+      const s = err.status;
+      // 401/403 = config (bad key) → 502, hard fail (client backs off)
+      // 429    = rate limit       → 429, transient
+      // 5xx    = upstream         → 503, transient
+      const status = s === 401 || s === 403 ? 502 : s === 429 ? 429 : 503;
+      const code =
+        status === 502 ? "tts_misconfigured" :
+        status === 429 ? "tts_rate_limited" : "tts_upstream_error";
+      req.log.warn({ status: s, msg: err.message }, "elevenlabs error");
+      res.status(status).json({ error: code, upstreamStatus: s });
+    } else {
+      req.log.warn(
+        { err: err instanceof Error ? err.message : String(err) },
+        "tts unknown error",
+      );
+      res.status(502).json({ error: "tts_unavailable" });
+    }
   }
+});
+
+// Pre-warm: client (or boot script) can request a batch of phrases to be
+// generated and cached on disk. Returns immediately; generation runs async.
+interface PrewarmBody {
+  phrases?: { text: string; voice?: string }[];
+  preset?: "kios-de" | "kios-en" | "kios-all";
+}
+
+// Hard caps: prevent abuse / cost drain even if endpoint is hit by random callers
+const PREWARM_MAX_PHRASES = 60;        // ≥ KIOS_STATIC_PHRASES_DE.length
+const PREWARM_MAX_TEXT_LEN = 200;      // each phrase
+const PREWARM_MAX_TOTAL_BYTES = 20_000;
+
+// Per-process simple in-flight guard — at most one batch running at a time
+let _prewarmRunning = false;
+
+router.post("/ai/tts/prewarm", async (req: Request, res: Response) => {
+  if (!process.env["ELEVENLABS_API_KEY"]) {
+    res.status(502).json({ error: "tts_unavailable" });
+    return;
+  }
+  const body = req.body as PrewarmBody;
+  const seen = new Set<string>();
+  const items: { text: string; voiceId: string }[] = [];
+
+  function tryPush(text: string, voiceId: string): boolean {
+    const t = text.trim();
+    if (!t || t.length > PREWARM_MAX_TEXT_LEN) return false;
+    const k = `${voiceId}|${t}`;
+    if (seen.has(k)) return false;
+    if (items.length >= PREWARM_MAX_PHRASES) return false;
+    seen.add(k);
+    items.push({ text: t, voiceId });
+    return true;
+  }
+
+  if (body?.preset === "kios-de" || body?.preset === "kios-all") {
+    for (const t of KIOS_STATIC_PHRASES_DE) tryPush(t, ELEVEN_VOICE_DE_FEMALE);
+  }
+  if (body?.preset === "kios-en" || body?.preset === "kios-all") {
+    for (const t of KIOS_STATIC_PHRASES_EN) tryPush(t, ELEVEN_VOICE_DE_FEMALE);
+  }
+  if (Array.isArray(body?.phrases)) {
+    for (const p of body.phrases) {
+      if (typeof p?.text !== "string") continue;
+      tryPush(p.text, resolveVoiceId(p.voice));
+    }
+  }
+
+  const totalBytes = items.reduce((n, x) => n + x.text.length, 0);
+  if (totalBytes > PREWARM_MAX_TOTAL_BYTES) {
+    res.status(413).json({ error: "payload_too_large" });
+    return;
+  }
+  if (items.length === 0) {
+    res.status(400).json({ error: "phrases or preset required" });
+    return;
+  }
+  if (_prewarmRunning) {
+    res.json({ queued: 0, skipped: "already_running" });
+    return;
+  }
+
+  _prewarmRunning = true;
+  res.json({ queued: items.length });
+
+  // Fire-and-forget after responding
+  void prewarmPhrases(items, req.log)
+    .catch(() => { /* logged inside */ })
+    .finally(() => { _prewarmRunning = false; });
 });
 
 export default router;
