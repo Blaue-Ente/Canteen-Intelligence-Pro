@@ -722,12 +722,13 @@ export function useKios() {
       if (r.current.status === "off") return;
       setStatus("idle");
       startListening("confirm");
+      // TTL: always clear pendingAction regardless of current phase. SR
+      // races (Safari onend → wake demotion) could otherwise leave a stale
+      // pendingAction lingering in memory after the timeout expires.
       r.current.pendingTtl = setTimeout(() => {
         if (r.current.status === "off") return;
-        if (r.current.phase === "confirm") {
-          r.current.pendingAction = null;
-          r.current.phase = "wake";
-        }
+        r.current.pendingAction = null;
+        if (r.current.phase === "confirm") r.current.phase = "wake";
       }, CONFIRM_WINDOW_MS);
     }, delayMs);
   }
@@ -818,6 +819,13 @@ export function useKios() {
   // T015: Execute a confirmed pending mutation. Called from the Ja-branch in
   // rec.onresult below. Speaks a result then hands back to followup so the
   // user can chain commands ("Ja" → "Erledigt." → "und füg auch Brot hinzu").
+  //
+  // Concurrency: the order snapshot in `pending.order` was captured when the
+  // user issued the voice command (up to 30s ago). In that window the same
+  // order may have been edited via the UI on another tab/device. We MUST
+  // re-fetch from current state and merge — never blindly overwrite.
+  // For remove, the stale `itemIndex` becomes meaningless after edits, so we
+  // re-locate by `itemName` (substring match, same as the original lookup).
   function executePendingAction() {
     const pending = r.current.pendingAction;
     r.current.pendingAction = null;
@@ -829,16 +837,36 @@ export function useKios() {
     const locale = r.current.state.locale;
     const voice  = r.current.state.kiosVoice;
     setStatus("speaking");
+
+    const liveOrder = (r.current.state.orders ?? []).find((o) => o.id === pending.order.id);
+    if (!liveOrder || liveOrder.status !== "draft") {
+      speakHQ(
+        "Die Bestellung wurde inzwischen geändert oder gesendet. Aktion abgebrochen.",
+        locale, () => scheduleFollowup(400), voice,
+      );
+      return;
+    }
+
     if (pending.kind === "addOrderItem") {
-      const next: OrderDraft = { ...pending.order, items: [...pending.order.items, pending.newItem] };
+      const next: OrderDraft = { ...liveOrder, items: [...liveOrder.items, pending.newItem] };
       dispatch({ type: "updateOrder", order: next });
       const it = pending.newItem;
       speakHQ(`Erledigt: ${it.quantity} ${it.unit} ${it.name} hinzugefügt.`, locale, () => scheduleFollowup(300), voice);
     } else {
-      const next: OrderDraft = {
-        ...pending.order,
-        items: pending.order.items.filter((_, i) => i !== pending.itemIndex),
-      };
+      const target = pending.itemName.toLowerCase();
+      const idx = liveOrder.items.findIndex((it) =>
+        it.name.toLowerCase() === target ||
+        it.name.toLowerCase().includes(target) ||
+        target.includes(it.name.toLowerCase()),
+      );
+      if (idx === -1) {
+        speakHQ(
+          `${pending.itemName} ist nicht mehr in der Bestellung. Aktion abgebrochen.`,
+          locale, () => scheduleFollowup(400), voice,
+        );
+        return;
+      }
+      const next: OrderDraft = { ...liveOrder, items: liveOrder.items.filter((_, i) => i !== idx) };
       dispatch({ type: "updateOrder", order: next });
       speakHQ(`Erledigt: ${pending.itemName} entfernt.`, locale, () => scheduleFollowup(300), voice);
     }
@@ -928,24 +956,40 @@ export function useKios() {
           if (result.isFinal) {
             const yes = /\b(ja|jawohl|jo|ok|okay|gerne|machen|mach|bestätige|bestaetige)\b/.test(lower);
             const no  = /\b(nein|nö|noe|nicht|abbruch|abbrechen|stop|stopp|cancel|vergiss)\b/.test(lower);
+            const abortRec = () => {
+              if (r.current.rec) {
+                try { (r.current.rec as { abort(): void }).abort(); } catch { /* ignore */ }
+                r.current.rec = null;
+              }
+            };
             if (yes && !no) {
               r.current.phase = "ai";
-              if (r.current.rec) {
-                try { (r.current.rec as { abort(): void }).abort(); } catch { /* ignore */ }
-                r.current.rec = null;
-              }
+              abortRec();
               clearAllTimers();
               executePendingAction();
-            } else if (no) {
+            } else if (no && !yes) {
               r.current.phase = "ai";
-              if (r.current.rec) {
-                try { (r.current.rec as { abort(): void }).abort(); } catch { /* ignore */ }
-                r.current.rec = null;
-              }
+              abortRec();
               clearAllTimers();
               cancelPendingAction(true);
+            } else if (yes && no) {
+              // Ambiguous (e.g. "ja nicht" / "nein, ok"). Re-prompt and keep
+              // the confirm TTL alive — user gets one more chance to commit.
+              setStatus("speaking");
+              speakHQ(
+                "Bitte antworte nur mit Ja oder Nein.",
+                r.current.state.locale,
+                () => {
+                  if (r.current.status === "off") return;
+                  setStatus("idle");
+                  startListening("confirm");
+                  // Note: pendingTtl from scheduleConfirm is still armed.
+                },
+                r.current.state.kiosVoice,
+              );
             }
-            // Anything else: ignore and keep listening (TTL still armed).
+            // Truly unrelated text (e.g. background noise transcribed as
+            // a sentence): ignore and keep listening — TTL still armed.
           }
         }
       }
