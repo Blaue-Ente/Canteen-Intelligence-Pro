@@ -64,6 +64,12 @@ export default function More() {
       ],
     },
     {
+      title: t("reports"),
+      items: [
+        { icon: "pie-chart", label: t("reportsTitle"), to: "/reports", tint: "#6366f1" },
+      ],
+    },
+    {
       title: t("locations"),
       items: [{ icon: "map-pin", label: t("locations"), to: "/locations" }],
     },
