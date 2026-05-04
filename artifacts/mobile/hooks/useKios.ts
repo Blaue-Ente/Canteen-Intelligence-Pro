@@ -11,9 +11,68 @@ import {
   parseTimerPhrase,
   startTimer,
 } from "@/lib/timers";
-import type { AppState, Recipe } from "@/types";
+import type {
+  AppState,
+  Recipe,
+  Allergen,
+  OrderDraft,
+  OrderDraftItem,
+  Supplier,
+  Employee,
+  CateringEvent,
+  InventoryItem,
+} from "@/types";
 
 export type KiosStatus = "off" | "idle" | "awake" | "thinking" | "speaking";
+
+// ── T015: Smart Kios pending-confirmation actions ────────────────────────────
+// When a voice command would mutate state (add/remove order item), we never
+// execute it directly. Instead we stash it as a PendingAction and require an
+// explicit spoken "Ja" before dispatching. This is critical because mis-heard
+// commands during a busy service ("entferne Schnitzel" misheard as "entferne
+// Schnitzelbrot") could otherwise trash a real order. The 30-second TTL means
+// a forgotten confirm naturally times out without leaving the kios in an
+// awkward "waiting for Ja/Nein" state forever.
+type PendingAction =
+  | {
+      kind: "addOrderItem";
+      order: OrderDraft;
+      newItem: OrderDraftItem;
+      supplierName: string;
+    }
+  | {
+      kind: "removeOrderItem";
+      order: OrderDraft;
+      itemIndex: number;
+      itemName: string;
+    };
+
+// ── T015: Allergen ID → German label ─────────────────────────────────────────
+// LMIV-compliant German names. Used when speaking allergen lists (e.g.
+// "Linsensuppe enthält Gluten und Sellerie."). Sub-types like "Schalenfrucht"
+// for nuts are deliberately not used here — the spoken short form is clearer.
+const ALLERGEN_DE: Record<Allergen, string> = {
+  gluten: "Gluten",
+  milk: "Milch",
+  egg: "Ei",
+  nuts: "Nüsse",
+  soy: "Soja",
+  fish: "Fisch",
+  shellfish: "Krebstiere",
+  celery: "Sellerie",
+  mustard: "Senf",
+  sesame: "Sesam",
+  sulphite: "Sulfit",
+  lupin: "Lupinen",
+  mollusc: "Weichtiere",
+  peanut: "Erdnüsse",
+};
+
+function joinDeList(items: string[]): string {
+  if (items.length <= 1) return items.join("");
+  if (items.length === 2) return `${items[0]} und ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")} und ${items[items.length - 1]}`;
+}
 
 // ── Navigation map ───────────────────────────────────────────────────────────
 // Covers every screen in the app. Keep keys short (used in AI prompt).
@@ -174,6 +233,227 @@ function findRecipeByName(question: string, recipes: readonly Recipe[]): Recipe 
   return null;
 }
 
+// ── T015: Inventory lookup (for order-mutation commands) ─────────────────────
+// Same longest-first strategy as findRecipeByName. Searches both nameDe and
+// name so "Milch" matches "Vollmilch 3,5%" if user said the short name.
+function findInventoryByName(query: string, inventory: readonly InventoryItem[]): InventoryItem | null {
+  const lower = query.toLowerCase().trim();
+  if (!lower) return null;
+  const candidates = [...inventory].sort(
+    (a, b) => Math.max(b.name.length, b.nameDe.length) - Math.max(a.name.length, a.nameDe.length),
+  );
+  for (const inv of candidates) {
+    const de = (inv.nameDe || "").toLowerCase();
+    const en = (inv.name || "").toLowerCase();
+    if (de && (lower.includes(de) || de.includes(lower))) return inv;
+    if (en && (lower.includes(en) || en.includes(lower))) return inv;
+  }
+  return null;
+}
+
+// ── T015: Contact lookup (suppliers, employees, catering clients) ────────────
+// "Welche Telefonnummer hat Anna?" / "Ruf METRO an"
+// Returns the highest-priority match across all three contact lists. Suppliers
+// win over employees win over catering clients only on tie — primary ranking
+// is longest-name-first within each pool, so partial matches don't outrank
+// exact ones.
+interface ContactHit {
+  name: string;
+  role: "Lieferant" | "Mitarbeiter" | "Kunde";
+  phone: string;
+}
+
+function findContact(
+  query: string,
+  state: AppState,
+): ContactHit | null {
+  const lower = query.toLowerCase().trim();
+  if (!lower) return null;
+
+  type Cand = { name: string; role: ContactHit["role"]; phone: string; len: number };
+  const pool: Cand[] = [];
+
+  for (const s of state.suppliers as readonly Supplier[]) {
+    if (!s.name) continue;
+    pool.push({ name: s.name, role: "Lieferant", phone: s.phone || "", len: s.name.length });
+    if (s.contact && s.contact !== s.name) {
+      pool.push({ name: s.contact, role: "Lieferant", phone: s.phone || "", len: s.contact.length });
+    }
+  }
+  for (const e of (state.employees ?? []) as readonly Employee[]) {
+    if (!e.name) continue;
+    pool.push({ name: e.name, role: "Mitarbeiter", phone: e.phone || "", len: e.name.length });
+  }
+  for (const ev of (state.events ?? []) as readonly CateringEvent[]) {
+    if (!ev.clientName) continue;
+    pool.push({
+      name: ev.clientName,
+      role: "Kunde",
+      phone: ev.clientPhone || "",
+      len: ev.clientName.length,
+    });
+  }
+
+  pool.sort((a, b) => b.len - a.len);
+  for (const c of pool) {
+    if (lower.includes(c.name.toLowerCase())) {
+      return { name: c.name, role: c.role, phone: c.phone };
+    }
+  }
+  return null;
+}
+
+// ── T015: Quantity + unit parser for order mutations ─────────────────────────
+// "5 Liter Milch", "10 kg Mehl", "Brot" (defaults to 1 Stück).
+// Returns { qty, unit, rest } where rest is the leftover text used for
+// inventory name matching.
+function parseQtyUnit(raw: string): { qty: number; unit: string; rest: string } {
+  const trimmed = raw.trim();
+  const m = trimmed.match(/^(\d+(?:[.,]\d+)?)\s*(kg|kilo|kilogramm|g|gramm|liter|l|stück|stueck|stk|packung|pck|dose|flasche|kiste)?\s+(.+)$/i);
+  if (m) {
+    const qty = Number(m[1]!.replace(",", "."));
+    const unit = (m[2] || "Stück").replace(/^kilo(gramm)?$/i, "kg").replace(/^liter$/i, "l").replace(/^gramm$/i, "g").replace(/^stueck$/i, "Stück").replace(/^stk$/i, "Stück").replace(/^pck$/i, "Packung");
+    return { qty, unit, rest: m[3]!.trim() };
+  }
+  return { qty: 1, unit: "Stück", rest: trimmed };
+}
+
+// ── T015: Smart lookups (recipe info, contacts, order mutations) ─────────────
+// Runs BEFORE handleHandsFree so contact/recipe-info patterns can use the
+// dedicated longest-first matchers without competing with timer/portion regex.
+// Returns SmartLookupResult or null.
+//   - reply: what Kios should say
+//   - pending: optional PendingAction → handleQuestion will switch to confirm
+//     phase and stash this for the Ja/Nein response.
+interface SmartLookupResult {
+  reply: string;
+  pending?: PendingAction;
+}
+
+function handleSmartLookups(question: string, state: AppState): SmartLookupResult | null {
+  const lower = question.toLowerCase().trim();
+
+  // ── Contact phone lookup ───────────────────────────────────────────────
+  // "Welche Telefonnummer hat Anna?" / "Telefon von METRO" / "Ruf Müller an"
+  const contactPattern = /(?:welche\s+)?(?:telefon(?:nummer)?|nummer|kontakt|email|mail)\s+(?:hat|von|für)\s+(.+?)\??$/i;
+  const callPattern = /^(?:ruf|wähle|anrufen)\s+(.+?)(?:\s+an)?\??$/i;
+  const contactMatch = lower.match(contactPattern) ?? lower.match(callPattern);
+  if (contactMatch) {
+    const queryName = contactMatch[1]!.trim();
+    const hit = findContact(queryName, state);
+    if (!hit) {
+      return { reply: `Ich habe keinen Kontakt namens ${queryName} gefunden.` };
+    }
+    if (!hit.phone) {
+      return { reply: `Für ${hit.name} (${hit.role}) ist keine Telefonnummer hinterlegt.` };
+    }
+    // Read phone naturally — Web Speech reads "+49 30 12345" reasonably well.
+    return { reply: `${hit.name}, ${hit.role}: ${hit.phone}.` };
+  }
+
+  // ── Recipe kcal lookup ─────────────────────────────────────────────────
+  const kcalMatch = lower.match(/(?:wie\s+viele?\s+)?(?:kalorien|kcal)\s+(?:hat|sind\s+in|von|für)\s+(.+?)\??$/i);
+  if (kcalMatch) {
+    const r = findRecipeByName(kcalMatch[1]!, state.recipes);
+    if (!r) return { reply: `Ich habe das Rezept ${kcalMatch[1]} nicht gefunden.` };
+    if (typeof r.kcalPerPortion !== "number") {
+      return { reply: `Für ${r.nameDe || r.name} habe ich keine Kalorien-Angabe hinterlegt.` };
+    }
+    return { reply: `${r.nameDe || r.name} hat ca. ${Math.round(r.kcalPerPortion)} Kilokalorien pro Portion.` };
+  }
+
+  // ── Recipe allergen lookup ─────────────────────────────────────────────
+  const allergenMatch = lower.match(/(?:welche\s+)?allergene?\s+(?:hat|sind\s+in|von|enthält|enthaelt)\s+(.+?)\??$/i);
+  if (allergenMatch) {
+    const r = findRecipeByName(allergenMatch[1]!, state.recipes);
+    if (!r) return { reply: `Ich habe das Rezept ${allergenMatch[1]} nicht gefunden.` };
+    if (!r.allergens || r.allergens.length === 0) {
+      return { reply: `${r.nameDe || r.name} enthält keine kennzeichnungspflichtigen Allergene.` };
+    }
+    const labels = r.allergens.map((a) => ALLERGEN_DE[a] ?? a);
+    return { reply: `${r.nameDe || r.name} enthält ${joinDeList(labels)}.` };
+  }
+
+  // ── Recipe price lookup ────────────────────────────────────────────────
+  const priceMatch = lower.match(/(?:wie\s+(?:teuer|viel\s+kostet)|preis\s+(?:von|für)|verkaufspreis\s+(?:von|für))\s+(?:ist\s+)?(.+?)\??$/i);
+  if (priceMatch) {
+    const r = findRecipeByName(priceMatch[1]!, state.recipes);
+    if (!r) return { reply: `Ich habe das Rezept ${priceMatch[1]} nicht gefunden.` };
+    if (!r.sellPrice) return { reply: `Für ${r.nameDe || r.name} ist kein Verkaufspreis hinterlegt.` };
+    return { reply: `${r.nameDe || r.name} kostet ${r.sellPrice.toFixed(2).replace(".", ",")} Euro.` };
+  }
+
+  // ── Recipe diet check ──────────────────────────────────────────────────
+  // "Ist Schnitzel vegan?" → answers based on r.category.
+  const dietMatch = lower.match(/^ist\s+(.+?)\s+(vegan|vegetarisch|fleisch|fisch)\??$/i);
+  if (dietMatch) {
+    const r = findRecipeByName(dietMatch[1]!, state.recipes);
+    if (!r) return { reply: `Ich habe das Rezept ${dietMatch[1]} nicht gefunden.` };
+    const want = dietMatch[2]!.toLowerCase();
+    const got = r.category;
+    const isMatch =
+      (want === "vegan" && got === "vegan") ||
+      (want === "vegetarisch" && (got === "vegan" || got === "vegetarian")) ||
+      (want === "fleisch" && got === "meat") ||
+      (want === "fisch" && got === "fish");
+    const catDe: Record<string, string> = { vegan: "vegan", vegetarian: "vegetarisch", meat: "ein Fleischgericht", fish: "ein Fischgericht", kids: "ein Kindergericht" };
+    return {
+      reply: isMatch
+        ? `Ja, ${r.nameDe || r.name} ist ${catDe[got] ?? got}.`
+        : `Nein, ${r.nameDe || r.name} ist ${catDe[got] ?? got}.`,
+    };
+  }
+
+  // ── Order item: ADD ────────────────────────────────────────────────────
+  // "Füge 5 Liter Milch zur Bestellung hinzu" / "Tu Brot in die Bestellung"
+  const addMatch = lower.match(/(?:füge|fuege|tu|nimm|leg)\s+(.+?)\s+(?:zur|zum|in\s+die|in\s+den|in)\s+bestellung\s+(?:hinzu|dazu|rein)?/i);
+  if (addMatch) {
+    const draft = (state.orders ?? []).filter((o) => o.status === "draft")
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+    if (!draft) {
+      return { reply: "Es gibt keine offene Bestellung. Öffne erst die Bestellvorschläge." };
+    }
+    const { qty, unit, rest } = parseQtyUnit(addMatch[1]!);
+    const inv = findInventoryByName(rest, state.inventory);
+    const itemName = inv ? (inv.nameDe || inv.name) : rest;
+    const finalUnit = inv?.unit || unit;
+    const newItem: OrderDraftItem = {
+      name: itemName,
+      quantity: qty,
+      unit: finalUnit,
+      ...(inv ? { inventoryId: inv.id } : {}),
+      reason: "Per Sprachbefehl hinzugefügt",
+    };
+    return {
+      reply: `Soll ich ${qty} ${finalUnit} ${itemName} zur Bestellung bei ${draft.supplierName} hinzufügen? Sage Ja oder Nein.`,
+      pending: { kind: "addOrderItem", order: draft, newItem, supplierName: draft.supplierName },
+    };
+  }
+
+  // ── Order item: REMOVE ─────────────────────────────────────────────────
+  // "Entferne Brot aus der Bestellung" / "Streiche Milch von der Bestellung"
+  const removeMatch = lower.match(/(?:entferne|streiche|lösche|loesche|nimm)\s+(.+?)\s+(?:aus|von)\s+(?:der\s+)?bestellung/i);
+  if (removeMatch) {
+    const draft = (state.orders ?? []).filter((o) => o.status === "draft")
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+    if (!draft || draft.items.length === 0) {
+      return { reply: "Es gibt keine offene Bestellung mit Artikeln." };
+    }
+    const target = removeMatch[1]!.toLowerCase().trim();
+    const idx = draft.items.findIndex((it) => it.name.toLowerCase().includes(target) || target.includes(it.name.toLowerCase()));
+    if (idx === -1) {
+      return { reply: `${removeMatch[1]} ist nicht in der Bestellung bei ${draft.supplierName}.` };
+    }
+    const itemName = draft.items[idx]!.name;
+    return {
+      reply: `Soll ich ${itemName} aus der Bestellung bei ${draft.supplierName} entfernen? Sage Ja oder Nein.`,
+      pending: { kind: "removeOrderItem", order: draft, itemIndex: idx, itemName },
+    };
+  }
+
+  return null;
+}
+
 function handleHandsFree(
   question: string,
   state: AppState,
@@ -292,13 +572,35 @@ function handleHandsFree(
 }
 
 // ── Mutable refs ─────────────────────────────────────────────────────────────
+// Phase machine (T015 expansion):
+//   wake     — listening for the wake word "Kios"
+//   question — heard wake, listening for the actual question
+//   ai       — AI/handler is processing; ignore audio
+//   followup — Kios just spoke; listen for next question WITHOUT requiring
+//              the wake word (10-second window). On timeout → wake.
+//   confirm  — a destructive action is pending; listen for Ja/Nein
+//              (30-second window). On timeout → cancel + back to wake.
 interface KiosRefs {
   status: KiosStatus;
-  phase: "wake" | "question" | "ai";
+  phase: "wake" | "question" | "ai" | "followup" | "confirm";
   rec: unknown;
   restartTimer: ReturnType<typeof setTimeout> | null;
+  /** TTL for the followup window (auto-revert to wake on silence). */
+  followupTtl: ReturnType<typeof setTimeout> | null;
+  /** Pending mutation awaiting Ja/Nein. */
+  pendingAction: PendingAction | null;
+  /** TTL for the confirm window (auto-cancel on silence). */
+  pendingTtl: ReturnType<typeof setTimeout> | null;
   state: AppState;
 }
+
+// Time windows (T015). Tuned for kitchen-floor reality:
+//   followup: long enough to think and ask a follow-up; short enough that
+//             the kios returns to wake-mode before the next person walks up.
+//   confirm:  long enough to glance at the screen, weigh, and reply; short
+//             enough that an unattended kios doesn't sit waiting forever.
+const FOLLOWUP_WINDOW_MS = 10_000;
+const CONFIRM_WINDOW_MS  = 30_000;
 
 type AnyWindow = {
   SpeechRecognition?: new () => SpeechRec;
@@ -317,7 +619,7 @@ function isVoiceAvailable(): boolean {
 
 // ── Hook ─────────────────────────────────────────────────────────────────────
 export function useKios() {
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const router    = useRouter();
 
   const [status, setStatusState] = useState<KiosStatus>("off");
@@ -326,6 +628,9 @@ export function useKios() {
     phase: "wake",
     rec: null,
     restartTimer: null,
+    followupTtl: null,
+    pendingAction: null,
+    pendingTtl: null,
     state,
   });
 
@@ -343,8 +648,28 @@ export function useKios() {
     }
   }
 
-  function stopListening() {
+  function clearFollowupTtl() {
+    if (r.current.followupTtl !== null) {
+      clearTimeout(r.current.followupTtl);
+      r.current.followupTtl = null;
+    }
+  }
+
+  function clearPendingTtl() {
+    if (r.current.pendingTtl !== null) {
+      clearTimeout(r.current.pendingTtl);
+      r.current.pendingTtl = null;
+    }
+  }
+
+  function clearAllTimers() {
     clearRestartTimer();
+    clearFollowupTtl();
+    clearPendingTtl();
+  }
+
+  function stopListening() {
+    clearAllTimers();
     if (r.current.rec) {
       try { (r.current.rec as { abort(): void }).abort(); } catch { /* ignore */ }
       r.current.rec = null;
@@ -361,30 +686,98 @@ export function useKios() {
     }, delayMs);
   }
 
+  // T015: Continuous-conversation window. After Kios speaks, listen for the
+  // next question WITHOUT requiring the wake word for FOLLOWUP_WINDOW_MS.
+  // If the window elapses with no final transcript, fall back to wake-mode.
+  function scheduleFollowup(delayMs = 300) {
+    clearRestartTimer();
+    clearFollowupTtl();
+    r.current.restartTimer = setTimeout(() => {
+      if (r.current.status === "off") return;
+      setStatus("idle");
+      startListening("followup");
+      // Hard TTL: even if recognition stays alive (Safari is chatty), force
+      // the demotion to wake-mode after the window expires so a stranger
+      // walking up later can't accidentally trigger a command.
+      r.current.followupTtl = setTimeout(() => {
+        if (r.current.status === "off") return;
+        if (r.current.phase === "followup") {
+          r.current.phase = "wake";
+          // No need to stop+start recognition; the next final transcript
+          // simply gets evaluated against the wake-word matcher.
+        }
+      }, FOLLOWUP_WINDOW_MS);
+    }, delayMs);
+  }
+
+  // T015: Listen for Ja/Nein on a pending mutation. The confirm window is
+  // longer than followup because the user needs time to glance at the screen
+  // and weigh the action. On timeout, the pending action is cancelled
+  // silently and we revert to wake-mode (NOT followup — once a confirm
+  // expires, there's no useful conversational context to continue).
+  function scheduleConfirm(delayMs = 300) {
+    clearRestartTimer();
+    clearPendingTtl();
+    r.current.restartTimer = setTimeout(() => {
+      if (r.current.status === "off") return;
+      setStatus("idle");
+      startListening("confirm");
+      r.current.pendingTtl = setTimeout(() => {
+        if (r.current.status === "off") return;
+        if (r.current.phase === "confirm") {
+          r.current.pendingAction = null;
+          r.current.phase = "wake";
+        }
+      }, CONFIRM_WINDOW_MS);
+    }, delayMs);
+  }
+
   async function handleQuestion(question: string) {
     stopListening();
     setStatus("thinking");
     const snap   = r.current.state;
     const locale = snap.locale;
 
-    // Hands-free cooking intents first (timer / portion math / step reading).
-    // These never hit the AI server — instant response when hands are messy.
+    // T015: Smart lookups (recipe info, contacts, order mutations) BEFORE
+    // hands-free intents — contact names ("ruf X an") and recipe info
+    // ("kalorien hat X") deserve dedicated regex without competing with the
+    // looser timer/portion patterns. A returned `pending` triggers the
+    // Ja/Nein confirm phase.
+    const smart = handleSmartLookups(question, snap);
+    if (smart) {
+      if (smart.pending) {
+        r.current.pendingAction = smart.pending;
+      }
+      setStatus("speaking");
+      speakHQ(smart.reply, locale, () => {
+        if (smart.pending) {
+          // Speak finished → arm confirm listening. The Ja/Nein handler
+          // lives in rec.onresult phase==="confirm" branch below.
+          scheduleConfirm(200);
+        } else {
+          scheduleFollowup(300);
+        }
+      }, snap.kiosVoice);
+      return;
+    }
+
+    // Hands-free cooking intents next (timer / portion math / step reading).
     const handsFree = handleHandsFree(question, snap, () => { /* unused */ });
     if (handsFree) {
       setStatus("speaking");
       speakHQ(handsFree.reply, locale, () => {
         if (handsFree.sideEffect) handsFree.sideEffect();
-        scheduleRestart(300);
+        scheduleFollowup(300);
       }, snap.kiosVoice);
       return;
     }
 
-    // Quick command first (instant)
+    // Quick command (instant nav)
     const quick = matchQuickCommand(question);
     if (quick) {
       if (NAV_MAP[quick.nav]) router.push(NAV_MAP[quick.nav] as never);
       setStatus("speaking");
-      speakHQ(quick.reply, locale, () => scheduleRestart(300), snap.kiosVoice);
+      speakHQ(quick.reply, locale, () => scheduleFollowup(300), snap.kiosVoice);
       return;
     }
 
@@ -407,24 +800,72 @@ export function useKios() {
           ? "Entschuldigung, das hat leider nicht geklappt."
           : "Sorry, something went wrong.",
         locale,
-        () => scheduleRestart(500),
+        () => scheduleFollowup(500),
         snap.kiosVoice,
       );
       return;
     }
 
-    if (!result) { scheduleRestart(500); return; }
+    if (!result) { scheduleFollowup(500); return; }
 
     const navKey = result.navigate && result.navigate !== "null" ? result.navigate : null;
     if (navKey && NAV_MAP[navKey]) router.push(NAV_MAP[navKey] as never);
 
     setStatus("speaking");
-    speakHQ(result.answer, locale, () => scheduleRestart(300), snap.kiosVoice);
+    speakHQ(result.answer, locale, () => scheduleFollowup(300), snap.kiosVoice);
   }
 
-  function startListening(initialPhase: "wake" | "question" = "wake") {
+  // T015: Execute a confirmed pending mutation. Called from the Ja-branch in
+  // rec.onresult below. Speaks a result then hands back to followup so the
+  // user can chain commands ("Ja" → "Erledigt." → "und füg auch Brot hinzu").
+  function executePendingAction() {
+    const pending = r.current.pendingAction;
+    r.current.pendingAction = null;
+    clearPendingTtl();
+    if (!pending) {
+      scheduleRestart(300);
+      return;
+    }
+    const locale = r.current.state.locale;
+    const voice  = r.current.state.kiosVoice;
+    setStatus("speaking");
+    if (pending.kind === "addOrderItem") {
+      const next: OrderDraft = { ...pending.order, items: [...pending.order.items, pending.newItem] };
+      dispatch({ type: "updateOrder", order: next });
+      const it = pending.newItem;
+      speakHQ(`Erledigt: ${it.quantity} ${it.unit} ${it.name} hinzugefügt.`, locale, () => scheduleFollowup(300), voice);
+    } else {
+      const next: OrderDraft = {
+        ...pending.order,
+        items: pending.order.items.filter((_, i) => i !== pending.itemIndex),
+      };
+      dispatch({ type: "updateOrder", order: next });
+      speakHQ(`Erledigt: ${pending.itemName} entfernt.`, locale, () => scheduleFollowup(300), voice);
+    }
+  }
+
+  function cancelPendingAction(spoken = true) {
+    r.current.pendingAction = null;
+    clearPendingTtl();
+    if (spoken) {
+      const locale = r.current.state.locale;
+      const voice  = r.current.state.kiosVoice;
+      setStatus("speaking");
+      speakHQ("Abgebrochen.", locale, () => scheduleFollowup(300), voice);
+    } else {
+      scheduleFollowup(300);
+    }
+  }
+
+  function startListening(initialPhase: "wake" | "question" | "followup" | "confirm" = "wake") {
     if (!isVoiceAvailable()) return;
-    stopListening();
+    // Note: do NOT call stopListening() here — callers (scheduleFollowup,
+    // scheduleConfirm) have already cleared the recognition instance and
+    // we want to PRESERVE the followup/pending TTLs they just armed.
+    if (r.current.rec) {
+      try { (r.current.rec as { abort(): void }).abort(); } catch { /* ignore */ }
+      r.current.rec = null;
+    }
 
     const SR = getWindowSR();
     if (!SR) return;
@@ -468,6 +909,43 @@ export function useKios() {
               r.current.phase = "ai";
               void handleQuestion(question);
             }
+          }
+        } else if (r.current.phase === "followup") {
+          // T015: Continuous conversation — treat any final transcript as
+          // a question, no wake word required. The TTL armed by
+          // scheduleFollowup will demote us back to "wake" if nobody
+          // speaks during the window.
+          if (result.isFinal) {
+            const question = raw.trim();
+            if (question.length > 2) {
+              clearFollowupTtl();
+              r.current.phase = "ai";
+              void handleQuestion(question);
+            }
+          }
+        } else if (r.current.phase === "confirm") {
+          // T015: Awaiting Ja/Nein on a pending mutation.
+          if (result.isFinal) {
+            const yes = /\b(ja|jawohl|jo|ok|okay|gerne|machen|mach|bestätige|bestaetige)\b/.test(lower);
+            const no  = /\b(nein|nö|noe|nicht|abbruch|abbrechen|stop|stopp|cancel|vergiss)\b/.test(lower);
+            if (yes && !no) {
+              r.current.phase = "ai";
+              if (r.current.rec) {
+                try { (r.current.rec as { abort(): void }).abort(); } catch { /* ignore */ }
+                r.current.rec = null;
+              }
+              clearAllTimers();
+              executePendingAction();
+            } else if (no) {
+              r.current.phase = "ai";
+              if (r.current.rec) {
+                try { (r.current.rec as { abort(): void }).abort(); } catch { /* ignore */ }
+                r.current.rec = null;
+              }
+              clearAllTimers();
+              cancelPendingAction(true);
+            }
+            // Anything else: ignore and keep listening (TTL still armed).
           }
         }
       }
