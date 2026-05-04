@@ -10,6 +10,7 @@ import React, {
 
 import type {
   AppState,
+  CateringEvent,
   CateringRequest,
   ChatMessage,
   ComplaintDraft,
@@ -25,6 +26,8 @@ import type {
   MenuDayEntry,
   NotificationPrefs,
   OrderDraft,
+  PriceListEntry,
+  PriceServerConfig,
   Recipe,
   SaleEntry,
   ShiftEntry,
@@ -84,7 +87,13 @@ type Action =
   // ---- Phase 6B ----
   | { type: "addStorageLocation"; loc: StorageLocation }
   | { type: "updateStorageLocation"; loc: StorageLocation }
-  | { type: "removeStorageLocation"; id: string };
+  | { type: "removeStorageLocation"; id: string }
+  // ---- Events + PriceServer ----
+  | { type: "addEvent"; event: CateringEvent }
+  | { type: "updateEvent"; event: CateringEvent }
+  | { type: "removeEvent"; id: string }
+  | { type: "setPriceList"; entries: PriceListEntry[] }
+  | { type: "setPriceServerConfig"; config: PriceServerConfig };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -263,6 +272,19 @@ function reducer(state: AppState, action: Action): AppState {
         ...state,
         storageLocations: state.storageLocations.filter((s) => s.id !== action.id),
       };
+    case "addEvent":
+      return { ...state, events: [action.event, ...state.events] };
+    case "updateEvent":
+      return {
+        ...state,
+        events: state.events.map((e) => (e.id === action.event.id ? action.event : e)),
+      };
+    case "removeEvent":
+      return { ...state, events: state.events.filter((e) => e.id !== action.id) };
+    case "setPriceList":
+      return { ...state, priceList: action.entries };
+    case "setPriceServerConfig":
+      return { ...state, priceServerConfig: action.config };
     default:
       return state;
   }
@@ -314,6 +336,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           priceHistory: pick("priceHistory"),
           forecasts: pick("forecasts"),
           storageLocations: pick("storageLocations"),
+          events: pick("events"),
+          priceList: pick("priceList"),
+          priceServerConfig: pick("priceServerConfig"),
         };
         dispatch({ type: "hydrate", state: merged });
       }

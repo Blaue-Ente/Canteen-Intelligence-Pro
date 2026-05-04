@@ -172,4 +172,7 @@ export const seedState: AppState = {
     { id: "sl-kitchen-1", name: "Heißhaltung Pass", category: "kitchen", targetTemp: 65 },
     { id: "sl-delivery", name: "Wareneingang", category: "delivery" },
   ],
+  events: [],
+  priceList: [],
+  priceServerConfig: undefined,
 };

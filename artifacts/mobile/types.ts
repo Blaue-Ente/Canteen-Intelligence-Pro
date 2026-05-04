@@ -307,6 +307,75 @@ export interface StorageLocation {
   note?: string;
 }
 
+// ---- Event Management ----
+
+export type EventStatus =
+  | "anfrage"
+  | "angebot"
+  | "bestaetigt"
+  | "produktion"
+  | "abgeschlossen"
+  | "abgesagt";
+
+export interface EventMenuItem {
+  recipeId: string;
+  recipeName: string;
+  portions: number;
+  pricePerPortion: number;
+  note?: string;
+}
+
+export interface CateringEvent {
+  id: string;
+  title: string;
+  clientName: string;
+  clientEmail?: string;
+  clientPhone?: string;
+  eventDate: string; // YYYY-MM-DD
+  eventTime?: string; // HH:mm
+  venue?: string;
+  guestCount: number;
+  status: EventStatus;
+  menuItems: EventMenuItem[];
+  staffCost?: number;
+  equipmentCost?: number;
+  transportCost?: number;
+  overheadPct?: number; // default 15
+  vatPct?: number; // default 19
+  notes?: string;
+  offerText?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ---- Price List / External Server ----
+
+export interface PriceListEntry {
+  code?: string;
+  name: string;
+  unit: string;
+  pricePerUnit: number;
+  supplier?: string;
+  category?: string;
+  validFrom?: string;
+  validTo?: string;
+}
+
+export type PriceServerAuthType = "none" | "basic" | "bearer" | "apiKey";
+
+export interface PriceServerConfig {
+  url: string;
+  authType: PriceServerAuthType;
+  username?: string;
+  password?: string;
+  token?: string;
+  apiKey?: string;
+  apiKeyHeader?: string;
+  lastSyncAt?: string;
+  lastSyncStatus?: "ok" | "error";
+  lastSyncError?: string;
+}
+
 export interface AppState {
   locale: Locale;
   inventory: InventoryItem[];
@@ -333,4 +402,8 @@ export interface AppState {
   forecasts: ForecastDay[];
   // ---- Phase 6B ----
   storageLocations: StorageLocation[];
+  // ---- Event Management + Price Server ----
+  events: CateringEvent[];
+  priceList: PriceListEntry[];
+  priceServerConfig?: PriceServerConfig;
 }
