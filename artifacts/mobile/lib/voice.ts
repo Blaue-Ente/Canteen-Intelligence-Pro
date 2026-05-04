@@ -66,17 +66,13 @@ export function isTtsSupported(): boolean {
   return Boolean((window as unknown as AnyWindow).speechSynthesis);
 }
 
-/**
- * Detect Safari (includes iOS Safari and iPadOS Safari).
- * Chrome/Edge on desktop return false; Safari/WebKit returns true.
- */
 export function isSafari(): boolean {
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent;
   return /Safari/i.test(ua) && !/Chrome|CriOS|Chromium|Edg/i.test(ua);
 }
 
-// ── Voice cache (loaded asynchronously by the browser) ──────────────────────
+// ── Voice cache ────────────────────────────────────────────────────────────
 let _voices: SpeechSynthesisVoiceLike[] = [];
 
 function loadVoices(): SpeechSynthesisVoiceLike[] {
@@ -88,50 +84,31 @@ function loadVoices(): SpeechSynthesisVoiceLike[] {
   return _voices;
 }
 
-// Preload voices as soon as possible — Chrome loads them asynchronously
 if (Platform.OS === "web" && typeof window !== "undefined") {
   const w = window as unknown as AnyWindow;
   if (w.speechSynthesis) {
     w.speechSynthesis.onvoiceschanged = () => { loadVoices(); };
     loadVoices();
-    // Second + third attempt for slow browsers
     setTimeout(loadVoices, 500);
     setTimeout(loadVoices, 1500);
   }
 }
 
-/**
- * Pick the best available TTS voice for the given locale.
- *
- * Priority order:
- *  1. Exact locale + Google/Natural/Premium/Enhanced in name (Chrome desktop)
- *  2. Exact locale + online voice (!localService) — catches Safari "enhanced" voices
- *  3. Exact locale + known high-quality iOS/macOS voice names (Anna, Helena, Petra, Markus)
- *  4. Exact locale, any voice
- *  5. Same language prefix (de-AT, de-CH …)
- *  6. null (browser default)
- */
 function pickVoice(locale: "de" | "en"): SpeechSynthesisVoiceLike | null {
   const voices = loadVoices();
   if (!voices.length) return null;
   const lang   = locale === "de" ? "de-DE" : "en-US";
   const prefix = lang.split("-")[0]!;
 
-  // Known high-quality iOS/macOS German voices (in rough quality order)
   const iosDeNames = /Anna|Helena|Petra|Markus|Yannick|Katrin|Eddy|Flo|Reed|Sandy|Shelley/i;
   const iosEnNames = /Samantha|Alex|Allison|Ava|Susan|Tom|Fred/i;
   const iosNames   = locale === "de" ? iosDeNames : iosEnNames;
 
   return (
-    // Best: exact locale + Google/Natural/Premium label (Chrome/Edge desktop)
     voices.find((v) => v.lang === lang && /google|natural|premium|enhanced/i.test(v.name)) ??
-    // Great: exact locale + online/network voice (Safari "Enhanced" voices)
     voices.find((v) => v.lang === lang && !v.localService) ??
-    // Good: exact locale + known iOS/macOS quality voice name
     voices.find((v) => v.lang === lang && iosNames.test(v.name)) ??
-    // OK: any exact locale voice
     voices.find((v) => v.lang === lang) ??
-    // Fallback: same language prefix (de-AT, de-CH, en-GB …)
     voices.find((v) => v.lang.startsWith(prefix)) ??
     null
   );
@@ -184,17 +161,8 @@ export function startVoice(opts: {
   };
 }
 
-/**
- * Speak text via TTS.
- *
- * Fixes applied:
- * - Best available voice selected via pickVoice() (Google → online → iOS named → any).
- * - volume = 1 always set.
- * - 100 ms delay before speak() — required on iOS Safari to avoid freeze after cancel().
- * - Chrome keep-alive: pause/resume every 12 s to prevent Chrome's 15 s cutoff bug.
- * - Safety fallback timer in case onend never fires (iOS Safari quirk).
- */
-export function speak(text: string, locale: "de" | "en", onEnd?: () => void): void {
+// ── Web Speech API TTS (fallback) ─────────────────────────────────────────
+function speakWebSpeech(text: string, locale: "de" | "en", onEnd?: () => void): void {
   if (!isTtsSupported()) { onEnd?.(); return; }
   const w = window as unknown as AnyWindow;
   if (!w.speechSynthesis || !w.SpeechSynthesisUtterance) { onEnd?.(); return; }
@@ -204,7 +172,7 @@ export function speak(text: string, locale: "de" | "en", onEnd?: () => void): vo
 
   const u = new w.SpeechSynthesisUtterance(text);
   u.lang   = locale === "de" ? "de-DE" : "en-US";
-  u.rate   = 1.0;   // normal rate — clearer for kitchen noise
+  u.rate   = 1.0;
   u.pitch  = 1.0;
   u.volume = 1.0;
 
@@ -214,11 +182,9 @@ export function speak(text: string, locale: "de" | "en", onEnd?: () => void): vo
   let fired = false;
   let keepAlive: ReturnType<typeof setInterval> | null = null;
 
-  // Safety fallback: iOS Safari sometimes never fires onend.
-  // Estimate ≈75 ms/char, minimum 2.5 s, + 1.5 s buffer.
   const fallbackMs = Math.max(2500, text.length * 75) + 1500;
   const fallbackTimer = setTimeout(() => {
-    if (!fired) { fired = true; if (keepAlive) { clearInterval(keepAlive); } onEnd?.(); }
+    if (!fired) { fired = true; if (keepAlive) clearInterval(keepAlive); onEnd?.(); }
   }, fallbackMs);
 
   u.onend = () => {
@@ -236,13 +202,8 @@ export function speak(text: string, locale: "de" | "en", onEnd?: () => void): vo
     onEnd?.();
   };
 
-  // iOS Safari fix: calling speak() synchronously after cancel() freezes TTS.
   setTimeout(() => {
     synth.speak(u);
-
-    // Chrome keep-alive: Chrome stops TTS after ~15 s of continuous speech.
-    // Pause/resume every 12 s to reset the internal timer.
-    // Skip on Safari — it doesn't have this bug and pause/resume can cause issues.
     if (!isSafari()) {
       keepAlive = setInterval(() => {
         if (!synth.speaking) { clearInterval(keepAlive!); keepAlive = null; return; }
@@ -253,7 +214,173 @@ export function speak(text: string, locale: "de" | "en", onEnd?: () => void): vo
   }, 100);
 }
 
+// ── HQ TTS via OpenAI (premium voice) ─────────────────────────────────────
+// Strategy:
+//   1) Try cached audio
+//   2) Fetch MP3 from /api/ai/tts (OpenAI tts-1)
+//   3) On any failure, fall back to Web Speech (always available offline)
+//
+// Cache: small LRU keyed by "voice|text" — most Kios responses repeat (e.g. "Ja?",
+//   "Ich öffne die Speisekarte.") so cache massively reduces network calls + cost.
+
+const TTS_CACHE = new Map<string, string>(); // key → blob: URL
+const TTS_CACHE_MAX = 30;
+
+function cacheGet(key: string): string | undefined {
+  const v = TTS_CACHE.get(key);
+  if (v !== undefined) {
+    // True LRU: reinsert to bump recency
+    TTS_CACHE.delete(key);
+    TTS_CACHE.set(key, v);
+  }
+  return v;
+}
+function cacheSet(key: string, url: string): void {
+  if (TTS_CACHE.size >= TTS_CACHE_MAX) {
+    const first = TTS_CACHE.keys().next().value;
+    if (first !== undefined) {
+      const old = TTS_CACHE.get(first);
+      if (old) try { URL.revokeObjectURL(old); } catch { /* ignore */ }
+      TTS_CACHE.delete(first);
+    }
+  }
+  TTS_CACHE.set(key, url);
+}
+
+let _currentAudio: HTMLAudioElement | null = null;
+// Sequence guard: every speakHQ() call increments this; only the latest token
+// is allowed to start playback. Prevents stale TTS fetches from speaking older
+// text after the user has moved on to a new utterance.
+let _speakSeq = 0;
+
+function stopHqAudio(): void {
+  if (_currentAudio) {
+    try { _currentAudio.pause(); _currentAudio.currentTime = 0; } catch { /* ignore */ }
+    _currentAudio = null;
+  }
+}
+
+// Server availability: once we know the TTS endpoint isn't available
+// (e.g. proxy doesn't expose /audio/speech), short-circuit subsequent calls
+// straight to Web Speech — avoids 661ms+ network delay before every utterance.
+// Reset after 5 minutes in case the server gains support.
+let _ttsServerAvailable: boolean | null = null;
+let _ttsLastChecked = 0;
+const TTS_RECHECK_MS = 5 * 60_000;
+
+async function fetchTts(text: string, voice: string): Promise<string | null> {
+  if (typeof window === "undefined" || typeof fetch === "undefined") return null;
+  if (_ttsServerAvailable === false && Date.now() - _ttsLastChecked < TTS_RECHECK_MS) {
+    return null; // known-unavailable; skip network
+  }
+  // Mobile preorder app uses BASE_URL; on web Kios runs in mobile artifact
+  // which is mounted at /mobile but talks to /api directly via the shared proxy.
+  const baseRaw = (window as unknown as { __BASE_URL__?: string }).__BASE_URL__;
+  const base = typeof baseRaw === "string" ? baseRaw.replace(/\/+$/, "") : "";
+  const url = `${base}/api/ai/tts`;
+  try {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 8_000);
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, voice }),
+      signal: ac.signal,
+    });
+    clearTimeout(timer);
+    _ttsLastChecked = Date.now();
+    if (!resp.ok) {
+      _ttsServerAvailable = false;
+      return null;
+    }
+    const blob = await resp.blob();
+    if (blob.size < 200) { _ttsServerAvailable = false; return null; }
+    _ttsServerAvailable = true;
+    return URL.createObjectURL(blob);
+  } catch {
+    _ttsServerAvailable = false;
+    _ttsLastChecked = Date.now();
+    return null;
+  }
+}
+
+/**
+ * Speak text with the highest available quality:
+ *   1) OpenAI TTS (warm "nova" voice) — natural, near-human
+ *   2) Web Speech API — fallback when network/server unavailable
+ *
+ * Always calls onEnd exactly once.
+ */
+export function speakHQ(
+  text: string,
+  locale: "de" | "en",
+  onEnd?: () => void,
+  voice: "nova" | "shimmer" | "alloy" | "echo" | "onyx" | "fable" = "nova",
+): void {
+  if (Platform.OS !== "web" || typeof window === "undefined" || typeof Audio === "undefined") {
+    speakWebSpeech(text, locale, onEnd);
+    return;
+  }
+
+  stopHqAudio();
+  const myToken = ++_speakSeq;
+  const isStale = () => myToken !== _speakSeq;
+  const key = `${voice}|${text}`;
+  const cached = cacheGet(key);
+
+  const playUrl = (objectUrl: string) => {
+    if (isStale()) { onEnd?.(); return; }
+    let fired = false;
+    const done = () => { if (!fired) { fired = true; onEnd?.(); } };
+    try {
+      const audio = new Audio(objectUrl);
+      audio.volume = 1.0;
+      audio.onended = done;
+      audio.onerror = () => { speakWebSpeech(text, locale, done); };
+      _currentAudio = audio;
+      // Safety fallback for stuck audio
+      const safety = setTimeout(() => {
+        if (!fired) {
+          stopHqAudio();
+          done();
+        }
+      }, Math.max(4000, text.length * 90) + 2500);
+      const wrap = audio.onended;
+      audio.onended = (e) => { clearTimeout(safety); wrap?.call(audio, e); };
+      audio.play().catch(() => speakWebSpeech(text, locale, done));
+    } catch {
+      speakWebSpeech(text, locale, done);
+    }
+  };
+
+  if (cached) { playUrl(cached); return; }
+
+  void (async () => {
+    const objectUrl = await fetchTts(text, voice);
+    if (isStale()) {
+      // Newer speakHQ() call superseded us. Drop the result.
+      if (objectUrl) try { URL.revokeObjectURL(objectUrl); } catch { /* ignore */ }
+      return;
+    }
+    if (objectUrl) {
+      cacheSet(key, objectUrl);
+      playUrl(objectUrl);
+    } else {
+      // Server unavailable — fall back to Web Speech
+      speakWebSpeech(text, locale, onEnd);
+    }
+  })();
+}
+
+/** Legacy alias — Web Speech only. Use speakHQ for production. */
+export function speak(text: string, locale: "de" | "en", onEnd?: () => void): void {
+  speakWebSpeech(text, locale, onEnd);
+}
+
 export function stopSpeaking(): void {
+  // Bumping the sequence invalidates any in-flight TTS fetch that hasn't played yet
+  _speakSeq++;
+  stopHqAudio();
   if (!isTtsSupported()) return;
   const w = window as unknown as AnyWindow;
   w.speechSynthesis?.cancel();

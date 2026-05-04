@@ -210,4 +210,38 @@ router.post("/ai/parse-menu-pdf", async (req: Request, res: Response) => {
   }
 });
 
+// ── TTS via OpenAI (premium voice for Kios) ────────────────────────────────
+// Returns MP3 audio. Best German voices: "nova" (warm female), "shimmer" (soft female),
+// "onyx" (deep male), "echo" (clear male). Defaults to "nova".
+interface TtsBody {
+  text: string;
+  voice?: "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer";
+}
+
+router.post("/ai/tts", async (req: Request, res: Response) => {
+  const body = req.body as TtsBody;
+  const text = (body?.text ?? "").trim();
+  if (!text) {
+    res.status(400).json({ error: "text required" });
+    return;
+  }
+  const voice = body?.voice ?? "nova";
+  try {
+    const speech = await openai.audio.speech.create({
+      model: "tts-1",
+      voice,
+      input: text.slice(0, 4000),
+      response_format: "mp3",
+      speed: 1.0,
+    });
+    const buffer = Buffer.from(await speech.arrayBuffer());
+    res.setHeader("Content-Type", "audio/mpeg");
+    res.setHeader("Cache-Control", "private, max-age=60");
+    res.send(buffer);
+  } catch (err) {
+    req.log.warn({ err }, "ai tts unavailable, client should fall back");
+    res.status(502).json({ error: "tts_unavailable" });
+  }
+});
+
 export default router;

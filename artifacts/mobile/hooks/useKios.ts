@@ -2,40 +2,66 @@ import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { askKios } from "@/lib/kios";
-import { speak, stopSpeaking, isSafari } from "@/lib/voice";
+import { speakHQ, stopSpeaking, isSafari } from "@/lib/voice";
 import { useApp } from "@/contexts/AppContext";
 import type { AppState } from "@/types";
 
 export type KiosStatus = "off" | "idle" | "awake" | "thinking" | "speaking";
 
 // ── Navigation map ───────────────────────────────────────────────────────────
+// Covers every screen in the app. Keep keys short (used in AI prompt).
 const NAV_MAP: Record<string, string> = {
-  inventory:  "/(tabs)/inventory",
-  stats:      "/(tabs)/stats",
-  menu:       "/(tabs)/menu",
-  home:       "/(tabs)/",
-  more:       "/(tabs)/more",
-  chat:       "/chat",
-  suppliers:  "/suppliers",
-  producers:  "/producers",
-  customers:  "/customers",
+  // Tabs
+  home:        "/(tabs)/",
+  inventory:   "/(tabs)/inventory",
+  menu:        "/(tabs)/menu",
+  stats:       "/(tabs)/stats",
+  more:        "/(tabs)/more",
+  // Operations
+  sales:       "/sales",        // Tagesabschluss
+  zettle:      "/zettle",
+  orders:      "/orders",
+  procurement: "/procurement",  // Auto-Bestellung
+  inventur:    "/inventur",
+  dienstplan:  "/dienstplan",
+  suppliers:   "/suppliers",
+  producers:   "/producers",
+  catering:    "/catering",
+  events:      "/events",
+  calculator:  "/calculator",
+  waste:       "/waste",
+  reste:       "/reste",
+  preorder:    "/preorder",
+  customers:   "/customers",
+  aggregate:   "/aggregate",
+  rollup:      "/rollup",
+  priceserver: "/priceserver",
+  crm:         "/crm",
+  // KI / Insights
+  forecast:    "/forecast",
+  handover:    "/handover",
+  margin:      "/margin",
+  leaderboard: "/leaderboard",
+  reports:     "/reports",
+  dishanalysis:"/dishanalysis",
+  okowizard:   "/okowizard",
+  // Other
+  locations:   "/locations",
+  haccp:       "/haccp",
+  scan:        "/scan",
+  chat:        "/chat",
+  recipe:      "/recipe",
+  team:        "/team",
+  settings:    "/settings",
+  aushang:     "/aushang",
 };
 
 // AI request timeout
 const AI_TIMEOUT_MS = 15_000;
 
 // ── Wake word variants ───────────────────────────────────────────────────────
-// "Kios" is commonly misrecognized by speech engines as these strings.
 const WAKE_VARIANTS = [
-  "kios",    // correct
-  "kiosk",   // most common misrecognition
-  "kias",    // phonetic variant
-  "kjos",    // typo variant
-  "kies",    // German "gravel" — sounds similar
-  "cios",    // Italian-style misread
-  "gios",    // voiced consonant swap
-  "quios",   // Iberian-influenced
-  "chiose",  // Italian-influenced
+  "kios", "kiosk", "kias", "kjos", "kies", "cios", "gios", "quios", "chiose",
 ];
 
 function detectWakeWord(lower: string): { found: boolean; endIndex: number } {
@@ -46,22 +72,50 @@ function detectWakeWord(lower: string): { found: boolean; endIndex: number } {
   return { found: false, endIndex: -1 };
 }
 
-// ── Quick commands (bypass AI for instant response) ───────────────────────────
-// These handle obvious navigation intents without an AI round-trip.
-const QUICK_COMMANDS: Array<{
-  patterns: RegExp[];
-  nav: keyof typeof NAV_MAP;
-  reply: string;
-}> = [
-  { patterns: [/lager|bestand|vorrat|inventar|inventory/i],         nav: "inventory",  reply: "Ich zeige dir den Lagerbestand." },
-  { patterns: [/statistik|stats?|umsatz|verkauf|absatz/i],          nav: "stats",      reply: "Statistik wird geöffnet." },
-  { patterns: [/men[üu]|karte|speise|gericht|rezept|menu/i],        nav: "menu",       reply: "Ich öffne die Speisekarte." },
-  { patterns: [/start|home|anfang|[üu]bersicht|hauptseite|zurück/i], nav: "home",      reply: "Zurück zur Übersicht." },
-  { patterns: [/chat|assistent|ki\b|ai\b|frag/i],                   nav: "chat",       reply: "KI-Assistent wird geöffnet." },
-  { patterns: [/lieferant|supplier/i],                               nav: "suppliers",  reply: "Ich zeige dir die Lieferanten." },
-  { patterns: [/erzeuger|produzent|producer|regional/i],             nav: "producers",  reply: "Ich zeige dir die regionalen Erzeuger." },
-  { patterns: [/kund|bestell.*genehmig|customer/i],                  nav: "customers",  reply: "Kundenbestellungen werden geöffnet." },
-  { patterns: [/mehr|more|einstellung|setting/i],                    nav: "more",       reply: "Ich öffne das Menü." },
+// ── Quick commands (instant nav, no AI round-trip) ───────────────────────────
+const QUICK_COMMANDS: Array<{ patterns: RegExp[]; nav: keyof typeof NAV_MAP; reply: string }> = [
+  // Tabs
+  { patterns: [/lager|bestand|vorrat|inventar|inventory/i],                 nav: "inventory",   reply: "Ich zeige dir den Lagerbestand." },
+  { patterns: [/statistik|stats?\b|umsatz|verkauf|absatz|kennzahl/i],       nav: "stats",       reply: "Statistik wird geöffnet." },
+  { patterns: [/men[üu]|karte|speise|gericht|wochenplan/i],                 nav: "menu",        reply: "Ich öffne die Speisekarte." },
+  { patterns: [/start|home|anfang|[üu]bersicht|hauptseite|zur[üu]ck/i],     nav: "home",        reply: "Zurück zur Übersicht." },
+  { patterns: [/^mehr$|men[üu] mehr|einstellungs?menü/i],                   nav: "more",        reply: "Ich öffne das Menü." },
+  // Operations
+  { patterns: [/tagesabschluss|abschluss|tagesreport|kasse schließen/i],    nav: "sales",       reply: "Tagesabschluss wird geöffnet." },
+  { patterns: [/zettle|kartenterminal|kasse/i],                             nav: "zettle",      reply: "Ich öffne Zettle." },
+  { patterns: [/wareneingang|lieferung|bestellung erhalten/i],              nav: "orders",      reply: "Wareneingänge werden geöffnet." },
+  { patterns: [/auto.?bestell|nachbestell|procurement|bestellvorschlag/i],  nav: "procurement", reply: "Bestellvorschläge werden geladen." },
+  { patterns: [/inventur|bestandsaufnahme|z[äa]hlen/i],                     nav: "inventur",    reply: "Inventur wird geöffnet." },
+  { patterns: [/dienstplan|schichtplan|personalplan/i],                     nav: "dienstplan",  reply: "Dienstplan wird geöffnet." },
+  { patterns: [/lieferant|supplier/i],                                      nav: "suppliers",   reply: "Ich zeige dir die Lieferanten." },
+  { patterns: [/erzeuger|produzent|producer|regional/i],                    nav: "producers",   reply: "Ich zeige dir die regionalen Erzeuger." },
+  { patterns: [/catering|veranstaltung|event\b/i],                          nav: "catering",    reply: "Catering wird geöffnet." },
+  { patterns: [/preisrechner|kalkulation|calculator|kostenrechnung/i],      nav: "calculator",  reply: "Preisrechner wird geöffnet." },
+  { patterns: [/abfall|m[üu]ll|waste|verschwend/i],                         nav: "waste",       reply: "Abfall wird geöffnet." },
+  { patterns: [/reste|leftover|verwert/i],                                  nav: "reste",       reply: "Reste-Rezepte werden geladen." },
+  { patterns: [/vorbestellung|preorder|app.?bestell/i],                     nav: "preorder",    reply: "Vorbestellungen werden geöffnet." },
+  { patterns: [/kund|gast.?konto|genehmig/i],                               nav: "customers",   reply: "Kundenbestellungen werden geöffnet." },
+  { patterns: [/tagesaggregat|tageszusammenfassung|aggregate/i],            nav: "aggregate",   reply: "Tagesaggregat wird geöffnet." },
+  { patterns: [/standorte vergleich|filial.?vergleich|rollup/i],            nav: "rollup",      reply: "Standortvergleich wird geöffnet." },
+  { patterns: [/preisserver|preisliste server|price server/i],              nav: "priceserver", reply: "Preisserver wird geöffnet." },
+  { patterns: [/crm|kundenpfleg|kontakt/i],                                 nav: "crm",         reply: "CRM wird geöffnet." },
+  // KI / Insights
+  { patterns: [/prognose|forecast|vorhersage|wettervorhersage/i],           nav: "forecast",    reply: "Prognose wird geöffnet." },
+  { patterns: [/[üu]bergabe|handover|schichtwechsel/i],                     nav: "handover",    reply: "Schichtübergabe wird geöffnet." },
+  { patterns: [/marge|margin|gewinn|deckungsbeitrag/i],                     nav: "margin",      reply: "Marge-Alerts werden geöffnet." },
+  { patterns: [/leaderboard|rangliste|top mitarbeiter/i],                   nav: "leaderboard", reply: "Leaderboard wird geöffnet." },
+  { patterns: [/bericht|report|auswert/i],                                  nav: "reports",     reply: "Berichte werden geöffnet." },
+  { patterns: [/gerichtsanalyse|dish.?analy|dish.?score/i],                 nav: "dishanalysis",reply: "Gerichtsanalyse wird geöffnet." },
+  { patterns: [/[öo]ko.?wizard|nachhaltig|co2|bio.?wizard/i],               nav: "okowizard",   reply: "Öko-Wizard wird geöffnet." },
+  // Other
+  { patterns: [/standort|location|filiale/i],                               nav: "locations",   reply: "Standorte werden geöffnet." },
+  { patterns: [/haccp|hygiene|temperatur.?protokoll|legal/i],               nav: "haccp",       reply: "HACCP wird geöffnet." },
+  { patterns: [/scann?en|barcode|kamera|foto/i],                            nav: "scan",        reply: "Scanner wird geöffnet." },
+  { patterns: [/chat|assistent|^ki\b|^ai\b|frag mich|frag den/i],           nav: "chat",        reply: "KI-Assistent wird geöffnet." },
+  { patterns: [/rezept anlegen|neues rezept|rezeptdetail/i],                nav: "recipe",      reply: "Rezept wird geöffnet." },
+  { patterns: [/team|mitarbeiter|personal\b/i],                             nav: "team",        reply: "Team wird geöffnet." },
+  { patterns: [/einstellung|setting|konfiguration/i],                       nav: "settings",    reply: "Einstellungen werden geöffnet." },
+  { patterns: [/aushang|wochenplan.?ausdruck|men[üu].?aushang/i],           nav: "aushang",     reply: "Aushang wird geöffnet." },
 ];
 
 function matchQuickCommand(question: string) {
@@ -71,7 +125,7 @@ function matchQuickCommand(question: string) {
   return null;
 }
 
-// ── Mutable refs (avoid stale closures in recognition callbacks) ─────────────
+// ── Mutable refs ─────────────────────────────────────────────────────────────
 interface KiosRefs {
   status: KiosStatus;
   phase: "wake" | "question" | "ai";
@@ -95,6 +149,25 @@ function isVoiceAvailable(): boolean {
   return Boolean(getWindowSR());
 }
 
+// ── Safari PWA audio unlock ──────────────────────────────────────────────────
+// iOS Safari (incl. PWA / standalone mode) blocks HTML5 Audio.play() unless it's
+// triggered by a user gesture. The user always taps to enable Kios, so we use
+// that gesture to "unlock" audio playback for the rest of the session.
+let _audioUnlocked = false;
+
+function unlockAudio(): void {
+  if (_audioUnlocked) return;
+  if (typeof window === "undefined" || typeof Audio === "undefined") return;
+  try {
+    // 1×1 silent MP3 — plays instantly, satisfies the gesture requirement.
+    const silent = new Audio(
+      "data:audio/mp3;base64,SUQzBAAAAAABEVRYWFgAAAAtAAADY29tbWVudABCaWdTb3VuZEJhbmsuY29tIC8gTGFTb25vdGhlcXVlLm9yZwBURU5DAAAAHQAAA1N3aXRjaCBQbHVzIMKpIE5DSCBTb2Z0d2FyZQBUSVQyAAAABgAAAzIyMzUAVFNTRQAAAA8AAANMYXZmNTcuODMuMTAwAAAAAAAAAAAAAAD/80DEAAAAA0gAAAAATEFNRTMuMTAwVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/zQsRbAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/zQMSkAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV"
+    );
+    silent.volume = 0;
+    silent.play().then(() => { _audioUnlocked = true; }).catch(() => { /* still ok */ });
+  } catch { /* ignore */ }
+}
+
 // ── Hook ─────────────────────────────────────────────────────────────────────
 export function useKios() {
   const { state } = useApp();
@@ -109,15 +182,12 @@ export function useKios() {
     state,
   });
 
-  // Keep state ref fresh without triggering re-renders
   r.current.state = state;
 
   const setStatus = (s: KiosStatus) => {
     r.current.status = s;
     setStatusState(s);
   };
-
-  // ── Helpers ────────────────────────────────────────────────────────────────
 
   function clearRestartTimer() {
     if (r.current.restartTimer !== null) {
@@ -144,24 +214,22 @@ export function useKios() {
     }, delayMs);
   }
 
-  // ── Answer a question ──────────────────────────────────────────────────────
-
   async function handleQuestion(question: string) {
     stopListening();
     setStatus("thinking");
     const snap   = r.current.state;
     const locale = snap.locale;
 
-    // ── Try quick command first (instant, no AI) ──────────────────────────
+    // Quick command first (instant)
     const quick = matchQuickCommand(question);
     if (quick) {
       if (NAV_MAP[quick.nav]) router.push(NAV_MAP[quick.nav] as never);
       setStatus("speaking");
-      speak(quick.reply, locale, () => scheduleRestart(300));
+      speakHQ(quick.reply, locale, () => scheduleRestart(300));
       return;
     }
 
-    // ── AI round-trip ─────────────────────────────────────────────────────
+    // AI round-trip
     let result: Awaited<ReturnType<typeof askKios>> | null = null;
     try {
       const ac = new AbortController();
@@ -175,7 +243,7 @@ export function useKios() {
       clearTimeout(tid);
     } catch {
       setStatus("speaking");
-      speak(
+      speakHQ(
         locale === "de"
           ? "Entschuldigung, das hat leider nicht geklappt."
           : "Sorry, something went wrong.",
@@ -191,11 +259,9 @@ export function useKios() {
     if (navKey && NAV_MAP[navKey]) router.push(NAV_MAP[navKey] as never);
 
     setStatus("speaking");
-    speak(result.answer, locale, () => scheduleRestart(300));
+    speakHQ(result.answer, locale, () => scheduleRestart(300));
   }
 
-  // ── Recognition session ────────────────────────────────────────────────────
-  // initialPhase: "wake" = listen for wake word; "question" = listen for question
   function startListening(initialPhase: "wake" | "question" = "wake") {
     if (!isVoiceAvailable()) return;
     stopListening();
@@ -206,11 +272,10 @@ export function useKios() {
     r.current.phase = initialPhase;
 
     const rec = new SR();
-    rec.lang          = "de-DE";
-    // Safari/iOS has unreliable continuous recognition — use single-shot + auto-restart instead.
-    rec.continuous    = !isSafari();
+    rec.lang           = "de-DE";
+    rec.continuous     = !isSafari();
     rec.interimResults = true;
-    r.current.rec     = rec;
+    r.current.rec      = rec;
 
     rec.onresult = (event: SpeechRecognitionEvent) => {
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -222,19 +287,14 @@ export function useKios() {
           const { found, endIndex } = detectWakeWord(lower);
           if (found) {
             setStatus("awake");
-
-            // Check if question immediately follows wake word in same utterance
             const afterWake = raw.slice(endIndex).replace(/^[\s,.\-:!?]+/, "").trim();
 
             if (result.isFinal && afterWake.length > 3) {
-              // Full sentence captured — skip "Ja?" and go straight to AI
               r.current.phase = "ai";
               void handleQuestion(afterWake);
             } else {
-              // Wait for the user's question — say "Ja?" first
               r.current.phase = "question";
-              speak("Ja?", r.current.state.locale, () => {
-                // After "Ja?" finishes, start a QUESTION-mode session
+              speakHQ("Ja?", r.current.state.locale, () => {
                 if (r.current.status !== "off" && r.current.status !== "thinking") {
                   startListening("question");
                 }
@@ -259,17 +319,11 @@ export function useKios() {
         r.current.rec = null;
         return;
       }
-      // Other errors (no-speech, aborted, network) — let onend handle restart
     };
 
     rec.onend = () => {
       r.current.rec = null;
       const s = r.current.status;
-      // Don't restart if:
-      //   - turned off
-      //   - AI is thinking
-      //   - TTS is playing (speak's onEnd handles restart)
-      //   - awake and waiting for "Ja?" to finish (speak's onEnd handles restart)
       if (s === "off" || s === "thinking" || s === "speaking" || s === "awake") return;
       scheduleRestart(400);
     };
@@ -277,10 +331,9 @@ export function useKios() {
     try { rec.start(); } catch { /* permissions denied */ }
   }
 
-  // ── Public API ─────────────────────────────────────────────────────────────
-
   function enable() {
     if (!isVoiceAvailable()) return;
+    unlockAudio();           // Safari PWA: prime audio while still in user gesture
     setStatus("idle");
     startListening("wake");
   }
