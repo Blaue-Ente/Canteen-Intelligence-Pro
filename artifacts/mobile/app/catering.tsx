@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import { router } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -21,7 +22,7 @@ import { useColors } from "@/hooks/useColors";
 import { parseCateringEmail, type ParsedCatering } from "@/lib/ai";
 import { fetchInbox, fetchMessage, markAsRead, type MailMessage } from "@/lib/mail";
 import { cateringOfferHtml, sharePdf } from "@/lib/pdf";
-import type { CateringRequest } from "@/types";
+import type { CateringEvent, CateringRequest } from "@/types";
 
 const SAMPLE_DE = `Von: schmidt@firma-acme.de
 Betreff: Catering 25 Personen 14.11.
@@ -180,6 +181,38 @@ export default function Catering() {
 
   const setStatus = (req: CateringRequest, s: CateringRequest["status"]) =>
     dispatch({ type: "updateCatering", request: { ...req, status: s } });
+
+  const createEventFromRequest = (req: CateringRequest) => {
+    const now = new Date().toISOString();
+    const event: CateringEvent = {
+      id: newId(),
+      title: req.subject || `Catering ${req.guests} Pers.`,
+      clientName: req.fromEmail.split("@")[0] ?? req.fromEmail,
+      clientEmail: req.fromEmail,
+      eventDate: req.date,
+      guestCount: req.guests || 0,
+      status: "anfrage",
+      menuItems: req.parsed.flatMap((block) =>
+        block.recipeIds.map((rid) => {
+          const recipe = state.recipes.find((r) => r.id === rid);
+          return {
+            recipeId: rid,
+            recipeName: recipe
+              ? (state.locale === "de" ? recipe.nameDe : recipe.name)
+              : rid,
+            portions: req.guests || 1,
+            pricePerPortion: recipe?.sellPrice ?? 0,
+            note: block.notes,
+          };
+        }),
+      ),
+      notes: req.dietary ?? undefined,
+      createdAt: now,
+      updatedAt: now,
+    };
+    dispatch({ type: "addEvent", event });
+    router.push(`/eventdetail?id=${event.id}`);
+  };
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
@@ -495,6 +528,13 @@ export default function Catering() {
                       Alert.alert("PDF", e instanceof Error ? e.message : "");
                     }
                   }}
+                />
+                <Button
+                  label={t("saveAsEvent")}
+                  icon="calendar"
+                  variant="ghost"
+                  style={{ marginTop: 6 }}
+                  onPress={() => createEventFromRequest(req)}
                 />
               </Card>
             ))

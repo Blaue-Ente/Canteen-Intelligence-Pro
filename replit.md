@@ -100,6 +100,15 @@ The seed cookbook was expanded from 30 German recipes to ~150 across 7 cuisines,
 4. Бутон "Свържи Exchange акаунт" в мобилното (Settings/More)
 5. Mail route-овете да използват org-specific токен от БД вместо Replit connector
 
+### Pre-order UX improvements + Catering→Event bridge (Phase 6E)
+
+Three targeted UX improvements across the pre-order web app and mobile.
+
+- **Pre-order landing page** (`artifacts/preorder/src/pages/landing.tsx`): Added sticky header with KitchenOS logo + `AuthNav` (sign-in/profile/orders links visible from the first screen). `SignedOut` users see an "Anmelden / Registrieren" card explaining the benefits of an account. `SignedIn` users see a "Meine Bestellungen" shortcut button.
+- **Smart Stamm-Kantine redirect** (`SmartRedirect` component in landing.tsx): When a logged-in `business_approved` customer has a `homeLocationCode` set in their profile, the landing page shows a quick-jump card ("Ihre Stamm-Kantine → Zur Karte") and auto-redirects to `/menu/<code>` on load. Customers with pending/regular accounts see their current status and a link to their profile. Profile loading state shows a spinner.
+- **Catering email → Event bridge** (`artifacts/mobile/app/catering.tsx`): New `createEventFromRequest()` function maps a `CateringRequest` (parsed email) to a `CateringEvent`: copies subject→title, fromEmail→clientEmail, date, guests, dietary→notes, and maps all AI-proposed recipe blocks → `EventMenuItem[]` with correct portions and sell prices. Dispatches `addEvent` and navigates directly to `eventdetail?id=<new>` so the chef can immediately refine the menu and generate a PDF offer. New button "Als Veranstaltung anlegen" (icon: calendar) added below the PDF button in every request card.
+- **i18n**: `saveAsEvent` key added in DE ("Als Veranstaltung anlegen") and EN ("Create event from request").
+
 ### Event Management + AI Offer Generation + Price Server (Phase 6D)
 
 Full catering event lifecycle management with AI-generated offer letters and external price list synchronisation.
