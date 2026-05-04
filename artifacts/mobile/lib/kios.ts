@@ -1,5 +1,33 @@
 import { generateJson } from "@/lib/ai";
-import type { AppState } from "@/types";
+import { scoreMenu, next7DayWindow } from "@/lib/dge";
+import type { AppState, DgeScore, DgeStandard } from "@/types";
+
+// Memoize the DGE score across Kios questions — recipes/menu/inventory rarely
+// change between voice commands, so recomputing the 7-day score on every
+// "Hey Kios" wake-up is wasted CPU on iPad. Invalidate by length-based signature
+// (cheap O(1)) plus the active standard. Worst case we miss a single edit; the
+// next state mutation reshapes the signature and we recompute.
+let dgeCache: { sig: string; score: DgeScore } | null = null;
+function memoizedDgeScore(state: AppState, standard: DgeStandard): DgeScore | null {
+  const win = next7DayWindow();
+  const sig = `${standard}|${win.fromDate}|${state.recipes.length}|${state.menu.length}|${state.inventory.length}|${state.locale ?? "de"}`;
+  if (dgeCache && dgeCache.sig === sig) return dgeCache.score;
+  try {
+    const score = scoreMenu({
+      recipes: state.recipes,
+      menu: state.menu,
+      inventory: state.inventory,
+      standard,
+      fromDate: win.fromDate,
+      toDate: win.toDate,
+      isDe: (state.locale ?? "de").startsWith("de"),
+    });
+    dgeCache = { sig, score };
+    return score;
+  } catch {
+    return null;
+  }
+}
 
 // All known navigation targets. Kept in sync with NAV_MAP in useKios.ts.
 export type KiosNav =
@@ -12,6 +40,7 @@ export type KiosNav =
   | "reports" | "dishanalysis" | "okowizard"
   | "locations" | "haccp" | "scan" | "chat" | "recipe" | "team"
   | "settings" | "aushang"
+  | "production" | "cleaning" | "kasse" | "dge"
   | "null";
 
 export interface KiosResponse {
@@ -119,8 +148,31 @@ export function buildKitchenContext(state: AppState): string {
   const ordersOpen    = (state.orders ?? []).filter((o) => o.status === "draft" || o.status === "sent").length;
   const handoverRecent = (state.handovers ?? []).filter((h) => h.date >= today).length;
 
+  // ── T013: Rückstellproben (food retention samples per LMHV §11) ─────────
+  // Samples are valid for 7 days after preparation (date + 7 = retentionUntil).
+  const samples = state.foodSamples ?? [];
+  const activeSamples = samples.filter((s) => s.retentionUntil >= today).length;
+  const samplesToday  = samples.filter((s) => s.date === today).length;
+  const samplesPending = samples.filter((s) => !s.taken && s.retentionUntil >= today).length;
+
+  // ── T013: Subscription tier + app mode ──────────────────────────────────
+  const tier    = state.subscription?.tier ?? "free";
+  const appMode = state.appMode ?? "lite";
+
+  // ── T014: DGE compliance (only when standard is opted-in) ───────────────
+  let dgeLine: string | null = null;
+  if (state.dgeStandard) {
+    const dge = memoizedDgeScore(state, state.dgeStandard);
+    if (dge) {
+      const status = dge.overall >= 80 ? "konform" : dge.overall >= 60 ? "teilkonform" : "nicht konform";
+      const open   = dge.criteria.filter((c) => !c.met).length;
+      dgeLine = `DGE-Standard ${state.dgeStandard}: ${dge.overall}/100 (${status}), ${open} Kriterien offen`;
+    }
+  }
+
   return [
     `Datum: ${today}`,
+    `Abo-Tarif: ${tier}, App-Modus: ${appMode}`,
     `Heutige Karte: ${todayMenu}`,
     tomorrowMenu ? `Morgen: ${tomorrowMenu}` : null,
     `Heutige Verkäufe: ${todayPortions} Portionen, ca. ${todayRevenue.toFixed(0)}€ Umsatz` +
@@ -136,6 +188,10 @@ export function buildKitchenContext(state: AppState): string {
     handoverRecent > 0 ? `${handoverRecent} Schichtübergabe(n) heute` : null,
     lowMargin ? `Niedrige Marge: ${lowMargin}` : null,
     haccpToday > 0 ? `HACCP heute: ${haccpToday} Einträge erfasst` : null,
+    `Rückstellproben: ${activeSamples} aktiv (LMHV §11, 7-Tage-Frist)` +
+      (samplesToday > 0 ? `, ${samplesToday} heute neu` : "") +
+      (samplesPending > 0 ? `, ${samplesPending} noch nicht physisch genommen` : ""),
+    dgeLine,
     `Stamm: ${recipeCount} Rezepte, ${supplierCount} Lieferanten, ${locationCount} Standorte, ${teamCount} Mitarbeiter`,
   ].filter(Boolean).join("\n");
 }
@@ -147,7 +203,8 @@ const NAV_LIST = [
   "waste", "wastecam", "reste", "preorder", "customers", "aggregate", "rollup",
   "priceserver", "crm", "forecast", "handover", "margin", "leaderboard",
   "reports", "dishanalysis", "okowizard", "locations", "haccp", "scan",
-  "chat", "recipe", "team", "settings", "aushang", "null",
+  "chat", "recipe", "team", "settings", "aushang",
+  "production", "cleaning", "kasse", "dge", "null",
 ].join("|");
 
 const SCHEMA_HINT = `{"answer":"string","navigate":"${NAV_LIST}"}`;
@@ -211,10 +268,14 @@ PERSONAL & LOGISTIK
   locations   = Standorte / Filialen verwalten
 
 QUALITÄT & RECHT
-  haccp       = HACCP, Hygiene, Temperaturprotokoll, Allergen-Doku
+  haccp       = HACCP, Hygiene, Temperaturprotokoll, Allergen-Doku, BLE-Bluetooth-Thermometer
+  production  = Produktion / Chargen / Rückstellproben (LMHV §11, 7 Tage)
+  cleaning    = Reinigungsplan, Reinigungs-Nachweis
+  dge         = DGE-Qualitätsstandard Score (Schule/Kita/Krankenhaus/Senioren), DGE-Zertifikat-PDF
   waste       = Abfallerfassung
   wastecam    = Tablett-Foto-Analyse (KI schätzt Reste aus Foto)
   aushang     = Wochenplan-Aushang (Ausdruck)
+  kasse       = Kasse / Rechnung / TSE / KassenSichV / DSFinV-K (nur Full-Modus)
 
 ALLGEMEIN
   home        = Startseite / Übersicht
@@ -239,6 +300,13 @@ Beispiele:
   "Hygiene-Check" → answer: "HACCP-Protokoll wird geöffnet." navigate: haccp
   "Wie viel Abfall heute?" → answer: "Heute wurden [X]€ Abfall erfasst." navigate: waste
   "Erkläre Reste-Rezepte" → answer: "Hier kannst du aus Übrigem neue Gerichte vorschlagen lassen." navigate: reste
+  "Wie ist mein DGE-Score?" → answer: "Aktuell [X]/100 für [Standard], [N] Kriterien noch offen." navigate: dge
+  "DGE-Zertifikat erstellen" → answer: "Ich öffne den DGE-Bereich, dort kannst du das Zertifikat als PDF erstellen." navigate: dge
+  "Rückstellprobe nehmen" → answer: "Produktion wird geöffnet, dort kannst du die Probe erfassen." navigate: production
+  "Wie viele Rückstellproben habe ich?" → answer: "Aktuell [N] aktive Proben in der 7-Tage-Frist." navigate: production
+  "Reinigung erledigt" → answer: "Reinigungsplan wird geöffnet." navigate: cleaning
+  "Rechnung schreiben" → answer: "Kasse wird geöffnet." navigate: kasse
+  "Welcher Tarif bin ich?" → answer: "Du bist im [Tier]-Tarif." navigate: settings
 
 Frage: "${question}"`.trim();
 

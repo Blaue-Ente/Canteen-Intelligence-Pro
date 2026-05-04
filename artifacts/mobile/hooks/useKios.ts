@@ -62,6 +62,11 @@ const NAV_MAP: Record<string, string> = {
   team:        "/team",
   settings:    "/settings",
   aushang:     "/aushang",
+  // T013 + T014 additions
+  production:  "/production",   // Chargen / Rückstellproben (LMHV §11)
+  cleaning:    "/cleaning",     // Reinigungsplan
+  kasse:       "/kasse",        // TSE / KassenSichV (Full-Modus)
+  dge:         "/dge",          // DGE-Qualitätsstandard Score + Zertifikat
 };
 
 // AI request timeout
@@ -124,6 +129,12 @@ const QUICK_COMMANDS: Array<{ patterns: RegExp[]; nav: keyof typeof NAV_MAP; rep
   { patterns: [/^team$|mitarbeiter|personal\b|kollegen/i],                          nav: "team",        reply: "Team wird geöffnet." },
   { patterns: [/einstellung|setting|konfiguration|optionen/i],                       nav: "settings",    reply: "Einstellungen werden geöffnet." },
   { patterns: [/aushang|wochenplan.?ausdruck|men[üu].?aushang|aushangs.?plan/i],    nav: "aushang",     reply: "Aushang wird geöffnet." },
+  // T013 + T014: Production / Cleaning / Kasse / DGE
+  { patterns: [/r[üu]ckstell.?probe|food.?sample|aufbewahrungs.?probe|lmhv.?probe/i], nav: "production", reply: "Produktion mit Rückstellproben wird geöffnet." },
+  { patterns: [/produktion|charge\b|chargen|batch\b|production/i],                     nav: "production", reply: "Produktion wird geöffnet." },
+  { patterns: [/reinigung|reinigungs.?plan|putz.?plan|cleaning|saubermachen/i],        nav: "cleaning",   reply: "Reinigungsplan wird geöffnet." },
+  { patterns: [/\bkasse\b(?! schlie)|kassensystem|rechnung schreiben|tse\b|kassensichv|dsfinv|fiskal|bon drucken|bon erstellen/i], nav: "kasse", reply: "Kasse wird geöffnet." },
+  { patterns: [/dge\b|qualit[äa]ts.?standard|schul.?verpflegung|kita.?verpflegung|krankenhaus.?verpflegung|senioren.?verpflegung|dge.?score|dge.?zertifikat/i], nav: "dge", reply: "DGE-Standard wird geöffnet." },
   // Tabs (least specific — match last)
   { patterns: [/lager|bestand|vorrat|inventar|inventory|warenbestand/i],            nav: "inventory",   reply: "Ich zeige dir den Lagerbestand." },
   { patterns: [/statistik|^stats?\b|umsatz|verkauf|absatz|kennzahl|wie viel.*verdient|wie viel.*umsatz/i], nav: "stats", reply: "Statistik wird geöffnet." },
