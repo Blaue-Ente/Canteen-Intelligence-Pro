@@ -352,6 +352,7 @@ export const seedState: AppState = {
     { id: "sl-room-dry", name: "Trockenlager", category: "room" },
     { id: "sl-kitchen-1", name: "Heißhaltung Pass", category: "kitchen", targetTemp: 65 },
     { id: "sl-delivery", name: "Wareneingang", category: "delivery" },
+    { id: "sl-fridge-proben", name: "Probenkühlschrank", category: "fridge", targetTemp: 4, note: "Rückstellproben (LMHV §11)" },
   ],
   events: demoEvents,
   priceList: [],
@@ -364,4 +365,11 @@ export const seedState: AppState = {
   // ---- T011 TSE / KassenSichV (only used when appMode === "full") ----
   tseConfig: undefined,
   signedSales: [],
+  // ---- T013 HACCP automation + Subscription ----
+  foodSamples: [],
+  subscription: {
+    tier: "professional",
+    addons: { bleThermometers: false, multiSite: false, advancedAi: false },
+  },
+  sampleStorageLocationId: "sl-fridge-proben",
 };

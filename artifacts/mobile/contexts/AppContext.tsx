@@ -109,6 +109,14 @@ type Action =
   // ---- TSE / KassenSichV (T011) ----
   | { type: "setTseConfig"; config: import("@/types").TseConfig }
   | { type: "addSignedSale"; sale: import("@/types").SignedSale }
+  // ---- T013: HACCP automation + Rückstellproben + Subscription ----
+  | { type: "setSubscription"; subscription: import("@/types").Subscription }
+  | { type: "setSampleStorage"; storageLocationId: string | undefined }
+  | { type: "addFoodSample"; sample: import("@/types").FoodSample }
+  | { type: "addFoodSamples"; samples: import("@/types").FoodSample[] }
+  | { type: "updateFoodSample"; sample: import("@/types").FoodSample }
+  | { type: "removeFoodSample"; id: string }
+  | { type: "purgeExpiredFoodSamples" }
   // ---- Company + CRM + Demo ----
   | { type: "setCompanyProfile"; profile: CompanyProfile }
   | { type: "loadDemoData"; events: CateringEvent[]; company: CompanyProfile }
@@ -357,6 +365,27 @@ function reducer(state: AppState, action: Action): AppState {
         sales: [saleSlice, ...state.sales].filter((s) => s.date >= cutoff),
       };
     }
+    case "setSubscription":
+      return { ...state, subscription: action.subscription };
+    case "setSampleStorage":
+      return { ...state, sampleStorageLocationId: action.storageLocationId };
+    case "addFoodSample":
+      return { ...state, foodSamples: [action.sample, ...state.foodSamples] };
+    case "addFoodSamples":
+      return { ...state, foodSamples: [...action.samples, ...state.foodSamples] };
+    case "updateFoodSample":
+      return {
+        ...state,
+        foodSamples: state.foodSamples.map((s) => (s.id === action.sample.id ? action.sample : s)),
+      };
+    case "removeFoodSample":
+      return { ...state, foodSamples: state.foodSamples.filter((s) => s.id !== action.id) };
+    case "purgeExpiredFoodSamples": {
+      // Drop samples whose retention is more than 1 day past — frees storage but
+      // keeps recently-expired ones around so staff can audit "did we discard them on time?"
+      const cutoff = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+      return { ...state, foodSamples: state.foodSamples.filter((s) => s.retentionUntil >= cutoff) };
+    }
     case "setCompanyProfile":
       return { ...state, companyProfile: action.profile };
     case "loadDemoData":
@@ -458,6 +487,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           appMode: pick("appMode"),
           tseConfig: pick("tseConfig"),
           signedSales: pick("signedSales"),
+          // ---- T013 ----
+          foodSamples: pick("foodSamples"),
+          subscription: pick("subscription"),
+          sampleStorageLocationId: pick("sampleStorageLocationId"),
         };
         dispatch({ type: "hydrate", state: merged });
       }

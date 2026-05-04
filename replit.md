@@ -68,6 +68,49 @@ See `.local/session_plan.md` for full task breakdown T000-T012.
   fiskaly cloud TSE seamlessly. ✓
 - **T012** Final verify ✓ (all 4 typechecks clean, only pre-existing benign
   `useColors.ts(21,10)` error untouched per user instruction)
+- **T013** HACCP Automation v2 ✓ — превърна HACCP от "ръчен формуляр" в
+  "потвърди предложеното":
+  - **T013a** Subscription tier foundation: `Subscription` type
+    (starter/professional/enterprise + addons.bleThermometers/multiSite/advancedAi),
+    AppState.subscription + 1 reducer (setSubscription), `useSubscription()` hook,
+    `<RequiresAddon>` gate component, SubscriptionCard в settings.tsx с tier picker
+    + 3 addon Switches (BLE +€19, multiSite +€29, advancedAi +€39).
+  - **T013b** Auto-suggestions: `lib/haccpAutosuggest.ts` генерира за всяка
+    StorageLocation с targetTemp/targetTempMax suggestion на slots 09:00 + 17:00,
+    използва median на последните 7 дни ±0.4°C jitter. Нова `HaccpSuggestion` type.
+    haccp.tsx "Heute zu bestätigen" секция с карти + 3 бутона
+    (Bestätigen 1-tap / Abweichend / Maßnahme). HaccpLog.correctiveAction + suggestionId
+    + source полета.
+  - **T013c** Auto-log от съществуващи потоци: production batch finalizeBatch() в
+    app/production.tsx auto-create cooking HACCP per recipe (source="auto-production");
+    orders.tsx receive() (нов "Wareneingang bestätigen" бутон при sent→received
+    transition) auto-create delivery HACCP (source="auto-delivery") — moved here
+    от procurement.tsx за да съответства на LMHV (логваме при физически Wareneingang,
+    не при draft).  History филтър chips (Alle/Auto/Manuell) + provenance Badge +
+    corrective display.
+  - **T013d** Rückstellproben (LMHV §11, 7 дни): `FoodSample` type, 7 reducers
+    (add/addMany/update/remove/purgeExpired + setSampleStorage), `lib/foodSamples.ts`
+    (buildSamplesForBatch 100g default + pendingToday + isExpired). Production save
+    автоматично създава 1 проба/100g на recipe в "Probenkühlschrank" storage location
+    (`sl-fridge-proben` в seedData). Proben секция в haccp.tsx с countdown + "Genommen"
+    confirm + "Aufräumen" cleanup бутон.
+  - **T013e** Bluetooth thermometer (paid addon): `lib/bleThermometer.ts` mock
+    provider симулира 2 устройства (Inkbird IBT-2X 4.5°C + Thermapen ONE 72°C) със
+    streaming на 5s интервал + jitter; real `react-native-ble-plx` provider стуб
+    в коментар (изисква custom dev build). `useBleThermometer()` hook.
+    haccp.tsx Live-Thermometer Card обвит в `<RequiresAddon name="bleThermometers">` —
+    показва +€19/Monat CTA ако не е активно. captureBleReading promote-ва текущ
+    read към HaccpLog с source="ble".
+  - **T013f** Final verify ✓ (typecheck минава clean без новите файлове да въвеждат
+    грешки; pre-existing useColors.ts(21,10) untouched per user instruction; screenshot
+    /haccp потвърждава 8 видими auto-suggestion карти с 3-button workflow).
+  - Files: `mobile/types.ts`, `mobile/contexts/AppContext.tsx`,
+    `mobile/constants/seedData.ts`, `mobile/hooks/useSubscription.ts` (нов),
+    `mobile/hooks/useBleThermometer.ts` (нов), `mobile/components/RequiresAddon.tsx`
+    (нов), `mobile/lib/haccpAutosuggest.ts` (нов), `mobile/lib/foodSamples.ts` (нов),
+    `mobile/lib/bleThermometer.ts` (нов), `mobile/app/haccp.tsx` (rewrite),
+    `mobile/app/production.tsx` (finalizeBatch), `mobile/app/procurement.tsx`
+    (addOrder auto-HACCP), `mobile/app/settings.tsx` (SubscriptionCard).
 
 ## System Architecture
 

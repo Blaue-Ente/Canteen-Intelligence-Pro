@@ -4,6 +4,7 @@ import { Alert, Linking, Pressable, ScrollView, Text, View } from "react-native"
 
 import { Badge, Button, Card, EmptyState, SectionHeader } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
+import { useAuthor } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { orderHtml, sharePdf } from "@/lib/pdf";
 import type { Locale, OrderDraft } from "@/types";
@@ -54,9 +55,10 @@ function buildEmail(order: OrderDraft, locale: "de" | "en"): { subject: string; 
 }
 
 export default function Orders() {
-  const { state, dispatch } = useApp();
+  const { state, dispatch, newId } = useApp();
   const t = useT();
   const c = useColors();
+  const author = useAuthor();
 
   const send = async (order: OrderDraft) => {
     const supplier = state.suppliers.find((s) => s.id === order.supplierId);
@@ -91,6 +93,35 @@ export default function Orders() {
       { text: t("delete"), style: "destructive", onPress: () => dispatch({ type: "removeOrder", id }) },
     ]);
 
+  /**
+   * T013c — physical goods receipt. Flips status to "received" AND seeds an
+   * auto-delivery HACCP entry per LMHV (every Wareneingang must be temperature-
+   * checked). Staff just confirms the temperature on the resulting HACCP row.
+   */
+  const receive = (order: OrderDraft) => {
+    // Guard: only sent orders may transition to received. Prevents skipping
+    // the email step or double-firing the auto-HACCP from a draft/received row.
+    if (order.status !== "sent") return;
+    dispatch({ type: "updateOrder", order: { ...order, status: "received" } });
+    const wareneingang = state.storageLocations.find((s) => s.category === "delivery");
+    dispatch({
+      type: "addHaccp",
+      log: {
+        id: newId(),
+        date: new Date().toISOString(),
+        type: "delivery",
+        location: wareneingang?.name ?? "Wareneingang",
+        temperature: undefined,
+        note: state.locale === "de"
+          ? `Wareneingang von ${order.supplierName}`
+          : `Goods received from ${order.supplierName}`,
+        ok: true,
+        source: "auto-delivery",
+        ...author,
+      },
+    });
+  };
+
   const drafts = state.orders.filter((o) => o.status === "draft");
   const sent = state.orders.filter((o) => o.status !== "draft");
 
@@ -120,6 +151,7 @@ export default function Orders() {
                 order={o}
                 locale={state.locale}
                 onSend={() => send(o)}
+                onReceive={() => receive(o)}
                 onDelete={() => remove(o.id)}
               />
             ))}
@@ -135,6 +167,7 @@ export default function Orders() {
                 order={o}
                 locale={state.locale}
                 onSend={() => send(o)}
+                onReceive={() => receive(o)}
                 onDelete={() => remove(o.id)}
               />
             ))}
@@ -149,11 +182,13 @@ function OrderCard({
   order,
   locale,
   onSend,
+  onReceive,
   onDelete,
 }: {
   order: OrderDraft;
   locale: Locale;
   onSend: () => void;
+  onReceive: () => void;
   onDelete: () => void;
 }) {
   const c = useColors();
@@ -176,8 +211,17 @@ function OrderCard({
           {order.supplierName}
         </Text>
         <Badge
-          label={order.status}
-          tone={order.status === "draft" ? "warning" : order.status === "sent" ? "success" : "default"}
+          label={
+            order.status === "received"
+              ? (locale === "de" ? "empfangen" : "received")
+              : order.status
+          }
+          tone={
+            order.status === "draft"    ? "warning"
+            : order.status === "sent"   ? "success"
+            : order.status === "received" ? "default"
+            : "default"
+          }
         />
       </View>
       {order.notes ? (
@@ -231,11 +275,18 @@ function OrderCard({
           €{total.toFixed(2)}
         </Text>
       </View>
-      <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+      <View style={{ flexDirection: "row", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
         {order.status === "draft" ? (
-          <Button label={t("sendEmail")} icon="mail" onPress={onSend} style={{ flex: 1 }} />
+          <Button label={t("sendEmail")} icon="mail" onPress={onSend} style={{ flexGrow: 1, flexBasis: 120 }} />
+        ) : order.status === "sent" ? (
+          <Button
+            label={locale === "de" ? "Wareneingang bestätigen" : "Confirm receipt"}
+            icon="check-circle"
+            onPress={onReceive}
+            style={{ flexGrow: 1, flexBasis: 120 }}
+          />
         ) : (
-          <Button label={t("sendEmail")} icon="mail" variant="secondary" onPress={onSend} style={{ flex: 1 }} />
+          <Button label={t("sendEmail")} icon="mail" variant="secondary" onPress={onSend} style={{ flexGrow: 1, flexBasis: 120 }} />
         )}
         <Button label={t("pdfExport")} icon="share-2" variant="ghost" onPress={exportPdf} />
         <Pressable

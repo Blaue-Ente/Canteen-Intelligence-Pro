@@ -134,6 +134,10 @@ export default function Procurement() {
         ...author,
       };
       dispatch({ type: "addOrder", order });
+      // T013c: the auto "delivery" HACCP entry is created when goods are
+      // physically received (orders.tsx → "Wareneingang bestätigen"), NOT at
+      // draft time. Creating it here would log compliance for goods that may
+      // never arrive, which violates LMHV intent.
       count++;
     }
     if (count === 0) {

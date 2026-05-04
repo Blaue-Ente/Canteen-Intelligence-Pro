@@ -9,10 +9,11 @@ import { Button, Card, Chip, Row, SectionHeader } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useAuthCtx } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { useSubscription } from "@/hooks/useSubscription";
 import { ensurePermissions, rescheduleAll } from "@/lib/notifications";
 import { resetState } from "@/lib/storage";
 import { speakHQ, prewarmTtsCache } from "@/lib/voice";
-import type { KiosVoice } from "@/types";
+import type { KiosVoice, SubscriptionAddons, SubscriptionTier } from "@/types";
 
 const KIOS_VOICES: { id: KiosVoice; labelDe: string; labelEn: string; descDe: string; descEn: string }[] = [
   { id: "sarah",     labelDe: "Sarah",     labelEn: "Sarah",     descDe: "Warm, weiblich (Standard)", descEn: "Warm, female (default)" },
@@ -198,6 +199,9 @@ export default function Settings() {
             </Text>
           </View>
         </Card>
+
+        {/* T013a: Subscription tier + paid add-ons */}
+        <SubscriptionCard />
 
         {/* T011: TSE / KassenSichV configuration — Voll-Modus only */}
         {state.appMode === "full" && (
@@ -598,6 +602,123 @@ export default function Settings() {
 }
 
 // ── T011: TSE / KassenSichV editor (Voll-Modus) ─────────────────────────────
+// ─── T013a: Subscription card ───────────────────────────────────────────────
+
+const TIERS: { id: SubscriptionTier; price: string; label: string; perks: string }[] = [
+  { id: "starter",      price: "€49/Monat",  label: "Starter",      perks: "1 Standort, Basis-HACCP, Menüplanung" },
+  { id: "professional", price: "€129/Monat", label: "Professional", perks: "+ Auto-HACCP, Rückstellproben, PDF-Export" },
+  { id: "enterprise",   price: "€349/Monat", label: "Enterprise",   perks: "+ Mehrfachstandort, API, Priority-Support" },
+];
+
+const ADDONS: { id: keyof SubscriptionAddons; label: string; price: string; description: string }[] = [
+  { id: "bleThermometers", label: "Bluetooth-Thermometer", price: "+€19/Monat",
+    description: "Live-Streaming von Inkbird/Thermapen direkt in HACCP." },
+  { id: "multiSite",       label: "Mehrfachstandort-Reports", price: "+€29/Monat",
+    description: "Konsolidierte Auswertungen über alle Filialen." },
+  { id: "advancedAi",      label: "Erweiterte KI",  price: "+€39/Monat",
+    description: "Plate-Photo-Vision + automatische Preislisten-Erkennung." },
+];
+
+function SubscriptionCard() {
+  const c = useColors();
+  const { state } = useApp();
+  const { tier, addons, hasAddon, toggleAddon, setTier } = useSubscription();
+  const isDe = state.locale === "de";
+  return (
+    <Card>
+      <SectionHeader title={isDe ? "Abonnement & Add-ons" : "Subscription & add-ons"} />
+      <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, marginBottom: 12 }}>
+        {isDe
+          ? "Wähle deinen Plan und schalte zusätzliche Module einzeln frei."
+          : "Pick your plan and enable extra modules à la carte."}
+      </Text>
+
+      {/* Tier picker */}
+      <View style={{ gap: 8, marginBottom: 14 }}>
+        {TIERS.map((t) => {
+          const active = tier === t.id;
+          return (
+            <Pressable
+              key={t.id}
+              onPress={() => setTier(t.id)}
+              style={{
+                borderWidth: 1,
+                borderColor: active ? c.primary : c.border,
+                backgroundColor: active ? c.accent : c.card,
+                borderRadius: c.radius,
+                padding: 12,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              <View
+                style={{
+                  width: 18, height: 18, borderRadius: 9,
+                  borderWidth: 2, borderColor: active ? c.primary : c.border,
+                  alignItems: "center", justifyContent: "center",
+                }}
+              >
+                {active ? <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c.primary }} /> : null}
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 14 }}>{t.label}</Text>
+                  <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 12 }}>{t.price}</Text>
+                </View>
+                <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 2 }}>
+                  {t.perks}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {/* Addons */}
+      <Text style={{ color: c.foreground, fontFamily: "Inter_600SemiBold", fontSize: 13, marginBottom: 8 }}>
+        {isDe ? "Zusatzmodule" : "Add-on modules"}
+      </Text>
+      {ADDONS.map((a) => {
+        const on = hasAddon(a.id);
+        return (
+          <View
+            key={a.id}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 12,
+              paddingVertical: 10,
+              borderTopWidth: 1,
+              borderColor: c.border,
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Text style={{ color: c.foreground, fontFamily: "Inter_600SemiBold", fontSize: 14 }}>{a.label}</Text>
+                <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: on ? c.success + "22" : c.muted }}>
+                  <Text style={{ color: on ? c.success : c.mutedForeground, fontFamily: "Inter_600SemiBold", fontSize: 10 }}>
+                    {a.price}
+                  </Text>
+                </View>
+              </View>
+              <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 2 }}>
+                {a.description}
+              </Text>
+            </View>
+            <Switch value={on} onValueChange={(v) => toggleAddon(a.id, v)} />
+          </View>
+        );
+      })}
+      {/* Quick reference reflecting persisted state */}
+      <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 11, marginTop: 10 }}>
+        {isDe ? "Aktiv: " : "Active: "}
+        {Object.entries(addons).filter(([, v]) => v).map(([k]) => k).join(", ") || (isDe ? "keine" : "none")}
+      </Text>
+    </Card>
+  );
+}
+
 function TseConfigEditor() {
   const { state, dispatch } = useApp();
   const c = useColors();

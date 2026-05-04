@@ -6,7 +6,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Badge, Button, Card, EmptyState, Field, SectionHeader, Stat } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
+import { useAuthor } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { buildSamplesForBatch } from "@/lib/foodSamples";
 import { sharePdf } from "@/lib/pdf";
 import {
   buildProductionPlan,
@@ -26,7 +28,8 @@ function todayKey() {
 }
 
 export default function ProductionScreen() {
-  const { state } = useApp();
+  const { state, dispatch, newId } = useApp();
+  const author = useAuthor();
   const t = useT();
   const c = useColors();
   const router = useRouter();
@@ -36,6 +39,7 @@ export default function ProductionScreen() {
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [done, setDone] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
+  const [savedBatchId, setSavedBatchId] = useState<string | null>(null);
 
   const menu = state.menu.find((m) => m.date === date);
 
@@ -55,6 +59,64 @@ export default function ProductionScreen() {
 
   const totalLines = plan.flat.reduce((s, b) => s + b.ingredients.length, 0);
   const doneCount = Object.values(done).filter(Boolean).length;
+
+  /**
+   * T013c+T013d — "Produktion abschließen" button:
+   *   1. Auto-create one HACCP cooking entry per planned recipe (≥65 °C hot-keep
+   *      target per LMHV §3, marked source="auto-production").
+   *   2. Auto-create one Rückstellprobe (100 g) per planned recipe with 7-day
+   *      retention (LMHV §11 Abs. 3) — pending=true, staff confirms physically.
+   * No-op if no portions are planned.
+   */
+  const finalizeBatch = () => {
+    if (plan.totalPortions === 0) return;
+    const batchId = `batch-${date}-${Date.now()}`;
+    const heisshaltung = state.storageLocations.find((s) => s.category === "kitchen");
+
+    // 1) HACCP cooking entries — one per recipe in the batch.
+    for (const b of plan.flat) {
+      dispatch({
+        type: "addHaccp",
+        log: {
+          id: newId(),
+          date: new Date().toISOString(),
+          type: "cooking",
+          location: heisshaltung?.name ?? "Küche",
+          temperature: 75, // legal hot-keep target ≥ 65 °C; 75 is the safe default
+          note: state.locale === "de"
+            ? `Auto-Erfassung: ${b.recipe.nameDe} (${b.plannedCount} Portionen)`
+            : `Auto-captured: ${b.recipe.name} (${b.plannedCount} portions)`,
+          ok: true,
+          source: "auto-production",
+          ...author,
+        },
+      });
+    }
+
+    // 2) Rückstellproben (one per recipe).
+    const batchMap: Record<string, number> = {};
+    for (const b of plan.flat) batchMap[b.recipe.id] = b.plannedCount;
+    const samples = buildSamplesForBatch({
+      recipes: state.recipes,
+      batch: batchMap,
+      batchId,
+      storageLocations: state.storageLocations,
+      sampleStorageLocationId: state.sampleStorageLocationId,
+      newId,
+      source: "auto-production",
+    }).map((s) => ({ ...s, ...author }));
+    if (samples.length > 0) {
+      dispatch({ type: "addFoodSamples", samples });
+    }
+
+    setSavedBatchId(batchId);
+    Alert.alert(
+      state.locale === "de" ? "Produktion erfasst" : "Production saved",
+      state.locale === "de"
+        ? `${plan.flat.length} HACCP-Einträge + ${samples.length} Rückstellproben erstellt.`
+        : `${plan.flat.length} HACCP entries + ${samples.length} retention samples created.`,
+    );
+  };
 
   const exportPdf = async () => {
     if (plan.totalPortions === 0) {
@@ -120,6 +182,31 @@ export default function ProductionScreen() {
           <Feather name="printer" size={14} color={c.primaryForeground} />
           <Text style={{ color: c.primaryForeground, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
             PDF
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={finalizeBatch}
+          disabled={plan.totalPortions === 0 || savedBatchId !== null}
+          style={({ pressed }) => [
+            {
+              backgroundColor: c.success,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              borderRadius: 10,
+              opacity: plan.totalPortions === 0 || savedBatchId !== null ? 0.5 : 1,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              marginLeft: 8,
+            },
+            pressed && { opacity: 0.7 },
+          ]}
+        >
+          <Feather name={savedBatchId ? "check" : "save"} size={14} color={c.primaryForeground} />
+          <Text style={{ color: c.primaryForeground, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
+            {savedBatchId
+              ? (state.locale === "de" ? "Erfasst" : "Saved")
+              : (state.locale === "de" ? "Speichern" : "Save")}
           </Text>
         </Pressable>
       </View>

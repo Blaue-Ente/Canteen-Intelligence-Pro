@@ -3,13 +3,32 @@ import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 
+import { RequiresAddon } from "@/components/RequiresAddon";
 import { Badge, Button, Card, Chip, EmptyState, Field, SectionHeader } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useAuthor } from "@/contexts/AuthContext";
+import { useBleThermometer } from "@/hooks/useBleThermometer";
 import { useColors } from "@/hooks/useColors";
+import { useSubscription } from "@/hooks/useSubscription";
+import { buildHaccpSuggestions } from "@/lib/haccpAutosuggest";
+import { pendingToday } from "@/lib/foodSamples";
 import { inspectionPdfHtml } from "@/lib/inspectionPdf";
 import { sharePdf } from "@/lib/pdf";
-import type { HaccpLog, StorageLocation, StorageLocationCategory } from "@/types";
+import type { FoodSample, HaccpLog, HaccpSuggestion, StorageLocation, StorageLocationCategory } from "@/types";
+
+type SourceFilter = "all" | "auto" | "manual";
+
+/** Human label + tone for the provenance badge. */
+function sourceMeta(s: HaccpLog["source"]): { label: string; tone: "default" | "success" | "warning" | "destructive" } {
+  switch (s) {
+    case "auto-suggest":    return { label: "Auto-Vorschlag", tone: "success" };
+    case "auto-production": return { label: "Aus Produktion",  tone: "success" };
+    case "auto-delivery":   return { label: "Aus Bestellung",  tone: "success" };
+    case "ble":             return { label: "Bluetooth",       tone: "warning" };
+    case "manual":
+    default:                return { label: "Manuell",         tone: "default" };
+  }
+}
 
 const TYPES: HaccpLog["type"][] = ["fridge", "freezer", "delivery", "cleaning", "cooking"];
 
@@ -67,6 +86,34 @@ export default function Haccp() {
   const [temp, setTemp] = useState("");
   const [note, setNote] = useState("");
   const author = useAuthor();
+
+  // T013b — auto-suggestions, recomputed every render from history + storage targets.
+  const suggestions = useMemo(
+    () => buildHaccpSuggestions({ storageLocations: state.storageLocations, haccp: state.haccp }),
+    [state.storageLocations, state.haccp],
+  );
+  // Per-suggestion local edit state: { [suggestionId]: { mode, value, comment } }
+  const [editing, setEditing] = useState<Record<string, { mode: "deviation" | "corrective"; value: string; comment: string }>>({});
+
+  // T013d — pending Rückstellproben for today.
+  const samplesPending = useMemo(() => pendingToday(state.foodSamples), [state.foodSamples]);
+  const samplesAll = useMemo(
+    () => state.foodSamples.slice().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 24),
+    [state.foodSamples],
+  );
+
+  // T013e — BLE thermometer (paid add-on; gated below by RequiresAddon).
+  const { hasAddon } = useSubscription();
+  const [bleSelectedId, setBleSelectedId] = useState<string | undefined>(undefined);
+  const ble = useBleThermometer({ deviceId: bleSelectedId, enabled: hasAddon("bleThermometers") });
+
+  // T013c — history filter by source.
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
+  const filteredHistory = useMemo(() => {
+    if (sourceFilter === "all") return state.haccp;
+    if (sourceFilter === "manual") return state.haccp.filter((h) => !h.source || h.source === "manual");
+    return state.haccp.filter((h) => h.source && h.source !== "manual");
+  }, [state.haccp, sourceFilter]);
 
   // Add-storage modal state
   const [showAddStorage, setShowAddStorage] = useState(false);
@@ -165,6 +212,111 @@ export default function Haccp() {
     setShowAddStorage(false);
     setNewName("");
     setNewTemp("");
+  };
+
+  /**
+   * T013b — confirm a suggestion as-is. Creates an HaccpLog with
+   * source="auto-suggest" + the predicted temperature.
+   */
+  const confirmSuggestion = (s: HaccpSuggestion) => {
+    const ok = (() => {
+      if (s.legalMax !== undefined && s.suggestedTemp > s.legalMax) return false;
+      if (s.legalMin !== undefined && s.suggestedTemp < s.legalMin) return false;
+      return true;
+    })();
+    dispatch({
+      type: "addHaccp",
+      log: {
+        id: newId(),
+        date: new Date().toISOString(),
+        type: s.type,
+        location: s.locationName,
+        temperature: s.suggestedTemp,
+        ok,
+        source: "auto-suggest",
+        suggestionId: s.id,
+        ...author,
+      },
+    });
+  };
+
+  /**
+   * T013b — confirm a suggestion with a deviating temperature value.
+   * Optionally a corrective-action note.
+   */
+  const confirmDeviation = (s: HaccpSuggestion) => {
+    const e = editing[s.id];
+    if (!e) return;
+    const n = Number(e.value.replace(",", "."));
+    if (Number.isNaN(n)) {
+      Alert.alert("Ungültiger Wert", "Bitte gib eine Zahl ein.");
+      return;
+    }
+    const ok = (() => {
+      if (s.legalMax !== undefined && n > s.legalMax) return false;
+      if (s.legalMin !== undefined && n < s.legalMin) return false;
+      return true;
+    })();
+    dispatch({
+      type: "addHaccp",
+      log: {
+        id: newId(),
+        date: new Date().toISOString(),
+        type: s.type,
+        location: s.locationName,
+        temperature: n,
+        note: e.comment || undefined,
+        correctiveAction: !ok && e.comment ? e.comment : undefined,
+        ok,
+        source: "auto-suggest",
+        suggestionId: s.id,
+        ...author,
+      },
+    });
+    setEditing((p) => {
+      const next = { ...p };
+      delete next[s.id];
+      return next;
+    });
+  };
+
+  /** T013d — mark a Rückstellprobe as physically taken. */
+  const markSampleTaken = (sample: FoodSample) => {
+    dispatch({
+      type: "updateFoodSample",
+      sample: {
+        ...sample,
+        taken: true,
+        takenAt: new Date().toISOString(),
+        takenBy: author.createdBy,
+      },
+    });
+  };
+
+  /**
+   * T013e — when BLE is reading and a value is stable inside the legal range,
+   * staff can promote it directly into a real HaccpLog with source="ble".
+   */
+  const captureBleReading = () => {
+    if (!ble.reading) return;
+    const dev = ble.devices.find((d) => d.id === ble.reading?.deviceId);
+    const looksHot = ble.reading.temperature >= 50;
+    const okType: HaccpLog["type"] = looksHot ? "cooking" : "fridge";
+    const ok = looksHot ? ble.reading.temperature >= 65 : ble.reading.temperature <= 7;
+    dispatch({
+      type: "addHaccp",
+      log: {
+        id: newId(),
+        date: new Date().toISOString(),
+        type: okType,
+        location: dev?.name ?? "Bluetooth-Sonde",
+        temperature: ble.reading.temperature,
+        note: `Live-Messung: ${dev?.name ?? "BLE"}`,
+        ok,
+        source: "ble",
+        ...author,
+      },
+    });
   };
 
   const removeStorage = (id: string) => {
@@ -274,6 +426,285 @@ export default function Haccp() {
             </View>
           ) : null}
         </Card>
+
+        {/* ─── T013b: Auto-suggestions — "Heute zu bestätigen" ─── */}
+        {suggestions.length > 0 ? (
+          <Card>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <View
+                style={{
+                  width: 36, height: 36, borderRadius: 10,
+                  backgroundColor: c.primary, alignItems: "center", justifyContent: "center",
+                }}
+              >
+                <Feather name="zap" size={16} color={c.primaryForeground} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 15 }}>
+                  {isDe ? "Heute zu bestätigen" : "To confirm today"}
+                </Text>
+                <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12 }}>
+                  {isDe
+                    ? `${suggestions.length} automatische Vorschläge — ein Tap zum Bestätigen.`
+                    : `${suggestions.length} automatic suggestions — one tap to confirm.`}
+                </Text>
+              </View>
+            </View>
+            <View style={{ gap: 10 }}>
+              {suggestions.map((s) => {
+                const e = editing[s.id];
+                return (
+                  <View
+                    key={s.id}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: c.border,
+                      borderRadius: c.radius,
+                      padding: 12,
+                      gap: 8,
+                      backgroundColor: c.muted,
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: c.foreground, fontFamily: "Inter_600SemiBold", fontSize: 14 }}>
+                          {s.locationName}
+                        </Text>
+                        <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 2 }}>
+                          {s.slot} · {s.reason}
+                        </Text>
+                      </View>
+                      <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: c.card, borderWidth: 1, borderColor: c.border }}>
+                        <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 16 }}>
+                          {s.suggestedTemp}°C
+                        </Text>
+                      </View>
+                    </View>
+                    {e ? (
+                      <View style={{ gap: 8 }}>
+                        <Field
+                          label={isDe ? "Tatsächlicher Wert (°C)" : "Actual value (°C)"}
+                          value={e.value}
+                          onChangeText={(v) => setEditing((p) => ({ ...p, [s.id]: { ...e, value: v } }))}
+                          keyboardType="numeric"
+                          placeholder={String(s.suggestedTemp)}
+                        />
+                        <Field
+                          label={isDe ? "Maßnahme / Notiz" : "Action / note"}
+                          value={e.comment}
+                          onChangeText={(v) => setEditing((p) => ({ ...p, [s.id]: { ...e, comment: v } }))}
+                          placeholder={isDe ? "z.B. Tür war offen, sofort geschlossen" : "e.g. door was open, closed immediately"}
+                          multiline
+                        />
+                        <View style={{ flexDirection: "row", gap: 8 }}>
+                          <Button
+                            label={isDe ? "Abbrechen" : "Cancel"}
+                            variant="ghost"
+                            onPress={() => setEditing((p) => { const n = { ...p }; delete n[s.id]; return n; })}
+                            style={{ flex: 1 }}
+                          />
+                          <Button label={isDe ? "Speichern" : "Save"} icon="check" onPress={() => confirmDeviation(s)} style={{ flex: 1 }} />
+                        </View>
+                      </View>
+                    ) : (
+                      <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+                        <Button
+                          label={isDe ? "Bestätigen" : "Confirm"}
+                          icon="check"
+                          onPress={() => confirmSuggestion(s)}
+                          style={{ flexGrow: 1, flexBasis: 100 }}
+                        />
+                        <Button
+                          label={isDe ? "Abweichend" : "Deviating"}
+                          icon="edit-3"
+                          variant="secondary"
+                          onPress={() => setEditing((p) => ({ ...p, [s.id]: { mode: "deviation", value: String(s.suggestedTemp), comment: "" } }))}
+                          style={{ flexGrow: 1, flexBasis: 100 }}
+                        />
+                        <Button
+                          label={isDe ? "Maßnahme" : "Action"}
+                          icon="alert-triangle"
+                          variant="secondary"
+                          onPress={() => setEditing((p) => ({ ...p, [s.id]: { mode: "corrective", value: String(s.suggestedTemp), comment: "" } }))}
+                          style={{ flexGrow: 1, flexBasis: 100 }}
+                        />
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          </Card>
+        ) : null}
+
+        {/* ─── T013d: Rückstellproben (food retention samples) ─── */}
+        {(samplesPending.length > 0 || samplesAll.length > 0) ? (
+          <Card style={{ padding: 0 }}>
+            <View style={{ padding: 16, paddingBottom: 8, flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: c.accent, alignItems: "center", justifyContent: "center" }}>
+                <Feather name="archive" size={16} color={c.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 15 }}>
+                  {isDe ? "Rückstellproben" : "Retention samples"}
+                </Text>
+                <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12 }}>
+                  {isDe
+                    ? `${samplesPending.length} heute zu nehmen · LMHV §11 (7 Tage)`
+                    : `${samplesPending.length} to take today · LMHV §11 (7 days)`}
+                </Text>
+              </View>
+              {state.foodSamples.length > 0 ? (
+                <Pressable onPress={() => dispatch({ type: "purgeExpiredFoodSamples" })}>
+                  <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 12 }}>
+                    {isDe ? "Aufräumen" : "Cleanup"}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+            {samplesAll.length === 0 ? (
+              <EmptyState icon="archive" title={isDe ? "Noch keine Proben" : "No samples yet"} />
+            ) : (
+              samplesAll.map((s, i, arr) => {
+                const daysLeft = Math.max(0, Math.ceil((new Date(s.retentionUntil).getTime() - Date.now()) / 86_400_000));
+                return (
+                  <View
+                    key={s.id}
+                    style={{
+                      paddingHorizontal: 16,
+                      paddingVertical: 12,
+                      borderTopWidth: 1,
+                      borderColor: c.border,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 12,
+                      ...(i === arr.length - 1 ? { borderBottomLeftRadius: c.radius, borderBottomRightRadius: c.radius } : {}),
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 36, height: 36, borderRadius: 10,
+                        backgroundColor: s.taken ? c.success + "22" : c.muted,
+                        alignItems: "center", justifyContent: "center",
+                      }}
+                    >
+                      <Feather name={s.taken ? "check" : "clock"} size={16} color={s.taken ? c.success : c.mutedForeground} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: c.foreground, fontFamily: "Inter_600SemiBold", fontSize: 14 }}>
+                        {s.recipeName} · {s.amountGrams}g
+                      </Text>
+                      <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 2 }}>
+                        {s.storageLocationName ?? "—"} · {isDe ? `Aufbewahrung bis ${s.retentionUntil}` : `Keep until ${s.retentionUntil}`}
+                      </Text>
+                    </View>
+                    {s.taken ? (
+                      <Badge label={`${daysLeft} ${isDe ? "Tage" : "d"}`} tone={daysLeft > 0 ? "success" : "destructive"} />
+                    ) : (
+                      <Button
+                        label={isDe ? "Genommen" : "Taken"}
+                        icon="check"
+                        onPress={() => markSampleTaken(s)}
+                      />
+                    )}
+                  </View>
+                );
+              })
+            )}
+          </Card>
+        ) : null}
+
+        {/* ─── T013e: BLE thermometer (paid add-on) ─── */}
+        <RequiresAddon
+          name="bleThermometers"
+          title={isDe ? "Bluetooth-Thermometer" : "Bluetooth thermometer"}
+          description={
+            isDe
+              ? "Live-Temperaturen von Inkbird/Thermapen direkt in HACCP — keine Tipparbeit mehr."
+              : "Live temperatures from Inkbird/Thermapen directly in HACCP — zero typing."
+          }
+          priceLabel="+€19/Monat"
+        >
+          <Card>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: c.accent, alignItems: "center", justifyContent: "center" }}>
+                <Feather name="bluetooth" size={16} color={c.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 15 }}>
+                  {isDe ? "Live-Thermometer" : "Live thermometer"}
+                </Text>
+                <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12 }}>
+                  {ble.isMock
+                    ? (isDe ? "Demo-Modus — echte BLE-Geräte nach Custom Build verfügbar" : "Demo mode — real BLE devices after custom build")
+                    : (isDe ? "Echtgerät verbunden" : "Real device connected")}
+                </Text>
+              </View>
+              <Button
+                label={ble.scanning ? (isDe ? "Suche…" : "Scanning…") : (isDe ? "Geräte suchen" : "Scan")}
+                icon="refresh-cw"
+                variant="secondary"
+                onPress={() => void ble.scan()}
+              />
+            </View>
+            {ble.devices.length > 0 ? (
+              <View style={{ gap: 6, marginBottom: 10 }}>
+                {ble.devices.map((d) => (
+                  <Pressable
+                    key={d.id}
+                    onPress={() => setBleSelectedId(d.id === bleSelectedId ? undefined : d.id)}
+                    style={{
+                      padding: 10,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: d.id === bleSelectedId ? c.primary : c.border,
+                      backgroundColor: d.id === bleSelectedId ? c.accent : c.card,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 10,
+                    }}
+                  >
+                    <Feather name="thermometer" size={16} color={c.primary} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: c.foreground, fontFamily: "Inter_600SemiBold", fontSize: 14 }}>{d.name}</Text>
+                      <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12 }}>
+                        {d.kind === "dual" ? "2-Kanal" : "1-Kanal"}{d.battery !== undefined ? ` · ${d.battery}%` : ""}
+                      </Text>
+                    </View>
+                    {d.id === bleSelectedId ? (
+                      <Badge label={isDe ? "Verbunden" : "Connected"} tone="success" />
+                    ) : null}
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+            {bleSelectedId && ble.reading ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: 12,
+                  borderRadius: c.radius,
+                  backgroundColor: c.muted,
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 11 }}>
+                    {isDe ? "Aktuelle Messung" : "Current reading"}
+                  </Text>
+                  <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 28, marginTop: 4 }}>
+                    {ble.reading.temperature}°C
+                  </Text>
+                  <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 11, marginTop: 2 }}>
+                    {new Date(ble.reading.at).toLocaleTimeString()}
+                  </Text>
+                </View>
+                <Button label={isDe ? "Erfassen" : "Capture"} icon="save" onPress={captureBleReading} />
+              </View>
+            ) : null}
+          </Card>
+        </RequiresAddon>
 
         <Card>
           <SectionHeader title={t("addLog")} />
@@ -392,52 +823,68 @@ export default function Haccp() {
         <Card style={{ padding: 0 }}>
           <View style={{ padding: 16, paddingBottom: 8 }}>
             <SectionHeader title={t("history")} />
+            <View style={{ flexDirection: "row", gap: 6, marginTop: 6 }}>
+              <Chip label={isDe ? "Alle" : "All"}              active={sourceFilter === "all"}    onPress={() => setSourceFilter("all")} />
+              <Chip label={isDe ? "Nur automatisch" : "Auto only"} active={sourceFilter === "auto"}   onPress={() => setSourceFilter("auto")} />
+              <Chip label={isDe ? "Nur manuell" : "Manual only"}   active={sourceFilter === "manual"} onPress={() => setSourceFilter("manual")} />
+            </View>
           </View>
-          {state.haccp.length === 0 ? (
+          {filteredHistory.length === 0 ? (
             <EmptyState icon="thermometer" title={t("empty")} />
           ) : (
-            state.haccp.slice(0, 12).map((log, i, arr) => (
-              <View
-                key={log.id}
-                style={{
-                  paddingHorizontal: 16,
-                  paddingVertical: 12,
-                  borderBottomWidth: i < arr.length - 1 ? 1 : 0,
-                  borderColor: c.border,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 12,
-                }}
-              >
+            filteredHistory.slice(0, 12).map((log, i, arr) => {
+              const meta = sourceMeta(log.source);
+              return (
                 <View
+                  key={log.id}
                   style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 10,
-                    backgroundColor: log.ok ? c.success + "22" : c.destructive + "22",
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                    borderBottomWidth: i < arr.length - 1 ? 1 : 0,
+                    borderColor: c.border,
+                    flexDirection: "row",
                     alignItems: "center",
-                    justifyContent: "center",
+                    gap: 12,
                   }}
                 >
-                  <Feather
-                    name={log.ok ? "check" : "alert-triangle"}
-                    size={16}
-                    color={log.ok ? c.success : c.destructive}
-                  />
+                  <View
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 10,
+                      backgroundColor: log.ok ? c.success + "22" : c.destructive + "22",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Feather
+                      name={log.ok ? "check" : "alert-triangle"}
+                      size={16}
+                      color={log.ok ? c.success : c.destructive}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: c.foreground, fontFamily: "Inter_600SemiBold", fontSize: 14 }}>
+                      {log.location} · {catLabel(TYPE_TO_CATEGORY[log.type])}
+                    </Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
+                      <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12 }}>
+                        {new Date(log.date).toLocaleString()}
+                      </Text>
+                      <Badge label={meta.label} tone={meta.tone} />
+                    </View>
+                    {log.correctiveAction ? (
+                      <Text style={{ color: c.destructive, fontFamily: "Inter_500Medium", fontSize: 11, marginTop: 4 }}>
+                        ⚠ {log.correctiveAction}
+                      </Text>
+                    ) : null}
+                  </View>
+                  {log.temperature !== undefined ? (
+                    <Badge label={`${log.temperature}°C`} tone={log.ok ? "success" : "destructive"} />
+                  ) : null}
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: c.foreground, fontFamily: "Inter_600SemiBold", fontSize: 14 }}>
-                    {log.location} · {catLabel(TYPE_TO_CATEGORY[log.type])}
-                  </Text>
-                  <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 2 }}>
-                    {new Date(log.date).toLocaleString()}
-                  </Text>
-                </View>
-                {log.temperature !== undefined ? (
-                  <Badge label={`${log.temperature}°C`} tone={log.ok ? "success" : "destructive"} />
-                ) : null}
-              </View>
-            ))
+              );
+            })
           )}
         </Card>
 

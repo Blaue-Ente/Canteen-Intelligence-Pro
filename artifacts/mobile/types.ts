@@ -142,6 +142,78 @@ export interface HaccpLog extends AuditFields {
   temperature?: number;
   note?: string;
   ok: boolean;
+  /**
+   * T013 — provenance: how this entry was created.
+   * - "manual"           → user typed temp/notes in haccp.tsx
+   * - "auto-suggest"     → confirmed from a HaccpSuggestion (predicted from history)
+   * - "auto-production"  → automatically created when a production batch was saved
+   * - "auto-delivery"    → automatically created when a supplier order was marked received
+   * - "ble"              → captured from a paired Bluetooth thermometer (paid addon)
+   */
+  source?: "manual" | "auto-suggest" | "auto-production" | "auto-delivery" | "ble";
+  /** When the entry is "abweichend" (out of range), document what was done. */
+  correctiveAction?: string;
+  /** Cross-reference back to the HaccpSuggestion that created this entry. */
+  suggestionId?: string;
+}
+
+/**
+ * T013 — Predicted HACCP entry shown to staff for one-tap confirmation.
+ *
+ * Generated client-side every render from `storageLocations` + last 7-day
+ * history. Not persisted: ephemeral UX only. When confirmed, becomes a real
+ * HaccpLog with source="auto-suggest".
+ */
+export interface HaccpSuggestion {
+  /** Stable id derived from locationId + slot (so the UI can dedupe across renders). */
+  id: string;
+  storageLocationId: string;
+  locationName: string;
+  type: HaccpLog["type"];
+  /** Predicted temperature based on target +/- realistic jitter. */
+  suggestedTemp: number;
+  /** Bottom of the legal range — used to pre-mark "ok". */
+  legalMin?: number;
+  /** Top of the legal range — used to pre-mark "ok". */
+  legalMax?: number;
+  /** Time slot label, e.g. "Morgen 09:00" or "Nachmittag 17:00". */
+  slot: string;
+  /** ISO timestamp when this slot is due. */
+  dueAt: string;
+  /** Human-readable reason ("Median der letzten 7 Tage"). */
+  reason: string;
+}
+
+/**
+ * T013 — Rückstellprobe (food retention sample) per LMHV §11 Abs. 3
+ * (mandatory for canteens & catering >150 portions/day in Germany).
+ *
+ * 100 g of every served dish must be retained at ≤ 4 °C for 7 days so a
+ * laboratory can analyse them in case of suspected food-poisoning.
+ */
+export interface FoodSample extends AuditFields {
+  id: string;
+  /** ISO date the sample was *taken* (= production date). */
+  date: string;
+  recipeId: string;
+  recipeName: string;
+  /** Optional cross-reference to the production batch this came from. */
+  batchId?: string;
+  amountGrams: number;
+  /** Storage unit where the sample sits (typ. "Probenkühlschrank"). */
+  storageLocationId?: string;
+  storageLocationName?: string;
+  /** ISO date when this sample may legally be discarded (date + 7 d). */
+  retentionUntil: string;
+  /** Confirmation: physically taken & labelled. False = still pending. */
+  taken: boolean;
+  /** ISO timestamp of physical taking. */
+  takenAt?: string;
+  takenBy?: string;
+  photoUri?: string;
+  note?: string;
+  /** Provenance — auto-created from production / event / manual. */
+  source?: "auto-production" | "auto-event" | "manual";
 }
 
 /**
@@ -496,6 +568,37 @@ export interface AppState {
    *   Sales become legally binding receipts; requires fiskaly TSE setup.
    */
   appMode: AppMode;
+  // ---- T013: HACCP automation + Rückstellproben + Subscription ----
+  /** Rückstellproben — auto-captured from production, 7-day retention. */
+  foodSamples: FoodSample[];
+  /** Subscription tier + paid add-ons (e.g. BLE thermometers). */
+  subscription: Subscription;
+  /**
+   * Optional default storage location used for auto-created Rückstellproben.
+   * If not set, the first "fridge" StorageLocation is used.
+   */
+  sampleStorageLocationId?: string;
+}
+
+// ─── T013a: Subscription tiers ──────────────────────────────────────────────
+
+export type SubscriptionTier = "starter" | "professional" | "enterprise";
+
+/** Paid add-ons billed on top of the base tier. */
+export interface SubscriptionAddons {
+  /** Live Bluetooth thermometer integration (Inkbird, Thermapen). +€19/Monat. */
+  bleThermometers: boolean;
+  /** Multi-site / multi-location consolidation reports. +€29/Monat. */
+  multiSite: boolean;
+  /** Advanced AI: plate-photo waste vision + email price ingest. +€39/Monat. */
+  advancedAi: boolean;
+}
+
+export interface Subscription {
+  tier: SubscriptionTier;
+  addons: SubscriptionAddons;
+  /** ISO date of next renewal (for UI display only — billing handled externally). */
+  renewsAt?: string;
 }
 
 /** Voice options for the Kios assistant. Mapped to ElevenLabs voice IDs server-side. */
