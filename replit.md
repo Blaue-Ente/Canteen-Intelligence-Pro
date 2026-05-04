@@ -112,6 +112,49 @@ See `.local/session_plan.md` for full task breakdown T000-T012.
     `mobile/app/production.tsx` (finalizeBatch), `mobile/app/procurement.tsx`
     (addOrder auto-HACCP), `mobile/app/settings.tsx` (SubscriptionCard).
 
+### T014 — DGE-Qualitätsstandard Compliance Scoring (Public-sector USP)
+Уникален USP за немски публичен сектор (Schul-/Kita-/Krankenhaus-/Senioren-
+Verpflegung). Никой конкурент (Apicbase, Foodics, MarketMan, Choco) няма
+автоматичен DGE scoring. Отваря тръжен сегмент където DGE-сертификация е
+често задължителна.
+- **T014a** Foundation: `DgeStandard` ("schule"|"kita"|"krankenhaus"|"senioren"),
+  `DgeCriterionResult`, `DgeScore` types + `AppState.dgeStandard` + `setDgeStandard`
+  reducer (persisted via pick()). `lib/dge.ts` (~480 lines) с DGE_RULES per
+  standard (Schule: ≥3 wholegrain, ≥5 veg/wk, ≥3 raw/fruit, ≥2 fruit, ≥1 legume,
+  ≥1 sea fish, ≥2 vegetarisch, ≤1 red meat, ≤1 fried; Kita: + daily fruit+dairy,
+  0 fried; Krankenhaus: ≥7 veg/fruit, ≥5 wholegrain, ≤2 red meat; Senioren:
+  soft texture suppe/eintopf ≥3, ≥7 fruit, ≥5 dairy). `classifyRecipe()` чете
+  `recipe.meat`/`category`/`allergens`/`ingredients` (lookup в inventory) и
+  steps text → 11 feature flags (wholeGrain/vegetable/rawVeg/fruit/legume/redMeat/
+  fried/seaFish/vegetarianOrVegan/dairy/softTexture). `scoreMenu({ menu, recipes,
+  inventory, fromDate, toDate, standard, isDe })` пер-day OR-merge → counts distinct
+  days → binary met/not-met → weighted overall 0-100 + recommendations[].
+- **T014b** UI: `app/dge.tsx` (~360 lines) — standard picker chips, 7-day window
+  toggle (this/next), big numerical gauge (зелено ≥80, жълто 60-79, червено <60)
+  с linear bar, criteria breakdown с green/red icon + Badge + counter, auto
+  recommendations list, empty state ако `daysWithMenu===0`, "all met" success
+  card. Floating CTA "als Standard aktivieren" за first-time users. Stack.Screen
+  registered в `_layout.tsx`.
+- **T014c** Entry-points: settings.tsx `DgeStandardCard` (Off + 4 standard chips
+  + Open link); menu.tsx live Badge "DGE 78/100" в planner header (color по score)
+  с tap → /dge — само ако `state.dgeStandard` set; more.tsx нов entry "DGE-
+  Qualitätsstandard" в legalDocs section с award icon + tint #059669.
+- **T014d** PDF certificate: `lib/dgePdf.ts` (`dgeCertificateHtml()`) — full
+  audit-friendly one-pager с brand header, operator + standard + period meta
+  grid, color-coded gauge bar, criteria table (threshold/current/result), ден-
+  по-ден menu breakdown, dual signature block, и DGE disclaimer. Reuse `sharePdf()`
+  от lib/pdf.ts (web → print dialog, native → expo-print + share sheet).
+  Бутон "Zertifikat erstellen (PDF)" в /dge само ако menu е planned.
+- **T014e** Verify: typecheck clean (0 нови грешки, само pre-existing useColors.ts:21);
+  screenshot /dge показва Schulverpflegung 68/100 с 6/9 criteria в действителен
+  state.
+- Files: `mobile/types.ts` (+DgeStandard/DgeCriterionResult/DgeScore + AppState.
+  dgeStandard), `mobile/contexts/AppContext.tsx` (+setDgeStandard), `mobile/lib/
+  dge.ts` (нов, ~480), `mobile/lib/dgePdf.ts` (нов, ~220), `mobile/app/dge.tsx`
+  (нов, ~380), `mobile/app/_layout.tsx` (+Stack.Screen), `mobile/app/settings.tsx`
+  (+DgeStandardCard), `mobile/app/(tabs)/menu.tsx` (+live Badge), `mobile/app/
+  (tabs)/more.tsx` (+DGE entry).
+
 ## System Architecture
 
 KItchenOS is built as a cross-platform Expo app for iOS, Android, and Web, complemented by an Express.js API server.

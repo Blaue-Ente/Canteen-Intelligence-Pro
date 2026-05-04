@@ -125,7 +125,9 @@ type Action =
   | { type: "setKiosVoice"; voice: KiosVoice }
   | { type: "setAppMode"; mode: AppMode }
   | { type: "completeOkoChallenge"; completion: OkoCompletion }
-  | { type: "removeOkoCompletion"; id: string };
+  | { type: "removeOkoCompletion"; id: string }
+  // ---- T014: DGE-Qualitätsstandard ----
+  | { type: "setDgeStandard"; standard: import("@/types").DgeStandard | undefined };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -419,6 +421,8 @@ function reducer(state: AppState, action: Action): AppState {
           completions: state.okoProgress.completions.filter((c) => c.id !== action.id),
         },
       };
+    case "setDgeStandard":
+      return { ...state, dgeStandard: action.standard };
     default:
       return state;
   }
@@ -491,6 +495,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           foodSamples: pick("foodSamples"),
           subscription: pick("subscription"),
           sampleStorageLocationId: pick("sampleStorageLocationId"),
+          // ---- T014 ----
+          dgeStandard: pick("dgeStandard"),
         };
         dispatch({ type: "hydrate", state: merged });
       }

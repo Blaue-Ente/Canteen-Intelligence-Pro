@@ -578,6 +578,71 @@ export interface AppState {
    * If not set, the first "fridge" StorageLocation is used.
    */
   sampleStorageLocationId?: string;
+  // ---- T014: DGE-Qualitätsstandard ----
+  /**
+   * Active DGE-Qualitätsstandard for menu compliance scoring.
+   * undefined → feature off; user must opt in via Settings.
+   * Each value maps to a different rule set (Schule has lots of variety
+   * requirements; Senioren focuses on hydration + protein adequacy; etc.).
+   */
+  dgeStandard?: DgeStandard;
+}
+
+// ─── T014: DGE-Qualitätsstandard ────────────────────────────────────────────
+//
+// Deutsche Gesellschaft für Ernährung publishes binding quality standards
+// for community catering (school, daycare, hospital, senior). Public
+// procurement tenders increasingly require DGE certification — and yet no
+// kitchen SaaS competitor ships automated scoring. KitchenOS does.
+
+/**
+ * Which DGE quality standard a customer is operating against.
+ * Each maps to a different rule set in `lib/dge.ts`.
+ */
+export type DgeStandard = "schule" | "kita" | "krankenhaus" | "senioren";
+
+/**
+ * One scoring criterion against a single DGE rule (e.g. "≥1 sea fish/week").
+ * `current` and `required` are counted across the scoring window (typically
+ * a 7-day plan). `met` is `current >= required` for "≥" rules and
+ * `current <= maxAllowed` for "≤" rules.
+ */
+export interface DgeCriterionResult {
+  /** Stable rule id (used for i18n + recommendations). */
+  id: string;
+  /** German label as shipped (UI also has English fallback in lib/dge.ts). */
+  label: string;
+  /** "min" → at-least, "max" → at-most. */
+  kind: "min" | "max";
+  /** Threshold count over the window. */
+  threshold: number;
+  /** What we measured in the actual menu. */
+  current: number;
+  /** Whether the rule is satisfied. */
+  met: boolean;
+  /** Importance weight (0..1) for overall score weighting. */
+  weight: number;
+}
+
+/**
+ * The full result of scoring a menu plan against a DGE standard.
+ * Cheap to recompute (pure function) — we do NOT persist this.
+ */
+export interface DgeScore {
+  standard: DgeStandard;
+  /** ISO date (inclusive) — first day of the window. */
+  fromDate: string;
+  /** ISO date (inclusive) — last day of the window. */
+  toDate: string;
+  /** Number of menu days covered (typically 7). */
+  daysCount: number;
+  /** Number of days in the window that actually had any planned recipes. */
+  daysWithMenu: number;
+  /** 0..100. Weighted average across criteria, met=1.0 / unmet=0.0. */
+  overall: number;
+  criteria: DgeCriterionResult[];
+  /** Auto-generated, German-localised next-action suggestions. */
+  recommendations: string[];
 }
 
 // ─── T013a: Subscription tiers ──────────────────────────────────────────────

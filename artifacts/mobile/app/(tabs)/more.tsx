@@ -83,7 +83,10 @@ export default function More() {
     },
     {
       title: t("legalDocs"),
-      items: [{ icon: "shield", label: "HACCP & " + t("legalDocs"), to: "/haccp" }],
+      items: [
+        { icon: "shield", label: "HACCP & " + t("legalDocs"), to: "/haccp" },
+        { icon: "award", label: "DGE-Qualitätsstandard", to: "/dge", tint: "#059669" },
+      ],
     },
     {
       title: t("settings"),

@@ -10,6 +10,7 @@ import { useColors } from "@/hooks/useColors";
 import * as ImagePicker from "expo-image-picker";
 
 import { detectIngredientsFromPhoto, generateRecipe, generateWeekMenu } from "@/lib/ai";
+import { next7DayWindow, scoreMenu } from "@/lib/dge";
 import { SEED_RECIPES } from "@/lib/seedRecipes";
 import type { Allergen, DishCategory, DishType, MeatType, Recipe } from "@/types";
 
@@ -228,6 +229,26 @@ export default function Menu() {
             <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 2 }}>
               {selectedDate}
             </Text>
+            {/* T014: live DGE compliance badge — only shown when standard active. */}
+            {state.dgeStandard ? (() => {
+              const w = next7DayWindow();
+              const sc = scoreMenu({
+                menu: state.menu,
+                recipes: state.recipes,
+                inventory: state.inventory,
+                fromDate: w.fromDate,
+                toDate: w.toDate,
+                standard: state.dgeStandard!,
+                isDe: state.locale === "de",
+                locationId: state.currentLocationId,
+              });
+              const tone = sc.overall >= 80 ? "success" : sc.overall >= 60 ? "warning" : "destructive";
+              return (
+                <Pressable onPress={() => router.push("/dge")} style={{ marginTop: 6 }}>
+                  <Badge tone={tone} label={`DGE ${sc.overall}/100`} />
+                </Pressable>
+              );
+            })() : null}
           </View>
           <View style={{ flexDirection: "row", gap: 8 }}>
             <Pressable

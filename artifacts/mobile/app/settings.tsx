@@ -10,10 +10,11 @@ import { useApp, useT } from "@/contexts/AppContext";
 import { useAuthCtx } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { useSubscription } from "@/hooks/useSubscription";
+import { dgeStandardLabel } from "@/lib/dge";
 import { ensurePermissions, rescheduleAll } from "@/lib/notifications";
 import { resetState } from "@/lib/storage";
 import { speakHQ, prewarmTtsCache } from "@/lib/voice";
-import type { KiosVoice, SubscriptionAddons, SubscriptionTier } from "@/types";
+import type { DgeStandard, KiosVoice, SubscriptionAddons, SubscriptionTier } from "@/types";
 
 const KIOS_VOICES: { id: KiosVoice; labelDe: string; labelEn: string; descDe: string; descEn: string }[] = [
   { id: "sarah",     labelDe: "Sarah",     labelEn: "Sarah",     descDe: "Warm, weiblich (Standard)", descEn: "Warm, female (default)" },
@@ -199,6 +200,9 @@ export default function Settings() {
             </Text>
           </View>
         </Card>
+
+        {/* T014: DGE-Qualitätsstandard picker (school / daycare / hospital / senior) */}
+        <DgeStandardCard />
 
         {/* T013a: Subscription tier + paid add-ons */}
         <SubscriptionCard />
@@ -787,5 +791,48 @@ function TseConfigEditor() {
       <Button label={isDe ? "Speichern" : "Save"} icon="save" variant="secondary" onPress={save} />
       <Button label={isDe ? "Kasse öffnen" : "Open cash register"} icon="credit-card" onPress={() => {/* router.push happens via QuickAction */}} />
     </View>
+  );
+}
+
+// ─── T014: DGE-Qualitätsstandard picker card ────────────────────────────────
+//
+// Public-sector USP. School/daycare/hospital/senior canteens often must
+// score against the DGE-Qualitätsstandard. Picking a standard here switches
+// the rule set used by /dge and surfaces a live badge on the weekly menu.
+function DgeStandardCard() {
+  const { state, dispatch } = useApp();
+  const c = useColors();
+  const router = useRouter();
+  const isDe = state.locale === "de";
+  const STANDARDS: DgeStandard[] = ["schule", "kita", "krankenhaus", "senioren"];
+  const active = state.dgeStandard;
+  return (
+    <Card>
+      <SectionHeader
+        title="DGE-Qualitätsstandard"
+        action={isDe ? "Öffnen" : "Open"}
+        onAction={() => router.push("/dge")}
+      />
+      <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, marginBottom: 10 }}>
+        {isDe
+          ? "Automatische Bewertung des Speiseplans nach den Qualitätsstandards der Deutschen Gesellschaft für Ernährung — relevant für viele öffentliche Ausschreibungen."
+          : "Automated menu scoring against the German Nutrition Society quality standards — required for many public-sector tenders."}
+      </Text>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+        <Chip
+          label={isDe ? "Aus" : "Off"}
+          active={!active}
+          onPress={() => dispatch({ type: "setDgeStandard", standard: undefined })}
+        />
+        {STANDARDS.map((s) => (
+          <Chip
+            key={s}
+            label={dgeStandardLabel(s, isDe)}
+            active={active === s}
+            onPress={() => dispatch({ type: "setDgeStandard", standard: s })}
+          />
+        ))}
+      </View>
+    </Card>
   );
 }
