@@ -423,4 +423,33 @@ export interface AppState {
   priceServerConfig?: PriceServerConfig;
   // ---- Company + CRM ----
   companyProfile?: CompanyProfile;
+  // ---- Öko Wizard ----
+  okoEnabled: boolean;
+  okoProgress: OkoProgress;
+}
+
+// ─── Öko Wizard ─────────────────────────────────────────────────────────────
+
+export type OkoChallengeId =
+  | "meatFreeDay"
+  | "useReste"
+  | "regionalOrder"
+  | "haccpToday"
+  | "wasteUnder10"
+  | "seasonalIngredient"
+  | "buyBio"
+  | "reducePlastic"
+  | "co2Labeling"
+  | "donateReste";
+
+export interface OkoCompletion {
+  id: string;
+  challengeId: OkoChallengeId;
+  completedAt: string; // ISO
+  note?: string;
+}
+
+export interface OkoProgress {
+  score: number;
+  completions: OkoCompletion[];
 }

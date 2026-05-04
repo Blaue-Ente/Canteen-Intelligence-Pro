@@ -231,6 +231,39 @@ export default function Settings() {
           <Row icon="map-pin" left={<Text style={labelStyle}>Standort</Text>} right={<Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular" }}>1 Standort</Text>} />
         </Card>
 
+        {/* Öko Wizard toggle */}
+        <Card>
+          <SectionHeader title={t("okoWizardTitle")} />
+          <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 6 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={labelStyle}>{t("okoWizardEnable")}</Text>
+              <Text style={subStyle}>{t("okoWizardEnableDesc")}</Text>
+            </View>
+            <Switch
+              value={state.okoEnabled}
+              onValueChange={(v) => dispatch({ type: "setOkoEnabled", enabled: v })}
+              trackColor={{ true: "#059669", false: c.border }}
+            />
+          </View>
+          {state.okoEnabled && (
+            <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 4 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={subStyle}>
+                  {state.locale === "de"
+                    ? `Score: ${state.okoProgress.score} Öko-Punkte · ${state.okoProgress.completions.length} Aufgaben`
+                    : `Score: ${state.okoProgress.score} eco points · ${state.okoProgress.completions.length} completed`}
+                </Text>
+              </View>
+              <Button
+                label={state.locale === "de" ? "Öffnen" : "Open"}
+                icon="zap"
+                variant="ghost"
+                onPress={() => router.push("/okowizard")}
+              />
+            </View>
+          )}
+        </Card>
+
         {/* Company Profile */}
         <Card>
           <SectionHeader title={t("companyProfile")} />

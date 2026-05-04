@@ -41,6 +41,7 @@ export default function More() {
         { icon: "clipboard", label: t("inventur"), to: "/inventur" },
         { icon: "calendar", label: t("dienstplan"), to: "/dienstplan" },
         { icon: "users", label: t("suppliers"), to: "/suppliers" },
+        { icon: "sunrise", label: t("producersTitle"), to: "/producers", tint: "#059669" },
         { icon: "mail", label: t("catering"), to: "/catering" },
         { icon: "dollar-sign", label: t("calculator"), to: "/calculator" },
         { icon: "trash-2", label: t("waste"), to: "/waste" },
@@ -68,6 +69,12 @@ export default function More() {
       items: [
         { icon: "pie-chart", label: t("reportsTitle"), to: "/reports", tint: "#6366f1" },
         { icon: "bar-chart", label: t("dishAnalysisTitle"), to: "/dishanalysis", tint: "#6366f1" },
+      ],
+    },
+    {
+      title: t("okoWizardTitle"),
+      items: [
+        { icon: "zap", label: t("okoWizardTitle"), to: "/okowizard", tint: "#059669" },
       ],
     },
     {

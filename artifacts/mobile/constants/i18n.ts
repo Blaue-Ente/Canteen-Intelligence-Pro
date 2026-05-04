@@ -455,6 +455,13 @@ const dict = {
     aiTopDishes: "Bewährte Gerichte – behalten",
     aiDropDishes: "Empfehlung zum Streichen",
     aiTips: "Handlungsempfehlungen",
+    // Producers
+    producersTitle: "Lokale Erzeuger",
+    producersSubtitle: "Klein- und Mittelbetriebe direkt in deiner Region",
+    // Öko Wizard
+    okoWizardTitle: "Nachhaltigkeit & Öko",
+    okoWizardEnable: "Öko-Wizard aktivieren",
+    okoWizardEnableDesc: "Zeigt tägliche Nachhaltigkeitsaufgaben mit Medaillen und Score.",
   },
   en: {
     appName: "KItchenOS",
@@ -875,6 +882,13 @@ const dict = {
     aiTopDishes: "Keep — top performers",
     aiDropDishes: "Recommended to drop",
     aiTips: "Action recommendations",
+    // Producers
+    producersTitle: "Local Producers",
+    producersSubtitle: "Small & medium farms and producers in your region",
+    // Öko Wizard
+    okoWizardTitle: "Sustainability & Eco",
+    okoWizardEnable: "Enable Eco Wizard",
+    okoWizardEnableDesc: "Shows daily sustainability challenges with medals and score.",
     reportsTitle: "Reports & Analytics",
     wochenbericht: "KPI Comparison",
     wasteRatio: "Waste ratio",

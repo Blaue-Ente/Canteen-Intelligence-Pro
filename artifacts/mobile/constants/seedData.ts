@@ -333,4 +333,6 @@ export const seedState: AppState = {
   priceList: [],
   priceServerConfig: undefined,
   companyProfile: demoCompany,
+  okoEnabled: true,
+  okoProgress: { score: 0, completions: [] },
 };

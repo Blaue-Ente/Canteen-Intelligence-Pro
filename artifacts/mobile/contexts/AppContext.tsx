@@ -26,6 +26,8 @@ import type {
   Location,
   MenuDayEntry,
   NotificationPrefs,
+  OkoChallengeId,
+  OkoCompletion,
   OrderDraft,
   PriceListEntry,
   PriceServerConfig,
@@ -97,7 +99,11 @@ type Action =
   | { type: "setPriceServerConfig"; config: PriceServerConfig }
   // ---- Company + CRM + Demo ----
   | { type: "setCompanyProfile"; profile: CompanyProfile }
-  | { type: "loadDemoData"; events: CateringEvent[]; company: CompanyProfile };
+  | { type: "loadDemoData"; events: CateringEvent[]; company: CompanyProfile }
+  // ---- Öko Wizard ----
+  | { type: "setOkoEnabled"; enabled: boolean }
+  | { type: "completeOkoChallenge"; completion: OkoCompletion }
+  | { type: "removeOkoCompletion"; id: string };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -293,6 +299,31 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, companyProfile: action.profile };
     case "loadDemoData":
       return { ...state, events: action.events, companyProfile: action.company };
+    case "setOkoEnabled":
+      return { ...state, okoEnabled: action.enabled };
+    case "completeOkoChallenge": {
+      const POINTS: Record<OkoChallengeId, number> = {
+        meatFreeDay: 20, useReste: 15, regionalOrder: 25, haccpToday: 10,
+        wasteUnder10: 30, seasonalIngredient: 20, buyBio: 20,
+        reducePlastic: 15, co2Labeling: 25, donateReste: 30,
+      };
+      const pts = POINTS[action.completion.challengeId] ?? 15;
+      return {
+        ...state,
+        okoProgress: {
+          score: state.okoProgress.score + pts,
+          completions: [action.completion, ...state.okoProgress.completions].slice(0, 500),
+        },
+      };
+    }
+    case "removeOkoCompletion":
+      return {
+        ...state,
+        okoProgress: {
+          ...state.okoProgress,
+          completions: state.okoProgress.completions.filter((c) => c.id !== action.id),
+        },
+      };
     default:
       return state;
   }
@@ -348,6 +379,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           priceList: pick("priceList"),
           priceServerConfig: pick("priceServerConfig"),
           companyProfile: pick("companyProfile"),
+          okoEnabled: pick("okoEnabled"),
+          okoProgress: pick("okoProgress"),
         };
         dispatch({ type: "hydrate", state: merged });
       }
