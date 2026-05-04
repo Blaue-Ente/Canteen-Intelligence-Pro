@@ -287,10 +287,10 @@ function ShiftModal({ employeeId, date, onClose }: { employeeId: string; date: s
           ))}
           <View style={{ flexDirection: "row", gap: 10 }}>
             <View style={{ flex: 1 }}>
-              <Field label="Start" value={start} onChangeText={setStart} placeholder="09:00" />
+              <Field label="Start" value={start} onChangeText={setStart} placeholder="09:00" webType="time" />
             </View>
             <View style={{ flex: 1 }}>
-              <Field label="Ende" value={end} onChangeText={setEnd} placeholder="17:00" />
+              <Field label="Ende" value={end} onChangeText={setEnd} placeholder="17:00" webType="time" />
             </View>
           </View>
           <View style={{ flexDirection: "row", gap: 10 }}>

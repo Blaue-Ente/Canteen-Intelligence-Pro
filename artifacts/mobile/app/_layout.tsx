@@ -63,6 +63,7 @@ function RootLayoutNav() {
       <Stack.Screen name="leaderboard" options={{ title: "Bestenliste" }} />
       <Stack.Screen name="margin" options={{ title: "Margen" }} />
       <Stack.Screen name="aushang/[id]" options={{ title: "LMIV-Aushang" }} />
+      <Stack.Screen name="kasse" options={{ title: "Kasse" }} />
       <Stack.Screen name="+not-found" />
     </Stack>
   );

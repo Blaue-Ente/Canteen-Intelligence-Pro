@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 
@@ -18,6 +19,8 @@ export default function Waste() {
   const [reason, setReason] = useState<WasteEntry["reason"]>("spoilage");
   const [cost, setCost] = useState("");
   const author = useAuthor();
+  const router = useRouter();
+  const isDe = state.locale === "de";
 
   const total = state.waste.reduce((s, w) => s + w.cost, 0);
   const totalGrams = state.waste.reduce((s, w) => s + w.grams, 0);
@@ -29,6 +32,20 @@ export default function Waste() {
           <Stat label="Gesamt" value={`${(totalGrams / 1000).toFixed(1)} kg`} icon="trash-2" tone="warning" />
           <Stat label="Verlust" value={`€${total.toFixed(0)}`} icon="trending-down" tone="destructive" />
         </View>
+
+        <Card>
+          <SectionHeader title={isDe ? "KI-Tablett-Analyse" : "AI tray analysis"} />
+          <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 13, marginBottom: 10 }}>
+            {isDe
+              ? "Foto vom zurückgebrachten Teller — KI schätzt automatisch Reste in Gramm und Kosten."
+              : "Snap a returned plate — AI estimates leftovers in grams and cost automatically."}
+          </Text>
+          <Button
+            label={isDe ? "Tablett-Foto-Analyse öffnen" : "Open plate photo analysis"}
+            icon="camera"
+            onPress={() => router.push("/wastecam")}
+          />
+        </Card>
 
         <Card>
           <SectionHeader title={t("addLog")} />

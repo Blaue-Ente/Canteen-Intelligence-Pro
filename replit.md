@@ -48,6 +48,27 @@ KitchenOS uniquely has: Kios voice assistant, email→event AI bridge, OSM regio
 
 See `.local/session_plan.md` for full task breakdown T000-T012.
 
+### Roadmap Progress (May 2026 — all 12 tasks complete)
+- **T000** Dual-mode foundation (`appMode: "lite" | "full"`, `<FullModeOnly>`, settings UI) ✓
+- **T001** Money precision (`lib/money.ts` — toCents/sumMoney/mulMoney/formatEUR) ✓
+- **T002** UX/data integrity (native time pickers, friendly 401 cards, i18n fix) ✓
+- **T003** Allergen propagation from inventory→recipe (`lib/allergens.ts`) ✓
+- **T004** Production batch sheets (`app/production.tsx` + `lib/production.ts`) ✓
+- **T005** Master cleaning schedule (`app/cleaning.tsx`, CleaningTask/CleaningCompletion) ✓
+- **T006** Kios hands-free cooking (`hooks/useKios.ts` extended + `lib/timers.ts`) ✓
+- **T007** Plate-photo AI waste detection (`app/wastecam.tsx`, `/api/ai/waste-vision`) ✓
+- **T008** Inspection mode one-tap PDF (`lib/inspectionPdf.ts` + haccp.tsx button) ✓
+- **T009** Energy + CO₂ per dish (`lib/sustainability.ts`, recipe detail + dishanalysis) ✓
+- **T010** Email/PDF price ingest (`lib/ai.ts::parseSupplierPriceList`, `lib/priceIngest.ts`,
+  procurement.tsx UI with anomaly badges and >5 % increase opt-in) ✓
+- **T011** TSE / KassenSichV (`api-server/src/routes/tse.ts` HMAC-stub OR fiskaly proxy,
+  `mobile/lib/tse.ts`, `app/kasse.tsx` Voll-Modus screen, Z-Bon PDF + DSFinV-K JSON export,
+  Settings TseConfig editor). Stub-mode warning shown to operator; FISKALY_API_KEY +
+  FISKALY_API_SECRET + FISKALY_TSS_ID + FISKALY_CLIENT_ID env vars activate real
+  fiskaly cloud TSE seamlessly. ✓
+- **T012** Final verify ✓ (all 4 typechecks clean, only pre-existing benign
+  `useColors.ts(21,10)` error untouched per user instruction)
+
 ## System Architecture
 
 KItchenOS is built as a cross-platform Expo app for iOS, Android, and Web, complemented by an Express.js API server.

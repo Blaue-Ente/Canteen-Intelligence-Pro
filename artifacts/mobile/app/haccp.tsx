@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 
@@ -6,6 +7,8 @@ import { Badge, Button, Card, Chip, EmptyState, Field, SectionHeader } from "@/c
 import { useApp, useT } from "@/contexts/AppContext";
 import { useAuthor } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { inspectionPdfHtml } from "@/lib/inspectionPdf";
+import { sharePdf } from "@/lib/pdf";
 import type { HaccpLog, StorageLocation, StorageLocationCategory } from "@/types";
 
 const TYPES: HaccpLog["type"][] = ["fridge", "freezer", "delivery", "cleaning", "cooking"];
@@ -57,6 +60,7 @@ export default function Haccp() {
   const { state, dispatch, newId } = useApp();
   const t = useT();
   const c = useColors();
+  const router = useRouter();
   const [type, setType] = useState<HaccpLog["type"]>("fridge");
   const [selectedStorageId, setSelectedStorageId] = useState<string | null>(null);
   const [customLoc, setCustomLoc] = useState("");
@@ -69,6 +73,37 @@ export default function Haccp() {
   const [newName, setNewName] = useState("");
   const [newCat, setNewCat] = useState<StorageLocationCategory>("fridge");
   const [newTemp, setNewTemp] = useState("");
+
+  // Inspection-mode period selector state
+  const isDe = state.locale === "de";
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const monthAgoIso = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+  const [showInspection, setShowInspection] = useState(false);
+  const [fromDate, setFromDate] = useState(monthAgoIso);
+  const [toDate, setToDate] = useState(todayIso);
+  const [generating, setGenerating] = useState(false);
+
+  const generateInspectionPdf = async () => {
+    if (generating) return;
+    setGenerating(true);
+    try {
+      const html = inspectionPdfHtml({ state, fromDate, toDate });
+      await sharePdf(html, `lebensmittelkontrolle_${fromDate}_${toDate}.pdf`);
+      setShowInspection(false);
+    } catch (e) {
+      Alert.alert(
+        isDe ? "Fehler" : "Error",
+        isDe ? "PDF konnte nicht erstellt werden." : "Could not generate PDF.",
+      );
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const setPreset = (days: number) => {
+    setFromDate(new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10));
+    setToDate(todayIso);
+  };
 
   const filteredStorage = useMemo(() => {
     const cat = TYPE_TO_CATEGORY[type];
@@ -151,6 +186,95 @@ export default function Haccp() {
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 60 }}>
+        <Pressable
+          onPress={() => router.push("/cleaning")}
+          style={({ pressed }) => [
+            {
+              backgroundColor: c.card,
+              borderWidth: 1,
+              borderColor: c.border,
+              borderRadius: c.radius,
+              padding: 14,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 12,
+            },
+            pressed && { opacity: 0.7 },
+          ]}
+        >
+          <View
+            style={{
+              width: 40, height: 40, borderRadius: 10,
+              backgroundColor: c.accent, alignItems: "center", justifyContent: "center",
+            }}
+          >
+            <Feather name="droplet" size={18} color={c.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 14 }}>
+              {t("cleaningTitle")}
+            </Text>
+            <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12 }}>
+              {t("addTaskHint")}
+            </Text>
+          </View>
+          <Feather name="chevron-right" size={20} color={c.mutedForeground} />
+        </Pressable>
+
+        <Card>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: showInspection ? 12 : 0 }}>
+            <View
+              style={{
+                width: 40, height: 40, borderRadius: 10,
+                backgroundColor: c.accent, alignItems: "center", justifyContent: "center",
+              }}
+            >
+              <Feather name="shield" size={18} color={c.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 14 }}>
+                {isDe ? "Lebensmittelkontrolle Mode" : "Food-safety inspection mode"}
+              </Text>
+              <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12 }}>
+                {isDe
+                  ? "Ein PDF mit HACCP, Reinigung, Allergenen & Lager-Sollwerten."
+                  : "One PDF with HACCP, cleaning, allergens & storage targets."}
+              </Text>
+            </View>
+            <Button
+              label={showInspection ? (isDe ? "Schließen" : "Close") : (isDe ? "Öffnen" : "Open")}
+              icon={showInspection ? "x" : "file-text"}
+              variant="secondary"
+              onPress={() => setShowInspection((v) => !v)}
+            />
+          </View>
+
+          {showInspection ? (
+            <View style={{ gap: 10 }}>
+              <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+                <Chip label={isDe ? "7 Tage" : "7 days"}  active={fromDate === new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10)} onPress={() => setPreset(7)} />
+                <Chip label={isDe ? "30 Tage" : "30 days"} active={fromDate === monthAgoIso && toDate === todayIso} onPress={() => setPreset(30)} />
+                <Chip label={isDe ? "90 Tage" : "90 days"} active={fromDate === new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10)} onPress={() => setPreset(90)} />
+              </View>
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Field label={isDe ? "Von (YYYY-MM-DD)" : "From (YYYY-MM-DD)"} value={fromDate} onChangeText={setFromDate} placeholder="2026-04-01" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Field label={isDe ? "Bis (YYYY-MM-DD)" : "To (YYYY-MM-DD)"} value={toDate} onChangeText={setToDate} placeholder={todayIso} />
+                </View>
+              </View>
+              <Button
+                label={generating
+                  ? (isDe ? "Erstelle…" : "Generating…")
+                  : (isDe ? "PDF erstellen & teilen" : "Generate & share PDF")}
+                icon="download"
+                onPress={generateInspectionPdf}
+              />
+            </View>
+          ) : null}
+        </Card>
+
         <Card>
           <SectionHeader title={t("addLog")} />
           <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>

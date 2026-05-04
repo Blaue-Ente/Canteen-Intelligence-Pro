@@ -4,7 +4,14 @@ import { useRouter } from "expo-router";
 import { askKios } from "@/lib/kios";
 import { speakHQ, stopSpeaking, isSafari, prewarmTtsCache } from "@/lib/voice";
 import { useApp } from "@/contexts/AppContext";
-import type { AppState } from "@/types";
+import {
+  cancelAllTimers,
+  formatDuration,
+  listTimers,
+  parseTimerPhrase,
+  startTimer,
+} from "@/lib/timers";
+import type { AppState, Recipe } from "@/types";
 
 export type KiosStatus = "off" | "idle" | "awake" | "thinking" | "speaking";
 
@@ -30,6 +37,7 @@ const NAV_MAP: Record<string, string> = {
   events:      "/events",
   calculator:  "/calculator",
   waste:       "/waste",
+  wastecam:    "/wastecam",
   reste:       "/reste",
   preorder:    "/preorder",
   customers:   "/customers",
@@ -90,6 +98,7 @@ const QUICK_COMMANDS: Array<{ patterns: RegExp[]; nav: keyof typeof NAV_MAP; rep
   { patterns: [/catering|cater\b/i],                                                 nav: "catering",    reply: "Catering wird geöffnet." },
   { patterns: [/veranstaltung|event\b|hochzeit|firmenfeier|geburtstag|jubil/i],     nav: "events",      reply: "Veranstaltungen werden geöffnet." },
   { patterns: [/preisrechner|kalkulation|calculator|kosten.?rechnung|preis.?berechn/i], nav: "calculator", reply: "Preisrechner wird geöffnet." },
+  { patterns: [/tablett.?foto|teller.?foto|tablett.?analyse|teller.?analyse|plate.?photo|plate.?analy|foto.?analy/i], nav: "wastecam", reply: "Tablett-Foto-Analyse wird geöffnet." },
   { patterns: [/abfall|m[üu]ll|waste|verschwend|food.?waste|wegwerf/i],             nav: "waste",       reply: "Abfall wird geöffnet." },
   { patterns: [/reste|leftover|verwert|reste.?rezept|reste.?verwertung/i],          nav: "reste",       reply: "Reste-Rezepte werden geladen." },
   { patterns: [/vorbestell|preorder|pre.?order|app.?bestell|online.?bestell/i],     nav: "preorder",    reply: "Vorbestellungen werden geöffnet." },
@@ -127,6 +136,147 @@ function matchQuickCommand(question: string) {
   for (const cmd of QUICK_COMMANDS) {
     if (cmd.patterns.some((p) => p.test(question))) return cmd;
   }
+  return null;
+}
+
+// ── Hands-free cooking intents (T006) ────────────────────────────────────────
+// Detect timer + portion-math + active-recipe queries client-side. These never
+// hit the AI server: instant response is critical when the cook's hands are
+// covered in flour and they're shouting "Kios! Timer 12 Minuten!".
+
+interface HandsFreeResult {
+  reply: string;
+  /** Optional async side-effect that needs the speakHQ callback to fire AFTER. */
+  sideEffect?: () => void;
+}
+
+function findRecipeByName(question: string, recipes: readonly Recipe[]): Recipe | null {
+  const lower = question.toLowerCase();
+  // Sort longest first so "lentil soup" matches before "soup".
+  const candidates = [...recipes].sort(
+    (a, b) => Math.max(b.name.length, b.nameDe.length) - Math.max(a.name.length, a.nameDe.length),
+  );
+  for (const r of candidates) {
+    if (r.nameDe && lower.includes(r.nameDe.toLowerCase())) return r;
+    if (r.name && lower.includes(r.name.toLowerCase())) return r;
+  }
+  return null;
+}
+
+function handleHandsFree(
+  question: string,
+  state: AppState,
+  speakAndRestart: (text: string) => void,
+): HandsFreeResult | null {
+  const lower = question.toLowerCase();
+  const isDe = state.locale === "de";
+
+  // ── Cancel all timers ──────────────────────────────────────────────────
+  if (/(alle|all)\s*timer\s*(stopp|abbrech|cancel|stop|l[öo]sch)/i.test(lower)) {
+    const n = cancelAllTimers();
+    return {
+      reply: isDe
+        ? n === 0 ? "Es laufen keine Timer." : `${n} Timer abgebrochen.`
+        : n === 0 ? "No timers running." : `${n} timers cancelled.`,
+    };
+  }
+
+  // ── List timers ────────────────────────────────────────────────────────
+  if (/(welche|wieviele?|wie viele|how many|list).*timer|timer.*(laufen|liste|status|running)/i.test(lower)) {
+    const ts = listTimers();
+    if (ts.length === 0) {
+      return { reply: isDe ? "Es laufen keine Timer." : "No timers running." };
+    }
+    const summary = ts
+      .slice(0, 3)
+      .map((t) => `${t.label}: ${formatDuration(Math.max(0, t.dueAt - Date.now()))}`)
+      .join(", ");
+    return {
+      reply: isDe ? `Aktive Timer: ${summary}.` : `Active timers: ${summary}.`,
+    };
+  }
+
+  // ── Start a timer ──────────────────────────────────────────────────────
+  if (/timer|stell.*(minuten|sekunden|stunde)/i.test(lower)) {
+    const parsed = parseTimerPhrase(lower);
+    if (parsed) {
+      const fireText = isDe
+        ? `Achtung, Timer ${parsed.label} ist abgelaufen.`
+        : `Attention, timer ${parsed.label} has finished.`;
+      startTimer(parsed.label, parsed.ms, () => {
+        // Speak when the timer fires. Voice settings are on the snapshot taken
+        // at start time — adequate for short kitchen timers.
+        speakHQ(fireText, state.locale, () => { /* no-op */ }, state.kiosVoice);
+      });
+      return {
+        reply: isDe
+          ? `Timer für ${formatDuration(parsed.ms)} gestartet.`
+          : `Timer for ${formatDuration(parsed.ms)} started.`,
+      };
+    }
+  }
+
+  // ── Portion math ───────────────────────────────────────────────────────
+  // "Wie viel Salz für 80 Portionen Schnitzel?" / "How much salt for 80 portions of schnitzel?"
+  const portionMatch = lower.match(/(\d+)\s*(?:portion|portionen|servings?|stück|stueck)/);
+  if (portionMatch) {
+    const targetCount = Number(portionMatch[1]);
+    const recipe = findRecipeByName(question, state.recipes);
+    if (recipe && targetCount > 0) {
+      // Optional: ingredient name in question.
+      const ingredientHit = state.inventory.find((inv) =>
+        lower.includes((inv.nameDe || inv.name).toLowerCase()),
+      );
+      // Default base portion = recipe portionGrams.
+      const sumGrams = recipe.ingredients.reduce((acc, ing) => {
+        if (ingredientHit && ing.inventoryId !== ingredientHit.id) return acc;
+        return acc + ing.grams * targetCount;
+      }, 0);
+      if (ingredientHit) {
+        const display = sumGrams >= 1000 ? `${(sumGrams / 1000).toFixed(1)} kg` : `${Math.round(sumGrams)} g`;
+        const recipeName = isDe ? recipe.nameDe : recipe.name;
+        const ingName = isDe ? ingredientHit.nameDe : ingredientHit.name;
+        return {
+          reply: isDe
+            ? `Für ${targetCount} Portionen ${recipeName} brauchst du ${display} ${ingName}.`
+            : `For ${targetCount} portions of ${recipeName} you need ${display} of ${ingName}.`,
+        };
+      }
+      const totalKg = (recipe.portionGrams * targetCount) / 1000;
+      const recipeName = isDe ? recipe.nameDe : recipe.name;
+      return {
+        reply: isDe
+          ? `Für ${targetCount} Portionen ${recipeName} brauchst du ca. ${totalKg.toFixed(1)} Kilo Zutaten.`
+          : `For ${targetCount} portions of ${recipeName} you need about ${totalKg.toFixed(1)} kg of ingredients.`,
+      };
+    }
+  }
+
+  // ── Recipe step reading ────────────────────────────────────────────────
+  // "Lies Schritt 3 von Schnitzel" / "Read step 2 of lentil soup"
+  const stepMatch = lower.match(/(?:schritt|step)\s*(\d+)/);
+  if (stepMatch) {
+    const stepIdx = Number(stepMatch[1]) - 1;
+    const recipe = findRecipeByName(question, state.recipes);
+    if (recipe && stepIdx >= 0) {
+      const steps = isDe ? recipe.stepsDe ?? recipe.steps : recipe.steps;
+      if (steps && steps.length > 0) {
+        if (stepIdx >= steps.length) {
+          return {
+            reply: isDe
+              ? `Es gibt nur ${steps.length} Schritte in diesem Rezept.`
+              : `This recipe only has ${steps.length} steps.`,
+          };
+        }
+        const stepText = steps[stepIdx]!;
+        return {
+          reply: isDe ? `Schritt ${stepIdx + 1}: ${stepText}` : `Step ${stepIdx + 1}: ${stepText}`,
+        };
+      }
+    }
+  }
+
+  void speakAndRestart; // reserved for future side-effects
   return null;
 }
 
@@ -224,6 +374,18 @@ export function useKios() {
     setStatus("thinking");
     const snap   = r.current.state;
     const locale = snap.locale;
+
+    // Hands-free cooking intents first (timer / portion math / step reading).
+    // These never hit the AI server — instant response when hands are messy.
+    const handsFree = handleHandsFree(question, snap, () => { /* unused */ });
+    if (handsFree) {
+      setStatus("speaking");
+      speakHQ(handsFree.reply, locale, () => {
+        if (handsFree.sideEffect) handsFree.sideEffect();
+        scheduleRestart(300);
+      }, snap.kiosVoice);
+      return;
+    }
 
     // Quick command first (instant)
     const quick = matchQuickCommand(question);

@@ -98,6 +98,8 @@ export interface SaleEntry extends AuditFields {
   /** Actual portion size served (grams). Defaults to recipe.portionGrams when absent. */
   portionGrams?: number;
   source?: "manual" | "zettle" | "ai";
+  /** When mirrored from a SignedSale: the TSE Belegnummer, for audit reconciliation. */
+  tseTxNumber?: number;
 }
 
 export interface Supplier {
@@ -140,6 +142,53 @@ export interface HaccpLog extends AuditFields {
   temperature?: number;
   note?: string;
   ok: boolean;
+}
+
+/**
+ * Master cleaning schedule (HACCP §4 LMHV).
+ *
+ * A `CleaningTask` is a recurring template ("clean grease trap weekly").
+ * Each completion is logged in `cleaningLog` with optional photo proof.
+ * Used to generate the inspection-mode PDF (T008) for Lebensmittelkontrolle.
+ */
+export type CleaningFrequency = "daily" | "weekly" | "monthly" | "quarterly";
+export type CleaningArea =
+  | "kueche"        // Küche / kitchen surfaces
+  | "lager"         // Storage rooms
+  | "kuehlung"      // Fridges / freezers
+  | "geschirr"      // Dish area / pass
+  | "boden"         // Floors / drains
+  | "abluft"        // Hood / extractor / grease trap
+  | "sanitaer";     // Toilets / hand-wash
+
+export interface CleaningTask {
+  id: string;
+  /** Display name (DE primary; localized at render time). */
+  name: string;
+  nameEn?: string;
+  area: CleaningArea;
+  frequency: CleaningFrequency;
+  /** Optional explicit storage / room target (cross-reference to StorageLocation.id). */
+  storageLocationId?: string;
+  /** Step-by-step instructions shown when staff opens the task. */
+  instructions?: string;
+  /** Optional cleaning chemical / detergent label. */
+  chemical?: string;
+  /** Active flag — false hides the task from "due today". */
+  active: boolean;
+  createdAt: string;
+}
+
+export interface CleaningCompletion {
+  id: string;
+  taskId: string;
+  /** ISO timestamp of completion. */
+  completedAt: string;
+  /** Employee id (or free text initials for paper-mode). */
+  by: string;
+  note?: string;
+  /** base64 / file URI of optional photo proof. */
+  photoUri?: string;
 }
 
 export interface WasteEntry extends AuditFields {
@@ -404,6 +453,9 @@ export interface AppState {
   suppliers: Supplier[];
   complaints: ComplaintDraft[];
   haccp: HaccpLog[];
+  // ---- Master cleaning schedule (HACCP) ----
+  cleaningTasks: CleaningTask[];
+  cleaningLog: CleaningCompletion[];
   waste: WasteEntry[];
   catering: CateringRequest[];
   orders: OrderDraft[];
@@ -432,6 +484,9 @@ export interface AppState {
   okoProgress: OkoProgress;
   // ---- Kios voice ----
   kiosVoice: KiosVoice;
+  // ---- TSE / cash register (T011, Voll-Modus only) ----
+  tseConfig?: TseConfig;
+  signedSales: SignedSale[];
   // ---- Operating mode ----
   /**
    * Application operating mode:
@@ -448,6 +503,50 @@ export type KiosVoice = "sarah" | "charlotte" | "antoni";
 
 /** Operating mode — gates fiscal/cash-register features. See AppState.appMode. */
 export type AppMode = "lite" | "full";
+
+// ─── TSE / KassenSichV (T011) ───────────────────────────────────────────────
+
+/** Provider used to back the TSE signing endpoint. */
+export type TseProvider = "stub" | "fiskaly_sandbox" | "fiskaly_prod";
+
+/** Cash-register / TSE configuration. Required when appMode === "full". */
+export interface TseConfig {
+  /** Permanent Kassen-Identifikationsnummer (assigned per BMF Mitteilungspflicht §146a AO). */
+  kassennummer: string;
+  /** Steuernummer or USt-IdNr. of the operator. */
+  taxId: string;
+  /** Active provider. "stub" = local HMAC dev signing. */
+  provider: TseProvider;
+  /** Cached TSE serial returned by the provider (immutable per TSE module). */
+  serialNumber?: string;
+  /** Last successful sign timestamp. */
+  lastSignedAt?: string;
+  /** Fiskaly client/TSS id when using a real cloud provider. */
+  fiskalyClientId?: string;
+  fiskalyTssId?: string;
+}
+
+/** A SaleEntry with its TSE signature attached. KassenSichV §6 mandatory fields. */
+export interface SignedSale extends SaleEntry {
+  /** Sequential transaction number (Belegnummer) per cash register, gap-free. */
+  tseTxNumber: number;
+  /** TSE serial number that produced the signature (Seriennummer der TSE). */
+  tseSerial: string;
+  /** Per-TSE monotonically increasing signature counter. */
+  tseSignatureCounter: number;
+  /** base64 signature (KassenSichV §2). */
+  tseSignature: string;
+  /** ISO timestamp of signing — must match what the TSE recorded. */
+  tseTime: string;
+  /** Belegtyp per BMF, default "Kassenbeleg-V1". */
+  processType: string;
+  /** Process-data string fed into the TSE (Beleginhalt). */
+  processData: string;
+  /** Provider used when this signature was created. */
+  provider: TseProvider;
+  /** VAT rate applied to the sale (7 / 19 / 0). */
+  vatPct: number;
+}
 
 // ─── Öko Wizard ─────────────────────────────────────────────────────────────
 

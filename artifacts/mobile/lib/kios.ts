@@ -6,7 +6,7 @@ export type KiosNav =
   | "home" | "inventory" | "menu" | "stats" | "more"
   | "sales" | "zettle" | "orders" | "procurement" | "inventur"
   | "dienstplan" | "suppliers" | "producers" | "catering" | "events"
-  | "calculator" | "waste" | "reste" | "preorder" | "customers"
+  | "calculator" | "waste" | "wastecam" | "reste" | "preorder" | "customers"
   | "aggregate" | "rollup" | "priceserver" | "crm"
   | "forecast" | "handover" | "margin" | "leaderboard"
   | "reports" | "dishanalysis" | "okowizard"
@@ -144,7 +144,7 @@ const NAV_LIST = [
   "home", "inventory", "menu", "stats", "more",
   "sales", "zettle", "orders", "procurement", "inventur", "dienstplan",
   "suppliers", "producers", "catering", "events", "calculator",
-  "waste", "reste", "preorder", "customers", "aggregate", "rollup",
+  "waste", "wastecam", "reste", "preorder", "customers", "aggregate", "rollup",
   "priceserver", "crm", "forecast", "handover", "margin", "leaderboard",
   "reports", "dishanalysis", "okowizard", "locations", "haccp", "scan",
   "chat", "recipe", "team", "settings", "aushang", "null",
@@ -213,6 +213,7 @@ PERSONAL & LOGISTIK
 QUALITÄT & RECHT
   haccp       = HACCP, Hygiene, Temperaturprotokoll, Allergen-Doku
   waste       = Abfallerfassung
+  wastecam    = Tablett-Foto-Analyse (KI schätzt Reste aus Foto)
   aushang     = Wochenplan-Aushang (Ausdruck)
 
 ALLGEMEIN

@@ -14,6 +14,8 @@ import type {
   CateringEvent,
   CateringRequest,
   ChatMessage,
+  CleaningCompletion,
+  CleaningTask,
   ComplaintDraft,
   CompanyProfile,
   Employee,
@@ -60,6 +62,11 @@ type Action =
   | { type: "updateSupplier"; supplier: Supplier }
   | { type: "addComplaint"; complaint: ComplaintDraft }
   | { type: "addHaccp"; log: HaccpLog }
+  | { type: "addCleaningTask"; task: CleaningTask }
+  | { type: "updateCleaningTask"; task: CleaningTask }
+  | { type: "removeCleaningTask"; id: string }
+  | { type: "addCleaningCompletion"; completion: CleaningCompletion }
+  | { type: "removeCleaningCompletion"; id: string }
   | { type: "addWaste"; entry: WasteEntry }
   | { type: "addCatering"; request: CateringRequest }
   | { type: "updateCatering"; request: CateringRequest }
@@ -99,6 +106,9 @@ type Action =
   | { type: "removeEvent"; id: string }
   | { type: "setPriceList"; entries: PriceListEntry[] }
   | { type: "setPriceServerConfig"; config: PriceServerConfig }
+  // ---- TSE / KassenSichV (T011) ----
+  | { type: "setTseConfig"; config: import("@/types").TseConfig }
+  | { type: "addSignedSale"; sale: import("@/types").SignedSale }
   // ---- Company + CRM + Demo ----
   | { type: "setCompanyProfile"; profile: CompanyProfile }
   | { type: "loadDemoData"; events: CateringEvent[]; company: CompanyProfile }
@@ -174,6 +184,30 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, complaints: [action.complaint, ...state.complaints] };
     case "addHaccp":
       return { ...state, haccp: [action.log, ...state.haccp] };
+    case "addCleaningTask":
+      return { ...state, cleaningTasks: [action.task, ...state.cleaningTasks] };
+    case "updateCleaningTask":
+      return {
+        ...state,
+        cleaningTasks: state.cleaningTasks.map((t) =>
+          t.id === action.task.id ? action.task : t,
+        ),
+      };
+    case "removeCleaningTask":
+      return {
+        ...state,
+        cleaningTasks: state.cleaningTasks.filter((t) => t.id !== action.id),
+      };
+    case "addCleaningCompletion":
+      return {
+        ...state,
+        cleaningLog: [action.completion, ...state.cleaningLog].slice(0, 2000),
+      };
+    case "removeCleaningCompletion":
+      return {
+        ...state,
+        cleaningLog: state.cleaningLog.filter((c) => c.id !== action.id),
+      };
     case "addWaste":
       return { ...state, waste: [action.entry, ...state.waste] };
     case "addCatering":
@@ -303,6 +337,26 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, priceList: action.entries };
     case "setPriceServerConfig":
       return { ...state, priceServerConfig: action.config };
+    case "setTseConfig":
+      return { ...state, tseConfig: action.config };
+    case "addSignedSale": {
+      // Mirror addSale's 1-year retention — also push the SaleEntry slice.
+      // The mirrored row carries `tseTxNumber` so reports that aggregate the
+      // legacy `sales` table can still join back to the signed entry and avoid
+      // double-counting (audit-side reconciliation).
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+      const cutoff = oneYearAgo.toISOString().slice(0, 10);
+      const { tseSerial, tseSignatureCounter, tseSignature, tseTime, processType, processData, provider, vatPct, ...saleBase } = action.sale;
+      void tseSerial; void tseSignatureCounter; void tseSignature; void tseTime;
+      void processType; void processData; void provider; void vatPct;
+      const saleSlice = { ...saleBase, tseTxNumber: action.sale.tseTxNumber };
+      return {
+        ...state,
+        signedSales: [action.sale, ...state.signedSales].filter((s) => s.date >= cutoff),
+        sales: [saleSlice, ...state.sales].filter((s) => s.date >= cutoff),
+      };
+    }
     case "setCompanyProfile":
       return { ...state, companyProfile: action.profile };
     case "loadDemoData":
@@ -377,6 +431,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           suppliers: pick("suppliers"),
           complaints: pick("complaints"),
           haccp: pick("haccp"),
+          cleaningTasks: pick("cleaningTasks"),
+          cleaningLog: pick("cleaningLog"),
           waste: pick("waste"),
           catering: pick("catering"),
           orders: pick("orders"),
@@ -400,6 +456,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           okoProgress: pick("okoProgress"),
           kiosVoice: pick("kiosVoice"),
           appMode: pick("appMode"),
+          tseConfig: pick("tseConfig"),
+          signedSales: pick("signedSales"),
         };
         dispatch({ type: "hydrate", state: merged });
       }

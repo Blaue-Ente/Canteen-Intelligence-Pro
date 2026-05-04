@@ -133,7 +133,7 @@ export default function Inventur() {
                 <Badge label={t("draft")} tone="warning" />
               </View>
               <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 4 }}>
-                {new Date(open.startedAt).toLocaleString()} · {open.counts.length} {t("inventory")}
+                {new Date(open.startedAt).toLocaleString()} · {open.counts.length} {t("positions")}
               </Text>
               <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
                 <Button label={t("closeInventur")} icon="check" onPress={close} style={{ flex: 1 }} />

@@ -20,7 +20,8 @@ import { useApp, useT } from "@/contexts/AppContext";
 import { useAuthor } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { distributeOrder } from "@/lib/ai";
-import type { InventoryItem, OrderDraft } from "@/types";
+import { ALL_ALLERGENS, missingAllergenWarnings, suggestAllergensFromName } from "@/lib/allergens";
+import type { Allergen, InventoryItem, OrderDraft } from "@/types";
 
 const CATS = ["all", "meat", "dairy", "vegetable", "fruit", "dry", "spice", "frozen"] as const;
 
@@ -47,6 +48,13 @@ export default function Inventory() {
 
   const shortages = useMemo(
     () => state.inventory.filter((i) => i.quantity < i.minQuantity && matchesLoc(i)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.inventory, locId],
+  );
+
+  // LMIV warning: items where heuristic expects an allergen tag but none is set.
+  const allergenWarnings = useMemo(
+    () => missingAllergenWarnings(state.inventory.filter(matchesLoc)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [state.inventory, locId],
   );
@@ -364,7 +372,35 @@ export default function Inventory() {
         data={items}
         keyExtractor={(i) => i.id}
         ListHeaderComponent={
-          shortages.length > 0 ? (
+          <View>
+            {allergenWarnings.length > 0 ? (
+              <View
+                style={{
+                  padding: 12,
+                  borderRadius: c.radius,
+                  backgroundColor: c.destructive + "12",
+                  borderWidth: 1,
+                  borderColor: c.destructive + "55",
+                  marginBottom: 10,
+                  gap: 6,
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Feather name="alert-triangle" size={16} color={c.destructive} />
+                  <Text style={{ color: c.destructive, fontFamily: "Inter_700Bold", fontSize: 13 }}>
+                    {t("allergensMissing")} · {allergenWarnings.length}
+                  </Text>
+                </View>
+                <Text style={{ color: c.foreground, fontFamily: "Inter_400Regular", fontSize: 12 }}>
+                  {allergenWarnings
+                    .slice(0, 3)
+                    .map((w) => state.locale === "de" ? w.item.nameDe : w.item.name)
+                    .join(", ")}
+                  {allergenWarnings.length > 3 ? " …" : ""}
+                </Text>
+              </View>
+            ) : null}
+            {shortages.length > 0 ? (
             <Pressable
               onPress={createOrders}
               disabled={orderBusy}
@@ -410,7 +446,8 @@ export default function Inventory() {
               </View>
               <Feather name="chevron-right" size={18} color={c.mutedForeground} />
             </Pressable>
-          ) : null
+            ) : null}
+          </View>
         }
         contentContainerStyle={{
           padding: 16,
@@ -562,6 +599,7 @@ function ItemModal({
   newId: () => string;
 }) {
   const c = useColors();
+  const t = useT();
   const insets = useSafeAreaInsets();
   const [name, setName] = useState(item?.nameDe ?? "");
   const [qty, setQty] = useState(String(item?.quantity ?? ""));
@@ -572,6 +610,7 @@ function ItemModal({
   const [itemLocId, setItemLocId] = useState<string | undefined>(
     item?.locationId ?? defaultLocationId,
   );
+  const [allergens, setAllergens] = useState<Allergen[]>(item?.allergens ?? []);
 
   React.useEffect(() => {
     if (open) {
@@ -582,8 +621,18 @@ function ItemModal({
       setUnit(item?.unit ?? "kg");
       setCat(item?.category ?? "vegetable");
       setItemLocId(item?.locationId ?? defaultLocationId);
+      setAllergens(item?.allergens ?? []);
     }
   }, [open, item, defaultLocationId]);
+
+  // Live suggestions from name → allergens that the user has not yet ticked.
+  const suggested = useMemo(() => {
+    const have = new Set(allergens);
+    return suggestAllergensFromName(name).filter((a) => !have.has(a));
+  }, [name, allergens]);
+
+  const toggleAllergen = (a: Allergen) =>
+    setAllergens((prev) => (prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a]));
 
   return (
     <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -661,6 +710,50 @@ function ItemModal({
               </View>
             </View>
           )}
+          {/* LMIV: Allergen tagging — chips + name-based suggestion banner. */}
+          <View>
+            <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 12, marginBottom: 8 }}>
+              Allergene
+            </Text>
+            <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+              {ALL_ALLERGENS.map((a) => (
+                <Chip
+                  key={a.key}
+                  label={t(a.tKey as Parameters<typeof t>[0])}
+                  active={allergens.includes(a.key)}
+                  onPress={() => toggleAllergen(a.key)}
+                />
+              ))}
+            </View>
+            {suggested.length > 0 ? (
+              <Pressable
+                onPress={() => setAllergens((prev) => Array.from(new Set([...prev, ...suggested])))}
+                style={{
+                  marginTop: 10,
+                  padding: 10,
+                  borderRadius: 10,
+                  backgroundColor: c.warning + "1a",
+                  borderWidth: 1,
+                  borderColor: c.warning + "55",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <Feather name="alert-circle" size={14} color={c.warning} />
+                <Text style={{ flex: 1, color: c.foreground, fontFamily: "Inter_500Medium", fontSize: 12 }}>
+                  {t("allergenSuggestion")}{" "}
+                  {suggested.map((a) => {
+                    const meta = ALL_ALLERGENS.find((x) => x.key === a)!;
+                    return t(meta.tKey as Parameters<typeof t>[0]);
+                  }).join(", ")}
+                </Text>
+                <Text style={{ color: c.warning, fontFamily: "Inter_700Bold", fontSize: 12 }}>
+                  {t("addSuggested")}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
           <Button
             label="Speichern"
             icon="check"
@@ -678,6 +771,7 @@ function ItemModal({
                 expiresAt: item?.expiresAt,
                 location: item?.location,
                 locationId: itemLocId,
+                allergens: allergens.length > 0 ? allergens : undefined,
                 updatedAt: new Date().toISOString(),
               };
               onSave(it);

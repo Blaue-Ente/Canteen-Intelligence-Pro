@@ -7,6 +7,7 @@ import producersDiscoverRouter from "./producersDiscover";
 import preorderRouter from "./preorder";
 import rollupRouter from "./rollup";
 import mailRouter from "./mail";
+import tseRouter from "./tse";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(producersDiscoverRouter);
 router.use(preorderRouter);
 router.use(rollupRouter);
 router.use(mailRouter);
+router.use(tseRouter);
 
 export default router;

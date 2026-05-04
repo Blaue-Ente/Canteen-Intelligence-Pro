@@ -1,3 +1,4 @@
+import { Feather } from "@expo/vector-icons";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -141,9 +142,22 @@ export default function AggregateScreen() {
             <ActivityIndicator color={c.primary} />
           </View>
         ) : error ? (
-          <Card>
-            <Text style={{ color: c.destructive, fontFamily: "Inter_500Medium" }}>{error}</Text>
-          </Card>
+          /* Same auth-aware pattern as customers.tsx — friendly card on 401. */
+          /401|unauthor/i.test(error) ? (
+            <Card style={{ alignItems: "center", gap: 8, paddingVertical: 20 }}>
+              <Feather name="lock" size={28} color={c.mutedForeground} />
+              <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 15 }}>
+                {t("authRequiredTitle")}
+              </Text>
+              <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 13, textAlign: "center" }}>
+                {t("authRequiredBody")}
+              </Text>
+            </Card>
+          ) : (
+            <Card>
+              <Text style={{ color: c.destructive, fontFamily: "Inter_500Medium" }}>{error}</Text>
+            </Card>
+          )
         ) : !data || data.byCustomer.length === 0 ? (
           <EmptyState icon="inbox" title={t("noOrdersForDay")} />
         ) : (

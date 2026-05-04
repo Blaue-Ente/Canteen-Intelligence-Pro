@@ -8,6 +8,7 @@ import { useApp, useT } from "@/contexts/AppContext";
 import { useAuthor } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { dgeCategory, recipeCo2Kg, recipeNutrition } from "@/lib/computations";
+import { recipeApplianceLabel, recipeFullCo2 } from "@/lib/sustainability";
 import type { Allergen } from "@/types";
 
 const ALL_ALLERGENS: { key: Allergen; tKey: string }[] = [
@@ -75,6 +76,8 @@ export default function RecipeDetail() {
   const nutrition = recipeNutrition(recipe, state.inventory);
   const co2 = recipeCo2Kg(recipe, state.inventory);
   const dge = dgeCategory(recipe, state.inventory);
+  const fullCo2 = recipeFullCo2(recipe, state.inventory);
+  const isDe = state.locale === "de";
 
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
@@ -216,13 +219,21 @@ export default function RecipeDetail() {
 
         <Card>
           <SectionHeader title={`LMIV · CO₂ · DGE`} />
-          <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
             <Badge
               label={dge === "green" ? t("dgeGreen") : dge === "yellow" ? t("dgeYellow") : t("dgeRed")}
               tone={dge === "green" ? "success" : dge === "yellow" ? "warning" : "destructive"}
             />
-            <Badge label={`${co2.toFixed(2)} kg CO₂e`} tone="accent" />
+            <Badge label={`${co2.toFixed(2)} kg CO₂e ${isDe ? "Zutaten" : "ingredients"}`} tone="accent" />
+            <Badge label={`${fullCo2.energyCo2Kg.toFixed(2)} kg CO₂e ${isDe ? "Energie" : "energy"}`} />
+            <Badge label={`Σ ${fullCo2.totalCo2Kg.toFixed(2)} kg CO₂e`} tone="accent" />
           </View>
+          <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, marginBottom: 10 }}>
+            {isDe ? "Garmethode" : "Method"}: {recipeApplianceLabel(recipe, isDe)}
+            {fullCo2.kwhPerPortion > 0
+              ? ` · ${fullCo2.kwhPerPortion.toFixed(3)} kWh ${isDe ? "pro Portion" : "per portion"}`
+              : ""}
+          </Text>
           <View style={{ flexDirection: "row", gap: 10 }}>
             <Stat label="kcal" value={String(Math.round(nutrition.kcal))} icon="zap" />
             <Stat label="P" value={`${nutrition.protein.toFixed(0)}g`} icon="activity" />

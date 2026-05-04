@@ -2,6 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import React from "react";
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -239,6 +240,7 @@ export function Field({
   placeholder,
   keyboardType,
   multiline,
+  webType,
 }: {
   label: string;
   value: string;
@@ -246,8 +248,53 @@ export function Field({
   placeholder?: string;
   keyboardType?: "default" | "numeric" | "email-address";
   multiline?: boolean;
+  /**
+   * On web only: render a native HTML5 input of this type. Useful for
+   * `time`/`date`/`number` so users get the OS-native picker and built-in
+   * format validation instead of typing a free-form string.
+   * On native, this prop is ignored (Platform.OS !== "web") — use a proper
+   * picker component there if precision is required.
+   */
+  webType?: "time" | "date" | "number" | "email";
 }) {
   const c = useColors();
+  // Web fast path: real <input type="time"|"date"> for browser-native picker
+  // and validation. We style it to match the RN TextInput look.
+  if (Platform.OS === "web" && webType) {
+    return (
+      <View style={{ gap: 6 }}>
+        <Text
+          style={{
+            color: c.mutedForeground,
+            fontFamily: "Inter_500Medium",
+            fontSize: 12,
+          }}
+        >
+          {label}
+        </Text>
+        {React.createElement("input", {
+          type: webType,
+          value,
+          onChange: (e: { target: { value: string } }) => onChangeText(e.target.value),
+          placeholder,
+          style: {
+            backgroundColor: c.card,
+            borderRadius: c.radius,
+            border: `1px solid ${c.border}`,
+            paddingLeft: 14,
+            paddingRight: 14,
+            paddingTop: 10,
+            paddingBottom: 10,
+            color: c.foreground,
+            fontFamily: "Inter_400Regular",
+            fontSize: 15,
+            outline: "none",
+            colorScheme: "light dark",
+          },
+        })}
+      </View>
+    );
+  }
   return (
     <View style={{ gap: 6 }}>
       <Text

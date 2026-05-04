@@ -1,6 +1,7 @@
 import type {
   AppState,
   CateringEvent,
+  CleaningTask,
   CompanyProfile,
   InventoryItem,
   Location,
@@ -301,6 +302,24 @@ const locations: Location[] = [
   { id: "loc3", name: "Spandau", code: "SPN", address: "Carl-Schurz-Str. 5, 13597 Berlin", lat: 52.54, lng: 13.20, avgGuestsPerDay: 95, createdAt: iso(today) },
 ];
 
+/**
+ * Seed master cleaning schedule. These are German DIN-aligned defaults for a
+ * mid-size canteen. Staff can edit/disable in settings; new ones can be added
+ * from the cleaning page itself.
+ */
+const cleaningTasks: CleaningTask[] = [
+  { id: "ct-1", name: "Arbeitsflächen reinigen & desinfizieren", nameEn: "Sanitize work surfaces", area: "kueche", frequency: "daily", instructions: "Alle Edelstahlflächen mit Desinfektionsspray einsprühen, 1 Min einwirken lassen, abwischen.", chemical: "Ecolab Topactive DES", active: true, createdAt: iso(today) },
+  { id: "ct-2", name: "Schneidebretter desinfizieren", nameEn: "Disinfect cutting boards", area: "kueche", frequency: "daily", instructions: "Nach jedem Wechsel zwischen rohem Fleisch und Gemüse.", active: true, createdAt: iso(today) },
+  { id: "ct-3", name: "Kühlung 1 — Innenreinigung", nameEn: "Fridge 1 internal cleaning", area: "kuehlung", frequency: "weekly", storageLocationId: "sl-fridge-1", instructions: "Alle Lebensmittel temporär umlagern, Innenraum mit Lebensmittelreiniger auswischen, Türdichtung kontrollieren.", chemical: "Sutter Bag-In-Box", active: true, createdAt: iso(today) },
+  { id: "ct-4", name: "Tiefkühler abtauen", nameEn: "Defrost freezer", area: "kuehlung", frequency: "monthly", storageLocationId: "sl-freezer-1", instructions: "Spätestens wenn Eisschicht > 5mm. Inhalt in Reservegerät umlagern.", active: true, createdAt: iso(today) },
+  { id: "ct-5", name: "Spülküche — Boden & Abfluss", nameEn: "Dishwash floor & drain", area: "boden", frequency: "daily", instructions: "Bodenwischen mit Hygiene-Reiniger, Bodenablauf-Sieb leeren.", chemical: "Diversey Suma Bac D10", active: true, createdAt: iso(today) },
+  { id: "ct-6", name: "Dunstabzug & Filter reinigen", nameEn: "Hood & filters", area: "abluft", frequency: "weekly", instructions: "Filter ausbauen und in Spülmaschine, Haube außen abwischen.", chemical: "Sutter Sgrass+", active: true, createdAt: iso(today) },
+  { id: "ct-7", name: "Fettabscheider entleeren & spülen", nameEn: "Grease trap empty & flush", area: "abluft", frequency: "monthly", instructions: "Nach DIN EN 1825 — Protokoll auf Papier sichern!", active: true, createdAt: iso(today) },
+  { id: "ct-8", name: "Trockenlager — Regale auswischen", nameEn: "Dry storage shelves", area: "lager", frequency: "weekly", storageLocationId: "sl-room-dry", active: true, createdAt: iso(today) },
+  { id: "ct-9", name: "Personaltoilette — Komplettreinigung", nameEn: "Staff toilet — full clean", area: "sanitaer", frequency: "daily", chemical: "Domestos", active: true, createdAt: iso(today) },
+  { id: "ct-10", name: "Grundreinigung Küche (Schichtübergreifend)", nameEn: "Quarterly deep clean", area: "kueche", frequency: "quarterly", instructions: "Wände, Decke, hinter Geräten, alle Lichtabdeckungen. Mit externer Reinigungsfirma planen.", active: true, createdAt: iso(today) },
+];
+
 export const seedState: AppState = {
   locale: "de",
   inventory,
@@ -310,6 +329,8 @@ export const seedState: AppState = {
   suppliers,
   complaints: [],
   haccp,
+  cleaningTasks,
+  cleaningLog: [],
   waste,
   catering,
   orders: [],
@@ -340,4 +361,7 @@ export const seedState: AppState = {
   okoProgress: { score: 0, completions: [] },
   kiosVoice: "sarah",
   appMode: "lite",
+  // ---- T011 TSE / KassenSichV (only used when appMode === "full") ----
+  tseConfig: undefined,
+  signedSales: [],
 };

@@ -248,7 +248,10 @@ export default function Home() {
         <View style={{ flexDirection: "row", gap: 10 }}>
           <QuickAction icon="camera" label={t("scan")} onPress={() => router.push("/scan")} />
           <QuickAction icon="cpu" label={t("forecast")} onPress={() => router.push("/forecast")} />
-          <QuickAction icon="message-square" label={t("handover")} onPress={() => router.push("/handover")} />
+          <QuickAction icon="clipboard" label={t("production")} onPress={() => router.push("/production")} />
+          {state.appMode === "full" && (
+            <QuickAction icon="credit-card" label="Kasse" onPress={() => router.push("/kasse")} />
+          )}
           <QuickAction icon="thermometer" label="HACCP" onPress={() => router.push("/haccp")} />
         </View>
 

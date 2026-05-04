@@ -674,3 +674,48 @@ export async function generateEventOffer(input: EventOfferInput): Promise<string
     '"string – the complete offer letter as plain text"',
   );
 }
+
+// ── T010: Supplier price-list ingest (email body / pasted PDF text) ─────────
+
+export interface ParsedPriceListItem {
+  /** Original ingredient name as printed by the supplier (German preferred). */
+  name: string;
+  /** Unit such as kg, l, Stk, Karton, Bund. */
+  unit: string;
+  /** Net price per unit in EUR. */
+  pricePerUnit: number;
+  /** Optional supplier SKU / Artikelnummer. */
+  code?: string;
+  category?: string;
+}
+
+export interface ParsedPriceList {
+  supplier?: string;
+  /** ISO YYYY-MM-DD start of validity if printed. */
+  validFrom?: string;
+  validTo?: string;
+  items: ParsedPriceListItem[];
+}
+
+/**
+ * Parse a free-form supplier price list (email body, PDF text, WhatsApp dump).
+ * Returns structured price entries usable for price-history / order calc.
+ */
+export async function parseSupplierPriceList(args: { text: string; locale: "de" | "en" }): Promise<ParsedPriceList> {
+  const lang = args.locale === "de" ? "Deutsch" : "English";
+  const prompt = [
+    `You are a German Großhandel buyer. Parse this supplier price list (email body, PDF text or WhatsApp dump) into structured items.`,
+    `Output language: ${lang}. Use German item names exactly as printed.`,
+    `Detect the supplier name from header/footer if possible. Detect validFrom/validTo dates if printed (Gültig ab / Gültig bis / Preisliste KW…).`,
+    `Convert pieces (Stk, St., Stück) → "pcs", Kilogramm → "kg", Liter → "l", Gramm → "g", Milliliter → "ml". Keep "Kiste", "Karton", "Bund", "Sack" verbatim.`,
+    `category may be: meat, dairy, vegetable, fruit, dry, spice, drink, frozen, other.`,
+    `Use the NET price per unit (€). Skip Pfand/Leergut, headlines and totals.`,
+    "",
+    "TEXT:",
+    args.text,
+  ].join("\n");
+  return generateJson<ParsedPriceList>(
+    prompt,
+    '{"supplier":"string","validFrom":"YYYY-MM-DD","validTo":"YYYY-MM-DD","items":[{"name":"string","unit":"kg|g|l|ml|pcs|Kiste|Karton|Bund|Sack","pricePerUnit":number,"code":"string","category":"string"}]}',
+  );
+}

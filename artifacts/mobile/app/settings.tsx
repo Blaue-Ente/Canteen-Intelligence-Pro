@@ -199,6 +199,19 @@ export default function Settings() {
           </View>
         </Card>
 
+        {/* T011: TSE / KassenSichV configuration — Voll-Modus only */}
+        {state.appMode === "full" && (
+          <Card>
+            <SectionHeader title="TSE / KassenSichV" />
+            <Text style={[subStyle, { marginBottom: 8 }]}>
+              {state.locale === "de"
+                ? "Kassen-Identifikationsnummer und Steuernummer für rechtsverbindliche Belege (§146a AO)."
+                : "Cash register ID and tax number for legally binding receipts (§146a AO)."}
+            </Text>
+            <TseConfigEditor />
+          </Card>
+        )}
+
         {/* Kios voice picker (web only — Kios is web-only) */}
         {Platform.OS === "web" && (
           <Card>
@@ -436,9 +449,16 @@ export default function Settings() {
             }
             right={<Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular" }}>›</Text>}
           />
-          <Row icon="moon" left={<Text style={labelStyle}>Erscheinung</Text>} right={<Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular" }}>System</Text>} />
-          <Row icon="link" left={<Text style={labelStyle}>Zettle Integration</Text>} right={<Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular" }}>Bald</Text>} />
-          <Row icon="map-pin" left={<Text style={labelStyle}>Standort</Text>} right={<Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular" }}>1 Standort</Text>} />
+          {/* Active locations row — shows real count from state, not a placeholder. */}
+          <Row
+            icon="map-pin"
+            left={<Text style={labelStyle}>{state.locale === "de" ? "Standorte" : "Locations"}</Text>}
+            right={
+              <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular" }}>
+                {state.locations.length}
+              </Text>
+            }
+          />
         </Card>
 
         {/* Öko Wizard toggle */}
@@ -573,6 +593,78 @@ export default function Settings() {
           KItchenOS · Made for German kitchens.
         </Text>
       </ScrollView>
+    </View>
+  );
+}
+
+// ── T011: TSE / KassenSichV editor (Voll-Modus) ─────────────────────────────
+function TseConfigEditor() {
+  const { state, dispatch } = useApp();
+  const c = useColors();
+  const cfg = state.tseConfig;
+  const [kassennummer, setKassennummer] = useState(cfg?.kassennummer ?? "K-001");
+  const [taxId, setTaxId] = useState(cfg?.taxId ?? state.companyProfile?.taxId ?? "");
+  const isDe = state.locale === "de";
+
+  const save = () => {
+    dispatch({
+      type: "setTseConfig",
+      config: {
+        kassennummer: kassennummer.trim() || "K-001",
+        taxId: taxId.trim(),
+        provider: cfg?.provider ?? "stub",
+        serialNumber: cfg?.serialNumber,
+        lastSignedAt: cfg?.lastSignedAt,
+        fiskalyClientId: cfg?.fiskalyClientId,
+        fiskalyTssId: cfg?.fiskalyTssId,
+      },
+    });
+    Alert.alert("TSE", isDe ? "Gespeichert." : "Saved.");
+  };
+
+  return (
+    <View style={{ gap: 8 }}>
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: c.mutedForeground, fontSize: 11, marginBottom: 4, fontFamily: "Inter_500Medium" }}>
+            Kassennummer
+          </Text>
+          <TextInput
+            value={kassennummer}
+            onChangeText={setKassennummer}
+            placeholder="K-001"
+            placeholderTextColor={c.mutedForeground}
+            style={{
+              borderWidth: 1, borderColor: c.border, borderRadius: 8,
+              paddingHorizontal: 10, paddingVertical: 8, color: c.foreground,
+              fontFamily: "Inter_400Regular", fontSize: 14,
+            }}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: c.mutedForeground, fontSize: 11, marginBottom: 4, fontFamily: "Inter_500Medium" }}>
+            {isDe ? "Steuernummer" : "Tax ID"}
+          </Text>
+          <TextInput
+            value={taxId}
+            onChangeText={setTaxId}
+            placeholder="DE123456789"
+            placeholderTextColor={c.mutedForeground}
+            style={{
+              borderWidth: 1, borderColor: c.border, borderRadius: 8,
+              paddingHorizontal: 10, paddingVertical: 8, color: c.foreground,
+              fontFamily: "Inter_400Regular", fontSize: 14,
+            }}
+          />
+        </View>
+      </View>
+      <Text style={{ color: c.mutedForeground, fontSize: 11, fontFamily: "Inter_400Regular" }}>
+        {isDe
+          ? `Provider: ${cfg?.provider ?? "stub"}  ·  TSE-Serial: ${cfg?.serialNumber ?? "—"}`
+          : `Provider: ${cfg?.provider ?? "stub"}  ·  TSE serial: ${cfg?.serialNumber ?? "—"}`}
+      </Text>
+      <Button label={isDe ? "Speichern" : "Save"} icon="save" variant="secondary" onPress={save} />
+      <Button label={isDe ? "Kasse öffnen" : "Open cash register"} icon="credit-card" onPress={() => {/* router.push happens via QuickAction */}} />
     </View>
   );
 }

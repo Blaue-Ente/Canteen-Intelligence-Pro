@@ -123,9 +123,23 @@ export default function CustomersScreen() {
             <ActivityIndicator color={c.primary} />
           </View>
         ) : error ? (
-          <Card>
-            <Text style={{ color: c.destructive, fontFamily: "Inter_500Medium" }}>{error}</Text>
-          </Card>
+          /* Friendly auth-aware error: 401 → sign-in card; everything else → raw msg.
+             Avoids dumping "401 Unauthorized" at the user when they're simply signed out. */
+          /401|unauthor/i.test(error) ? (
+            <Card style={{ alignItems: "center", gap: 8, paddingVertical: 20 }}>
+              <Feather name="lock" size={28} color={c.mutedForeground} />
+              <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 15 }}>
+                {t("authRequiredTitle")}
+              </Text>
+              <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 13, textAlign: "center" }}>
+                {t("authRequiredBody")}
+              </Text>
+            </Card>
+          ) : (
+            <Card>
+              <Text style={{ color: c.destructive, fontFamily: "Inter_500Medium" }}>{error}</Text>
+            </Card>
+          )
         ) : rows.length === 0 ? (
           <EmptyState
             icon="users"
