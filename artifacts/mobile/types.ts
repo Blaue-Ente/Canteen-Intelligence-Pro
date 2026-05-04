@@ -430,7 +430,12 @@ export interface AppState {
   // ---- Öko Wizard ----
   okoEnabled: boolean;
   okoProgress: OkoProgress;
+  // ---- Kios voice ----
+  kiosVoice: KiosVoice;
 }
+
+/** Voice options for the Kios assistant. Mapped to ElevenLabs voice IDs server-side. */
+export type KiosVoice = "sarah" | "charlotte" | "antoni";
 
 // ─── Öko Wizard ─────────────────────────────────────────────────────────────
 

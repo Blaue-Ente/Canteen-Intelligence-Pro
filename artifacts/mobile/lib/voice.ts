@@ -317,20 +317,27 @@ async function fetchTts(text: string, voice: string): Promise<string | null> {
  *
  * preset = "kios-de" warms all 40+ static Kios German phrases.
  */
-let _prewarmed = false;
+let _prewarmedKey: string | null = null;
 export async function prewarmTtsCache(opts?: {
   preset?: "kios-de" | "kios-en" | "kios-all";
+  voice?: string;
   phrases?: { text: string; voice?: string }[];
 }): Promise<boolean> {
   if (typeof window === "undefined" || typeof fetch === "undefined") return false;
-  if (_prewarmed && !opts?.phrases) return true; // preset already warmed
+  // Re-warm whenever voice changes (different voice = different cache keys server-side)
+  const key = `${opts?.preset ?? "kios-de"}|${opts?.voice ?? "sarah"}`;
+  if (_prewarmedKey === key && !opts?.phrases) return true;
   try {
     const resp = await fetch(`${ttsBaseUrl()}/api/ai/tts/prewarm`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ preset: opts?.preset ?? "kios-de", phrases: opts?.phrases }),
+      body: JSON.stringify({
+        preset: opts?.preset ?? "kios-de",
+        voice: opts?.voice,
+        phrases: opts?.phrases,
+      }),
     });
-    if (resp.ok) { _prewarmed = true; return true; }
+    if (resp.ok) { _prewarmedKey = key; return true; }
     return false;
   } catch { return false; }
 }
@@ -346,7 +353,7 @@ export function speakHQ(
   text: string,
   locale: "de" | "en",
   onEnd?: () => void,
-  voice: "nova" | "shimmer" | "alloy" | "echo" | "onyx" | "fable" = "nova",
+  voice: string = "sarah",
 ): void {
   if (Platform.OS !== "web" || typeof window === "undefined" || typeof Audio === "undefined") {
     speakWebSpeech(text, locale, onEnd);

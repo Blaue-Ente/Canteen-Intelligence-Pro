@@ -230,7 +230,7 @@ export function useKios() {
     if (quick) {
       if (NAV_MAP[quick.nav]) router.push(NAV_MAP[quick.nav] as never);
       setStatus("speaking");
-      speakHQ(quick.reply, locale, () => scheduleRestart(300));
+      speakHQ(quick.reply, locale, () => scheduleRestart(300), snap.kiosVoice);
       return;
     }
 
@@ -254,6 +254,7 @@ export function useKios() {
           : "Sorry, something went wrong.",
         locale,
         () => scheduleRestart(500),
+        snap.kiosVoice,
       );
       return;
     }
@@ -264,7 +265,7 @@ export function useKios() {
     if (navKey && NAV_MAP[navKey]) router.push(NAV_MAP[navKey] as never);
 
     setStatus("speaking");
-    speakHQ(result.answer, locale, () => scheduleRestart(300));
+    speakHQ(result.answer, locale, () => scheduleRestart(300), snap.kiosVoice);
   }
 
   function startListening(initialPhase: "wake" | "question" = "wake") {
@@ -303,7 +304,7 @@ export function useKios() {
                 if (r.current.status !== "off" && r.current.status !== "thinking") {
                   startListening("question");
                 }
-              });
+              }, r.current.state.kiosVoice);
             }
           }
         } else if (r.current.phase === "question") {
@@ -342,7 +343,7 @@ export function useKios() {
     // Pre-warm server TTS cache for all 40+ static Kios phrases. Fire-and-forget;
     // returns immediately and the server generates them in the background. Result:
     // every "Statistik wird geöffnet." / "Ja?" / etc plays instantly with no fetch.
-    void prewarmTtsCache({ preset: "kios-de" });
+    void prewarmTtsCache({ preset: "kios-de", voice: state.kiosVoice });
     setStatus("idle");
     startListening("wake");
   }

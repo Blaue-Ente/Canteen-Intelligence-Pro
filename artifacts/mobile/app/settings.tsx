@@ -11,6 +11,14 @@ import { useAuthCtx } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { ensurePermissions, rescheduleAll } from "@/lib/notifications";
 import { resetState } from "@/lib/storage";
+import { speakHQ, prewarmTtsCache } from "@/lib/voice";
+import type { KiosVoice } from "@/types";
+
+const KIOS_VOICES: { id: KiosVoice; labelDe: string; labelEn: string; descDe: string; descEn: string }[] = [
+  { id: "sarah",     labelDe: "Sarah",     labelEn: "Sarah",     descDe: "Warm, weiblich (Standard)", descEn: "Warm, female (default)" },
+  { id: "charlotte", labelDe: "Charlotte", labelEn: "Charlotte", descDe: "Sanft, weiblich",           descEn: "Soft, female" },
+  { id: "antoni",    labelDe: "Antoni",    labelEn: "Antoni",    descDe: "Ruhig, männlich",           descEn: "Calm, male" },
+];
 
 export default function Settings() {
   const { state, dispatch } = useApp();
@@ -138,6 +146,97 @@ export default function Settings() {
             <Chip label="English" active={state.locale === "en"} onPress={() => dispatch({ type: "setLocale", locale: "en" })} />
           </View>
         </Card>
+
+        {/* Kios voice picker (web only — Kios is web-only) */}
+        {Platform.OS === "web" && (
+          <Card>
+            <SectionHeader title={state.locale === "de" ? "Kios-Stimme" : "Kios voice"} />
+            <Text style={[subStyle, { marginBottom: 10 }]}>
+              {state.locale === "de"
+                ? "Wähle die Stimme, mit der dir Kios antwortet. Bei Wechsel werden die Sätze einmalig neu generiert."
+                : "Pick the voice Kios uses to reply. Switching re-generates the phrase cache once."}
+            </Text>
+            <View style={{ gap: 8 }}>
+              {KIOS_VOICES.map((v) => {
+                const active = state.kiosVoice === v.id;
+                return (
+                  <Pressable
+                    key={v.id}
+                    onPress={() => {
+                      dispatch({ type: "setKiosVoice", voice: v.id });
+                      // Re-warm cache for the new voice in the background
+                      void prewarmTtsCache({ preset: "kios-de", voice: v.id });
+                    }}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 10,
+                      paddingVertical: 10,
+                      paddingHorizontal: 12,
+                      borderRadius: 10,
+                      borderWidth: 1.5,
+                      borderColor: active ? c.primary : c.border,
+                      backgroundColor: active ? c.muted : "transparent",
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: 9,
+                        borderWidth: 2,
+                        borderColor: active ? c.primary : c.border,
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      {active && (
+                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c.primary }} />
+                      )}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={labelStyle}>
+                        {state.locale === "de" ? v.labelDe : v.labelEn}
+                      </Text>
+                      <Text style={subStyle}>
+                        {state.locale === "de" ? v.descDe : v.descEn}
+                      </Text>
+                    </View>
+                    <Pressable
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        speakHQ(
+                          state.locale === "de"
+                            ? "Hallo, ich bin Kios, dein Küchenassistent."
+                            : "Hello, I'm Kios, your kitchen assistant.",
+                          state.locale,
+                          undefined,
+                          v.id,
+                        );
+                      }}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 5,
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                        borderRadius: 8,
+                        backgroundColor: c.background,
+                        borderWidth: 1,
+                        borderColor: c.border,
+                      }}
+                    >
+                      <Feather name="volume-2" size={13} color={c.foreground} />
+                      <Text style={{ color: c.foreground, fontFamily: "Inter_500Medium", fontSize: 12 }}>
+                        {state.locale === "de" ? "Hören" : "Play"}
+                      </Text>
+                    </Pressable>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </Card>
+        )}
 
         <Card>
           <SectionHeader title={t("notifications")} />

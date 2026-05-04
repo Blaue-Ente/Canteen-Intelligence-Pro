@@ -22,6 +22,7 @@ import type {
   IngredientPriceHistory,
   InventoryItem,
   InventurSession,
+  KiosVoice,
   Locale,
   Location,
   MenuDayEntry,
@@ -102,6 +103,7 @@ type Action =
   | { type: "loadDemoData"; events: CateringEvent[]; company: CompanyProfile }
   // ---- Öko Wizard ----
   | { type: "setOkoEnabled"; enabled: boolean }
+  | { type: "setKiosVoice"; voice: KiosVoice }
   | { type: "completeOkoChallenge"; completion: OkoCompletion }
   | { type: "removeOkoCompletion"; id: string };
 
@@ -305,6 +307,8 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, events: action.events, companyProfile: action.company };
     case "setOkoEnabled":
       return { ...state, okoEnabled: action.enabled };
+    case "setKiosVoice":
+      return { ...state, kiosVoice: action.voice };
     case "completeOkoChallenge": {
       const POINTS: Record<OkoChallengeId, number> = {
         meatFreeDay: 20, useReste: 15, regionalOrder: 25, haccpToday: 10,
@@ -390,6 +394,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           companyProfile: pick("companyProfile"),
           okoEnabled: pick("okoEnabled"),
           okoProgress: pick("okoProgress"),
+          kiosVoice: pick("kiosVoice"),
         };
         dispatch({ type: "hydrate", state: merged });
       }

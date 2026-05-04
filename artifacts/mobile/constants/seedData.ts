@@ -338,4 +338,5 @@ export const seedState: AppState = {
   companyProfile: demoCompany,
   okoEnabled: true,
   okoProgress: { score: 0, completions: [] },
+  kiosVoice: "sarah",
 };

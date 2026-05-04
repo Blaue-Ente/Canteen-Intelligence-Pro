@@ -303,6 +303,8 @@ router.post("/ai/tts", async (req: Request, res: Response) => {
 interface PrewarmBody {
   phrases?: { text: string; voice?: string }[];
   preset?: "kios-de" | "kios-en" | "kios-all";
+  /** Voice for preset phrases (friendly name like "sarah"). Defaults to female DE. */
+  voice?: string;
 }
 
 // Hard caps: prevent abuse / cost drain even if endpoint is hit by random callers.
@@ -334,11 +336,12 @@ router.post("/ai/tts/prewarm", async (req: Request, res: Response) => {
     return true;
   }
 
+  const presetVoiceId = resolveVoiceId(body?.voice);
   if (body?.preset === "kios-de" || body?.preset === "kios-all") {
-    for (const t of KIOS_STATIC_PHRASES_DE) tryPush(t, ELEVEN_VOICE_DE_FEMALE);
+    for (const t of KIOS_STATIC_PHRASES_DE) tryPush(t, presetVoiceId);
   }
   if (body?.preset === "kios-en" || body?.preset === "kios-all") {
-    for (const t of KIOS_STATIC_PHRASES_EN) tryPush(t, ELEVEN_VOICE_DE_FEMALE);
+    for (const t of KIOS_STATIC_PHRASES_EN) tryPush(t, presetVoiceId);
   }
   if (Array.isArray(body?.phrases)) {
     for (const p of body.phrases) {
