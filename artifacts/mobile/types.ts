@@ -234,6 +234,10 @@ export interface NotificationPrefs {
   tagesabschlussTime: string; // HH:mm
   haccpReminder: boolean;
   haccpTime: string; // HH:mm
+  /** Lock-window: booleans/counts may only be increased during this period */
+  salesWindowEnabled: boolean;
+  salesWindowStart: string; // HH:mm
+  salesWindowEnd: string;   // HH:mm
 }
 
 // ---------- Phase 6A entities ----------

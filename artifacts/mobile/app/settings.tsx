@@ -1,3 +1,4 @@
+import { Feather } from "@expo/vector-icons";
 import React, { useState } from "react";
 import { Alert, Platform, ScrollView, Switch, Text, TextInput, View, Pressable } from "react-native";
 
@@ -210,6 +211,64 @@ export default function Settings() {
               trackColor={{ true: c.primary, false: c.border }}
             />
           </View>
+        </Card>
+
+        {/* Sales entry window */}
+        <Card>
+          <SectionHeader title={t("salesWindowTitle")} />
+          <Text style={[subStyle, { marginBottom: 8 }]}>{t("salesWindowDesc")}</Text>
+
+          <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 6 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={labelStyle}>{t("salesWindowEnable")}</Text>
+            </View>
+            <Switch
+              value={prefs.salesWindowEnabled}
+              onValueChange={(v) => dispatch({ type: "setNotificationPrefs", prefs: { ...prefs, salesWindowEnabled: v } })}
+              trackColor={{ true: c.primary, false: c.border }}
+            />
+          </View>
+
+          <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8, opacity: prefs.salesWindowEnabled ? 1 : 0.4 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={labelStyle}>{t("salesWindowFrom")}</Text>
+              <Text style={subStyle}>{t("salesWindowFromDesc")}</Text>
+            </View>
+            {timeInput(prefs.salesWindowStart, (v) =>
+              dispatch({ type: "setNotificationPrefs", prefs: { ...prefs, salesWindowStart: v } })
+            )}
+          </View>
+
+          <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8, opacity: prefs.salesWindowEnabled ? 1 : 0.4 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={labelStyle}>{t("salesWindowTo")}</Text>
+              <Text style={subStyle}>{t("salesWindowToDesc")}</Text>
+            </View>
+            {timeInput(prefs.salesWindowEnd, (v) =>
+              dispatch({ type: "setNotificationPrefs", prefs: { ...prefs, salesWindowEnd: v } })
+            )}
+          </View>
+
+          {prefs.salesWindowEnabled && (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+                marginTop: 4,
+                padding: 10,
+                borderRadius: 10,
+                backgroundColor: "#fef9c3",
+              }}
+            >
+              <Feather name="info" size={13} color="#a16207" />
+              <Text style={{ color: "#92400e", fontFamily: "Inter_400Regular", fontSize: 12, flex: 1 }}>
+                {state.locale === "de"
+                  ? `Zwischen ${prefs.salesWindowStart} und ${prefs.salesWindowEnd} können Belegzahlen nur erhöht, nicht verringert werden.`
+                  : `Between ${prefs.salesWindowStart} and ${prefs.salesWindowEnd}, counts can only be increased, not reduced.`}
+              </Text>
+            </View>
+          )}
         </Card>
 
         <Card style={{ padding: 0 }}>

@@ -12,6 +12,19 @@ function dateKey(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 
+/** Returns true if current local time is within the HH:mm window (inclusive). */
+function isInWindow(start: string, end: string): boolean {
+  const now = new Date();
+  const cur = now.getHours() * 60 + now.getMinutes();
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  const s = (sh ?? 0) * 60 + (sm ?? 0);
+  const e = (eh ?? 0) * 60 + (em ?? 0);
+  if (s <= e) return cur >= s && cur <= e;
+  // overnight window (e.g. 22:00–02:00)
+  return cur >= s || cur <= e;
+}
+
 export default function Sales() {
   const { state, dispatch, newId } = useApp();
   const t = useT();
@@ -19,6 +32,14 @@ export default function Sales() {
   const router = useRouter();
   const [date, setDate] = useState(dateKey(new Date()));
   const [drafts, setDrafts] = useState<Record<string, { cooked: string; sold: string; portion: string }>>({});
+
+  const prefs = state.notificationPrefs;
+  const isToday = date === dateKey(new Date());
+  // Lock: only-add mode when window is enabled AND today is selected AND currently inside window
+  const locked =
+    prefs.salesWindowEnabled &&
+    isToday &&
+    isInWindow(prefs.salesWindowStart, prefs.salesWindowEnd);
 
   const todaysMenu = state.menu.find((m) => m.date === date);
   const candidateIds = useMemo(() => {
@@ -93,6 +114,45 @@ export default function Sales() {
           </ScrollView>
         </Card>
 
+        {/* Lock-window banner */}
+        {prefs.salesWindowEnabled && isToday && (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              borderRadius: 10,
+              backgroundColor: locked ? "#fef9c3" : "#f0fdf4",
+              borderWidth: 1,
+              borderColor: locked ? "#fde047" : "#bbf7d0",
+            }}
+          >
+            <Feather name={locked ? "lock" : "unlock"} size={15} color={locked ? "#a16207" : "#16a34a"} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: locked ? "#a16207" : "#15803d", fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
+                {locked
+                  ? state.locale === "de"
+                    ? "Erfassungsfenster aktiv – nur Erhöhungen möglich"
+                    : "Entry window active – additions only"
+                  : state.locale === "de"
+                    ? `Erfassungsfenster: ${prefs.salesWindowStart} – ${prefs.salesWindowEnd}`
+                    : `Entry window: ${prefs.salesWindowStart} – ${prefs.salesWindowEnd}`}
+              </Text>
+              <Text style={{ color: locked ? "#92400e" : "#166534", fontFamily: "Inter_400Regular", fontSize: 11, marginTop: 1 }}>
+                {locked
+                  ? state.locale === "de"
+                    ? "Bitte keine Stornierungen während des Mittagsservice. Nur hinzufügen erlaubt."
+                    : "No reductions during service. You may only add counts."
+                  : state.locale === "de"
+                    ? "Außerhalb des Fensters: vollständige Bearbeitung möglich."
+                    : "Outside window: full editing allowed."}
+              </Text>
+            </View>
+          </View>
+        )}
+
         <View style={{ flexDirection: "row", gap: 10 }}>
           <Stat label={t("cooked")} value={String(totals.cooked)} icon="play-circle" />
           <Stat label={t("sold")} value={String(totals.sold)} icon="check-circle" tone="success" />
@@ -137,11 +197,13 @@ export default function Sales() {
                   <NumField
                     label={t("cooked")}
                     value={d.cooked}
+                    locked={locked}
                     onChange={(v) => setDrafts((s) => ({ ...s, [rid]: { ...d, cooked: v } }))}
                   />
                   <NumField
                     label={t("sold")}
                     value={d.sold}
+                    locked={locked}
                     onChange={(v) => setDrafts((s) => ({ ...s, [rid]: { ...d, sold: v } }))}
                   />
                   <NumField
@@ -149,6 +211,7 @@ export default function Sales() {
                     value={d.portion}
                     placeholder={String(r.portionGrams)}
                     step={10}
+                    locked={false}
                     onChange={(v) => setDrafts((s) => ({ ...s, [rid]: { ...d, portion: v } }))}
                   />
                 </View>
@@ -169,31 +232,73 @@ function NumField({
   onChange,
   placeholder,
   step = 1,
+  locked = false,
 }: {
   label: string;
   value: string;
   onChange: (s: string) => void;
   placeholder?: string;
   step?: number;
+  locked?: boolean;
 }) {
   const c = useColors();
   const n = Number(value) || 0;
+
+  const handleChange = (v: string) => {
+    if (locked) {
+      // In lock mode: only allow the value to increase
+      const next = Number(v) || 0;
+      if (next < n) return;
+    }
+    onChange(v);
+  };
+
+  const handleDecrement = () => {
+    if (locked) return; // blocked during service window
+    onChange(String(Math.max(0, n - step)));
+  };
+
   return (
-    <View style={{ flex: 1, backgroundColor: c.muted, borderRadius: c.radius, padding: 10 }}>
-      <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 11 }}>{label}</Text>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: locked ? "#fef9c3" : c.muted,
+        borderRadius: c.radius,
+        padding: 10,
+        borderWidth: locked ? 1 : 0,
+        borderColor: locked ? "#fde047" : "transparent",
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 4 }}>
+        <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 11, flex: 1 }}>
+          {label}
+        </Text>
+        {locked && (
+          <Feather name="lock" size={10} color="#a16207" />
+        )}
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
         <Pressable
-          onPress={() => onChange(String(Math.max(0, n - step)))}
+          onPress={handleDecrement}
+          disabled={locked}
           style={({ pressed }) => [
-            { width: 28, height: 28, borderRadius: 8, backgroundColor: c.card, alignItems: "center", justifyContent: "center" },
-            pressed && { opacity: 0.7 },
+            {
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              backgroundColor: c.card,
+              alignItems: "center",
+              justifyContent: "center",
+              opacity: locked ? 0.3 : 1,
+            },
+            pressed && !locked && { opacity: 0.7 },
           ]}
         >
           <Feather name="minus" size={14} color={c.foreground} />
         </Pressable>
         <TextInput
           value={value}
-          onChangeText={onChange}
+          onChangeText={handleChange}
           keyboardType="numeric"
           placeholder={placeholder ?? "0"}
           placeholderTextColor={c.mutedForeground}

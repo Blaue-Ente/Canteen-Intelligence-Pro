@@ -462,6 +462,14 @@ const dict = {
     okoWizardTitle: "Nachhaltigkeit & Öko",
     okoWizardEnable: "Öko-Wizard aktivieren",
     okoWizardEnableDesc: "Zeigt tägliche Nachhaltigkeitsaufgaben mit Medaillen und Score.",
+    // Sales entry window
+    salesWindowTitle: "Erfassungsfenster",
+    salesWindowDesc: "Legt einen Zeitraum fest, in dem Belegzahlen nur erhöht, aber nicht verringert werden können. Verhindert Nachkorrekturen während des Service.",
+    salesWindowEnable: "Erfassungsfenster aktivieren",
+    salesWindowFrom: "Von",
+    salesWindowFromDesc: "Beginn des gesperrten Zeitfensters",
+    salesWindowTo: "Bis",
+    salesWindowToDesc: "Ende des gesperrten Zeitfensters",
   },
   en: {
     appName: "KItchenOS",
@@ -924,6 +932,14 @@ const dict = {
     preparation: "Preparation",
     plate: "Plate return",
     reports: "Reports",
+    // Sales entry window
+    salesWindowTitle: "Entry window",
+    salesWindowDesc: "Sets a time window during which counts can only be increased, not reduced. Prevents retroactive changes during service.",
+    salesWindowEnable: "Enable entry window",
+    salesWindowFrom: "From",
+    salesWindowFromDesc: "Start of the locked time window",
+    salesWindowTo: "Until",
+    salesWindowToDesc: "End of the locked time window",
   },
 } as const;
 

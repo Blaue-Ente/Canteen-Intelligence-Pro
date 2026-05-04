@@ -290,6 +290,9 @@ const notificationPrefs: NotificationPrefs = {
   tagesabschlussTime: "21:30",
   haccpReminder: true,
   haccpTime: "08:30",
+  salesWindowEnabled: false,
+  salesWindowStart: "10:00",
+  salesWindowEnd: "14:30",
 };
 
 const locations: Location[] = [

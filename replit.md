@@ -137,6 +137,13 @@ Full catering event lifecycle management with AI-generated offer letters and ext
 - **More screen** (`artifacts/mobile/app/(tabs)/more.tsx`): "Veranstaltungen" + "Preisserver" links added to Operations section.
 - **i18n**: 50+ new keys in both DE and EN (status labels, form fields, cost fields, sync/auth labels).
 
+### Tagesabschluss Entry Window + Overpass Fix (Phase 6F)
+
+- **Erfassungsfenster** (`app/sales.tsx`, `app/settings.tsx`): Configurable time-window (HH:mm start → end) during which cooked/sold counts can ONLY be increased, not decreased. Prevents retroactive reductions during service. The `−` button is disabled and direct text-editing is guarded against lower values. A status banner shows 🔒 "Erfassungsfenster aktiv" (yellow) inside the window or 🔓 upcoming window info outside. Configuration card in Settings (toggle + two time pickers). Defaults: disabled, 10:00–14:30.
+- **Types**: `NotificationPrefs` extended with `salesWindowEnabled: boolean`, `salesWindowStart: string`, `salesWindowEnd: string`. `seedData.ts` defaults added.
+- **i18n**: 7 new keys DE + EN (`salesWindowTitle`, `salesWindowDesc`, `salesWindowEnable`, `salesWindowFrom/FromDesc`, `salesWindowTo/ToDesc`).
+- **Overpass BBOX fix** (`artifacts/api-server/src/routes/producersDiscover.ts`): Reduced bounding box from all-Germany (47.3–55.1 N, 5.9–15.1 E) to Berlin+Brandenburg (51.36–53.56 N, 11.27–14.77 E) — same scale as the suppliers endpoint — to prevent 502 timeout from Overpass API.
+
 ### Customer accounts + 08:00 cutoff + daily aggregate (Phase 6C)
 
 The pre-order portal now distinguishes anonymous guests from logged-in customers (regular vs business-approved), with a per-day 08:00 Europe/Berlin lockout for self-service edits and a per-customer aggregate view for the kitchen.

@@ -4,8 +4,8 @@ import { eq, inArray } from "drizzle-orm";
 
 const router: IRouter = Router();
 
-// Berlin + Brandenburg + wider Germany bounding box
-const BBOX = { south: 47.3, west: 5.9, north: 55.1, east: 15.1 };
+// Berlin + Brandenburg bounding box (same scale as suppliers endpoint)
+const BBOX = { south: 51.36, west: 11.27, north: 53.56, east: 14.77 };
 
 const PRODUCER_CATEGORIES: Record<string, { osmTags: string[]; productGroups: string[]; labelDe: string }> = {
   farm: {
