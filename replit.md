@@ -100,6 +100,20 @@ The seed cookbook was expanded from 30 German recipes to ~150 across 7 cuisines,
 4. Бутон "Свържи Exchange акаунт" в мобилното (Settings/More)
 5. Mail route-овете да използват org-specific токен от БД вместо Replit connector
 
+### Event Management + AI Offer Generation + Price Server (Phase 6D)
+
+Full catering event lifecycle management with AI-generated offer letters and external price list synchronisation.
+
+- **Types** (`artifacts/mobile/types.ts`): `EventStatus` (anfrage/angebot/bestaetigt/produktion/abgeschlossen/abgesagt), `EventMenuItem` (recipeId, recipeName, portions, pricePerPortion), `CateringEvent` (full event with cost fields), `PriceListEntry`, `PriceServerAuthType`, `PriceServerConfig`. `AppState` extended with `events[]`, `priceList[]`, `priceServerConfig?`.
+- **AppContext** (`artifacts/mobile/contexts/AppContext.tsx`): Actions `addEvent`, `updateEvent`, `removeEvent`, `setPriceList`, `setPriceServerConfig` with reducer cases.
+- **Event list** (`artifacts/mobile/app/events.tsx`): Lists all events sorted by date with status filter chips (Alle/Anfrage/Angebot/Bestätigt/In Produktion/Abgeschlossen/Abgesagt), colour-coded status badges, live grand-total per event, FAB `+` to create new, empty state with CTA button.
+- **Event detail** (`artifacts/mobile/app/eventdetail.tsx`): Full-featured create/edit form — 6-step status stepper (colour-coded), basic info (title, client, email/phone, date/time, venue, guests, notes), menu item builder (recipe picker with price-list price fallback, per-dish portions + price/portion + line total), cost inputs (staff/equipment/transport/overhead%/VAT%), live totals breakdown (food cost, each cost line, overhead, VAT, grand total, per person), AI offer generator via `generateEventOffer()` → editable text area → Share. Save/delete.
+- **Price server** (`artifacts/mobile/app/priceserver.tsx`): Configure external ERP price endpoint (URL + auth: None/Basic/Bearer/API-Key), "Test connection" verifies count, "Sync now" syncs into `priceList[]` state, last-sync status indicator, preview of first 8 entries.
+- **Price server lib** (`artifacts/mobile/lib/priceServer.ts`): `syncPriceList(config)` — normalises heterogeneous ERP JSON responses (arrays, `{articles}`, `{items}`, `{products}`, `{data}`) and field aliases (`name/artikel/bezeichnung`, `preis/price`, `einheit/unit`, etc.) into `PriceListEntry[]`.
+- **AI** (`artifacts/mobile/lib/ai.ts`): `generateEventOffer(input)` — generates a professional German Angebot letter (150–250 words, reference placeholder, itemised menu, cost summary, 14-day payment terms) via `generateJson<string>`.
+- **More screen** (`artifacts/mobile/app/(tabs)/more.tsx`): "Veranstaltungen" + "Preisserver" links added to Operations section.
+- **i18n**: 50+ new keys in both DE and EN (status labels, form fields, cost fields, sync/auth labels).
+
 ### Customer accounts + 08:00 cutoff + daily aggregate (Phase 6C)
 
 The pre-order portal now distinguishes anonymous guests from logged-in customers (regular vs business-approved), with a per-day 08:00 Europe/Berlin lockout for self-service edits and a per-customer aggregate view for the kitchen.

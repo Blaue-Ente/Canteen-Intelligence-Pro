@@ -563,3 +563,71 @@ export async function distributeOrder(args: {
     '{"orders":[{"supplierId":"string","reason":"string","items":[{"name":"string","quantity":number,"unit":"string","inventoryId":"string","estimatedPrice":number}]}]}',
   );
 }
+
+// ---- Event Offer Generator ----
+
+export interface EventOfferTotals {
+  foodCost: number;
+  staffCost: number;
+  equipmentCost: number;
+  transportCost: number;
+  overhead: number;
+  vatAmount: number;
+  grandTotal: number;
+  perPerson: number;
+}
+
+export interface EventOfferInput {
+  title: string;
+  clientName: string;
+  eventDate: string;
+  eventTime?: string;
+  venue?: string;
+  guestCount: number;
+  notes?: string;
+  menuItems: { name: string; portions: number; pricePerPortion: number }[];
+  totals: EventOfferTotals;
+  locale: "de" | "en";
+}
+
+export async function generateEventOffer(input: EventOfferInput): Promise<string> {
+  const lang = input.locale === "de" ? "German" : "English";
+  const lines = [
+    `You are a professional German catering company's office manager. Write a formal catering offer (Angebot) in ${lang}.`,
+    `Event: "${input.title}"`,
+    `Client: ${input.clientName}`,
+    `Date: ${input.eventDate}${input.eventTime ? " " + input.eventTime : ""}`,
+    input.venue ? `Venue: ${input.venue}` : "",
+    `Guests: ${input.guestCount}`,
+    input.notes ? `Special notes: ${input.notes}` : "",
+    "",
+    "Menu:",
+    ...input.menuItems.map(
+      (m) =>
+        `  - ${m.name}: ${m.portions} Portionen × €${m.pricePerPortion.toFixed(2)} = €${(m.portions * m.pricePerPortion).toFixed(2)}`,
+    ),
+    "",
+    "Cost summary:",
+    `  Wareneinsatz: €${input.totals.foodCost.toFixed(2)}`,
+    input.totals.staffCost > 0
+      ? `  Personal: €${input.totals.staffCost.toFixed(2)}`
+      : "",
+    input.totals.equipmentCost > 0
+      ? `  Ausstattung: €${input.totals.equipmentCost.toFixed(2)}`
+      : "",
+    input.totals.transportCost > 0
+      ? `  Transport: €${input.totals.transportCost.toFixed(2)}`
+      : "",
+    `  Gemeinkosten: €${input.totals.overhead.toFixed(2)}`,
+    `  MwSt.: €${input.totals.vatAmount.toFixed(2)}`,
+    `  Gesamtbetrag: €${input.totals.grandTotal.toFixed(2)}`,
+    `  Pro Person: €${input.totals.perPerson.toFixed(2)}`,
+    "",
+    "Write a professional, courteous offer letter of 150–250 words. Include a reference number placeholder [ANGEBOT-XXXX], today's date, all key event details, itemised menu with prices, the cost summary, payment terms (Zahlungsziel 14 Tage netto), and a warm German closing (Wir freuen uns auf Ihre Rückmeldung). Return ONLY the plain offer text — no JSON, no markdown, no code blocks.",
+  ].filter(Boolean);
+
+  return generateJson<string>(
+    lines.join("\n"),
+    '"string – the complete offer letter as plain text"',
+  );
+}

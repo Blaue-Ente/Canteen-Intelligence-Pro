@@ -49,6 +49,8 @@ export default function More() {
         { icon: "user-check", label: t("customers"), to: "/customers" },
         { icon: "layers", label: t("dailyAggregate"), to: "/aggregate" },
         { icon: "bar-chart-2", label: t("multiLocationRollup"), to: "/rollup" },
+        { icon: "calendar", label: t("events"), to: "/events" },
+        { icon: "tag", label: t("priceServer"), to: "/priceserver" },
       ],
     },
     {
