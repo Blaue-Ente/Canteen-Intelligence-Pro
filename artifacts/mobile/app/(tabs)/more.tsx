@@ -8,6 +8,20 @@ import { Card, Row } from "@/components/ui";
 import { useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// More-Menu IA (Mai 2026 Reorganisation)
+//
+// Vorher: 8 Sektionen, davon "Operations" mit 19 vermischten Einträgen, plus
+// 3 Single-Item-Sektionen (Filialen / Öko / Settings) und uneinheitliche
+// Sprache ("Operations" / "KI" hartcodiert vs. t()-Schlüssel anderswo).
+// Außerdem fehlten T013-Bildschirme (Produktion, Reinigung, Kasse) komplett.
+//
+// Jetzt: 8 mental-model-konforme Sektionen entlang der Denkweise eines
+// Kantinenleiters (Tagesgeschäft → Küche → Einkauf → Gäste → Compliance →
+// Insights → Verwaltung), alle Section-Titel über i18n, T013/T014-Einträge
+// vollständig integriert, neuer Hilfe-Eintrag.
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function More() {
   const t = useT();
   const c = useColors();
@@ -24,73 +38,92 @@ export default function More() {
       tint?: string;
     }[];
   }[] = [
+    // 1. KI-Assistent — immer ganz oben, das ist der USP für Voice-First-iPad
     {
-      title: t("chat"),
+      title: t("secKiAssistent"),
       items: [
         { icon: "message-circle", label: t("chat"), to: "/chat" },
-        { icon: "camera", label: t("scan"), to: "/scan" },
+        { icon: "camera",         label: t("scan"), to: "/scan" },
       ],
     },
+    // 2. Tagesgeschäft — was der Cook täglich anfasst (Service / Schicht / Kasse)
     {
-      title: "Operations",
+      title: t("secDailyOps"),
       items: [
-        { icon: "check-square", label: "Tagesabschluss", to: "/sales" },
-        { icon: "credit-card", label: t("zettle"), to: "/zettle" },
-        { icon: "truck", label: t("orders"), to: "/orders" },
-        { icon: "package", label: t("autoProcurement"), to: "/procurement" },
-        { icon: "clipboard", label: t("inventur"), to: "/inventur" },
-        { icon: "calendar", label: t("dienstplan"), to: "/dienstplan" },
-        { icon: "users", label: t("suppliers"), to: "/suppliers" },
-        { icon: "sunrise", label: t("producersTitle"), to: "/producers", tint: "#059669" },
-        { icon: "mail", label: t("catering"), to: "/catering" },
-        { icon: "dollar-sign", label: t("calculator"), to: "/calculator" },
-        { icon: "trash-2", label: t("waste"), to: "/waste" },
-        { icon: "refresh-ccw", label: t("resteRezepte"), to: "/reste" },
-        { icon: "smartphone", label: t("preorder"), to: "/preorder" },
-        { icon: "user-check", label: t("customers"), to: "/customers" },
-        { icon: "layers", label: t("dailyAggregate"), to: "/aggregate" },
-        { icon: "bar-chart-2", label: t("multiLocationRollup"), to: "/rollup" },
-        { icon: "calendar", label: t("events"), to: "/events" },
-        { icon: "tag", label: t("priceServer"), to: "/priceserver" },
-        { icon: "book-open", label: t("crm"), to: "/crm", tint: "#6366f1" },
+        { icon: "check-square",   label: "Tagesabschluss",     to: "/sales" },
+        { icon: "credit-card",    label: "Kasse",              to: "/kasse" },
+        { icon: "credit-card",    label: t("zettle"),          to: "/zettle" },
+        { icon: "message-square", label: t("handover"),        to: "/handover" },
+        { icon: "calendar",       label: t("dienstplan"),      to: "/dienstplan" },
       ],
     },
+    // 3. Küche & Produktion — Mise-en-Place, Chargen, Rezepte, Rest-Verwertung
     {
-      title: "KI",
+      title: t("secKitchenProd"),
       items: [
-        { icon: "cpu", label: t("forecast"), to: "/forecast" },
-        { icon: "message-square", label: t("handover"), to: "/handover" },
-        { icon: "trending-up", label: t("marginAlerts"), to: "/margin" },
-        { icon: "award", label: t("leaderboard"), to: "/leaderboard" },
+        { icon: "clipboard",      label: "Produktion / Rückstellproben", to: "/production" },
+        { icon: "refresh-ccw",    label: t("resteRezepte"),    to: "/reste" },
+        { icon: "dollar-sign",    label: t("calculator"),      to: "/calculator" },
       ],
     },
+    // 4. Einkauf & Lager — alles was reinkommt
     {
-      title: t("reports"),
+      title: t("secPurchaseStock"),
       items: [
-        { icon: "pie-chart", label: t("reportsTitle"), to: "/reports", tint: "#6366f1" },
-        { icon: "bar-chart", label: t("dishAnalysisTitle"), to: "/dishanalysis", tint: "#6366f1" },
+        { icon: "package",        label: t("autoProcurement"), to: "/procurement" },
+        { icon: "truck",          label: t("orders"),          to: "/orders" },
+        { icon: "clipboard",      label: t("inventur"),        to: "/inventur" },
+        { icon: "users",          label: t("suppliers"),       to: "/suppliers" },
+        { icon: "sunrise",        label: t("producersTitle"),  to: "/producers", tint: "#059669" },
       ],
     },
+    // 5. Gäste & Verkauf — alles Kundenseitige (B2C-App + B2B-Konten + Events)
     {
-      title: t("okoWizardTitle"),
+      title: t("secGuestsSales"),
       items: [
-        { icon: "zap", label: t("okoWizardTitle"), to: "/okowizard", tint: "#059669" },
+        { icon: "smartphone",     label: t("preorder"),        to: "/preorder" },
+        { icon: "user-check",     label: t("customers"),       to: "/customers" },
+        { icon: "book-open",      label: t("crm"),             to: "/crm",       tint: "#6366f1" },
+        { icon: "mail",           label: t("catering"),        to: "/catering" },
+        { icon: "calendar",       label: t("events"),          to: "/events" },
       ],
     },
+    // 6. Qualität & Recht — Compliance Pillar (HACCP / DGE / Reinigung / Waste)
     {
-      title: t("locations"),
-      items: [{ icon: "map-pin", label: t("locations"), to: "/locations" }],
-    },
-    {
-      title: t("legalDocs"),
+      title: t("secComplianceQuality"),
       items: [
-        { icon: "shield", label: "HACCP & " + t("legalDocs"), to: "/haccp" },
-        { icon: "award", label: "DGE-Qualitätsstandard", to: "/dge", tint: "#059669" },
+        { icon: "shield",         label: "HACCP & " + t("legalDocs"), to: "/haccp" },
+        { icon: "award",          label: "DGE-Qualitätsstandard",     to: "/dge",      tint: "#059669" },
+        { icon: "droplet",        label: "Reinigungsplan",            to: "/cleaning" },
+        { icon: "trash-2",        label: t("waste"),                  to: "/waste" },
+        { icon: "camera",         label: "Tablett-Foto-Analyse",      to: "/wastecam" },
       ],
     },
+    // 7. Insights & Berichte — KI-Vorhersagen + Reports + Multi-Standort
     {
-      title: t("settings"),
-      items: [{ icon: "settings", label: t("settings"), to: "/settings" }],
+      title: t("secInsightsReports"),
+      items: [
+        { icon: "cpu",            label: t("forecast"),                  to: "/forecast" },
+        { icon: "trending-up",    label: t("marginAlerts"),              to: "/margin" },
+        { icon: "award",          label: t("leaderboard"),               to: "/leaderboard" },
+        { icon: "pie-chart",      label: t("reportsTitle"),              to: "/reports",      tint: "#6366f1" },
+        { icon: "bar-chart",      label: t("dishAnalysisTitle"),         to: "/dishanalysis", tint: "#6366f1" },
+        { icon: "zap",            label: t("okoWizardTitle"),            to: "/okowizard",    tint: "#059669" },
+        { icon: "layers",         label: t("dailyAggregate"),            to: "/aggregate" },
+        { icon: "bar-chart-2",    label: t("multiLocationRollup"),       to: "/rollup" },
+        { icon: "tag",            label: t("priceServer"),               to: "/priceserver" },
+      ],
+    },
+    // 8. Administration — Team, Filialen, Ausdrucke, Hilfe, Einstellungen
+    {
+      title: t("secAdmin"),
+      items: [
+        { icon: "users",          label: t("team"),       to: "/team" },
+        { icon: "map-pin",        label: t("locations"),  to: "/locations" },
+        { icon: "printer",        label: "Aushang",       to: "/aushang" },
+        { icon: "help-circle",    label: t("help"),       to: "/help",     tint: "#0ea5e9" },
+        { icon: "settings",       label: t("settings"),   to: "/settings" },
+      ],
     },
   ];
 

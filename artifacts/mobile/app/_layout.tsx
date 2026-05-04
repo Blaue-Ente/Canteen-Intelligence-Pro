@@ -65,6 +65,7 @@ function RootLayoutNav() {
       <Stack.Screen name="aushang/[id]" options={{ title: "LMIV-Aushang" }} />
       <Stack.Screen name="kasse" options={{ title: "Kasse" }} />
       <Stack.Screen name="dge" options={{ title: "DGE-Standard" }} />
+      <Stack.Screen name="help" options={{ title: "Gebrauchsanleitung" }} />
       <Stack.Screen name="+not-found" />
     </Stack>
   );
