@@ -31,6 +31,7 @@ interface ProducerResult {
   rating: number | null;
   productGroups: string[];
   distanceKm?: number | null;
+  isFallback?: boolean;
 }
 
 interface CategoryDef {
@@ -67,6 +68,7 @@ export default function ProducersScreen() {
   const [results, setResults] = useState<ProducerResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [usingFallback, setUsingFallback] = useState(false);
   const [pos, setPos] = useState<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
@@ -91,12 +93,14 @@ export default function ProducersScreen() {
     async (cat: string) => {
       setLoading(true);
       setError(null);
+      setUsingFallback(false);
       try {
         const url = `/api/producers/discover?category=${encodeURIComponent(cat)}${
           pos ? `&lat=${pos.lat}&lng=${pos.lng}` : ""
         }`;
-        const r = await apiFetch<{ results: ProducerResult[] }>(url);
+        const r = await apiFetch<{ results: ProducerResult[]; usingFallback?: boolean }>(url);
         setResults(r.results);
+        setUsingFallback(r.usingFallback ?? false);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
         setResults([]);
@@ -246,6 +250,30 @@ export default function ProducersScreen() {
               variant="secondary"
             />
           </Card>
+        )}
+
+        {/* Fallback notice */}
+        {usingFallback && !loading && !error && (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              backgroundColor: "#fffbeb",
+              borderColor: "#fde68a",
+              borderWidth: 1,
+              borderRadius: 10,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+            }}
+          >
+            <Feather name="wifi-off" size={13} color="#d97706" />
+            <Text style={{ color: "#92400e", fontFamily: "Inter_400Regular", fontSize: 12, flex: 1 }}>
+              {state.locale === "de"
+                ? "Kartendaten temporär nicht verfügbar — Beispieldaten werden angezeigt."
+                : "Map data temporarily unavailable — sample data is shown."}
+            </Text>
+          </View>
         )}
 
         {/* Results */}
