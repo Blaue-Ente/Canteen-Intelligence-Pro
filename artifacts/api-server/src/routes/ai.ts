@@ -305,10 +305,11 @@ interface PrewarmBody {
   preset?: "kios-de" | "kios-en" | "kios-all";
 }
 
-// Hard caps: prevent abuse / cost drain even if endpoint is hit by random callers
-const PREWARM_MAX_PHRASES = 60;        // ≥ KIOS_STATIC_PHRASES_DE.length
-const PREWARM_MAX_TEXT_LEN = 200;      // each phrase
-const PREWARM_MAX_TOTAL_BYTES = 20_000;
+// Hard caps: prevent abuse / cost drain even if endpoint is hit by random callers.
+// Sized to comfortably fit KIOS_STATIC_PHRASES_DE (~140 phrases) + headroom.
+const PREWARM_MAX_PHRASES = 250;
+const PREWARM_MAX_TEXT_LEN = 200;
+const PREWARM_MAX_TOTAL_BYTES = 60_000;
 
 // Per-process simple in-flight guard — at most one batch running at a time
 let _prewarmRunning = false;
