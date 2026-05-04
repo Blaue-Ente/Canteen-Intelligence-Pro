@@ -8,6 +8,7 @@
     "build": "node scripts/build.js",
     "build:web": "expo export --platform web",
     "serve": "node server/serve.js",
+    "serve:web": "node server/serve-web.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

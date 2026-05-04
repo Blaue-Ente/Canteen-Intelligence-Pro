@@ -10,7 +10,6 @@ name = "expo"
 version = "1.0.0"
 
 [[services]]
-ensurePreviewReachable = "/status"
 name = "expo"
 paths = [ "/" ]
 localPort = 18115
@@ -20,12 +19,7 @@ run = "pnpm --filter @workspace/mobile run dev"
 
 [services.production]
 build = [ "sh", "artifacts/mobile/scripts/build-web.sh" ]
-publicDir = "artifacts/mobile/dist"
-serve = "static"
-
-[[services.production.rewrites]]
-from = "/*"
-to = "/index.html"
+run = [ "pnpm", "--filter", "@workspace/mobile", "run", "serve:web" ]
 
 [services.env]
 PORT = "18115"
