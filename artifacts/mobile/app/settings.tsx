@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Alert, Platform, ScrollView, Switch, Text, TextInput, View } from "react-native";
+import { Alert, Platform, ScrollView, Switch, Text, TextInput, View, Pressable } from "react-native";
 
 import { useRouter } from "expo-router";
 import { useAuth } from "@clerk/expo";
@@ -20,6 +20,63 @@ export default function Settings() {
   const { signOut } = useAuth();
   const prefs = state.notificationPrefs;
   const [busy, setBusy] = useState(false);
+
+  const cp = state.companyProfile;
+  const [cpName, setCpName] = useState(cp?.name ?? "");
+  const [cpAddress, setCpAddress] = useState(cp?.address ?? "");
+  const [cpIban, setCpIban] = useState(cp?.iban ?? "");
+  const [cpTaxId, setCpTaxId] = useState(cp?.taxId ?? "");
+  const [cpEmail, setCpEmail] = useState(cp?.email ?? "");
+  const [cpPhone, setCpPhone] = useState(cp?.phone ?? "");
+
+  function saveCompanyProfile() {
+    dispatch({
+      type: "setCompanyProfile",
+      profile: {
+        name: cpName.trim(),
+        address: cpAddress.trim(),
+        iban: cpIban.trim(),
+        taxId: cpTaxId.trim() || undefined,
+        email: cpEmail.trim() || undefined,
+        phone: cpPhone.trim() || undefined,
+      },
+    });
+    Alert.alert(t("companyProfile"), state.locale === "de" ? "Gespeichert." : "Saved.");
+  }
+
+  function loadDemoData() {
+    Alert.alert(
+      t("loadDemoData"),
+      t("demoDataConfirm"),
+      [
+        { text: t("cancel"), style: "cancel" },
+        {
+          text: state.locale === "de" ? "Laden" : "Load",
+          onPress: () => {
+            const { seedState } = require("@/constants/seedData") as { seedState: import("@/types").AppState };
+            dispatch({
+              type: "loadDemoData",
+              events: seedState.events,
+              company: seedState.companyProfile ?? {
+                name: "KüchenMeister GmbH",
+                address: "Musterstraße 42, 10115 Berlin",
+                iban: "DE89 3704 0044 0532 0130 00",
+              },
+            });
+            if (seedState.companyProfile) {
+              setCpName(seedState.companyProfile.name);
+              setCpAddress(seedState.companyProfile.address);
+              setCpIban(seedState.companyProfile.iban);
+              setCpTaxId(seedState.companyProfile.taxId ?? "");
+              setCpEmail(seedState.companyProfile.email ?? "");
+              setCpPhone(seedState.companyProfile.phone ?? "");
+            }
+            Alert.alert("✓", t("demoDataLoaded"));
+          },
+        },
+      ],
+    );
+  }
 
   const update = async (next: typeof prefs) => {
     dispatch({ type: "setNotificationPrefs", prefs: next });
@@ -172,6 +229,80 @@ export default function Settings() {
           <Row icon="moon" left={<Text style={labelStyle}>Erscheinung</Text>} right={<Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular" }}>System</Text>} />
           <Row icon="link" left={<Text style={labelStyle}>Zettle Integration</Text>} right={<Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular" }}>Bald</Text>} />
           <Row icon="map-pin" left={<Text style={labelStyle}>Standort</Text>} right={<Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular" }}>1 Standort</Text>} />
+        </Card>
+
+        {/* Company Profile */}
+        <Card>
+          <SectionHeader title={t("companyProfile")} />
+          {(
+            [
+              { label: t("companyName"), val: cpName, set: setCpName, placeholder: "KüchenMeister GmbH" },
+              { label: t("companyAddress"), val: cpAddress, set: setCpAddress, placeholder: "Musterstr. 1, 10115 Berlin" },
+              { label: t("companyIban"), val: cpIban, set: setCpIban, placeholder: "DE89 3704 0044 0532 0130 00" },
+              { label: t("companyTaxId"), val: cpTaxId, set: setCpTaxId, placeholder: "27/445/05200" },
+              { label: t("companyEmail"), val: cpEmail, set: setCpEmail, placeholder: "office@firma.de" },
+            ] as { label: string; val: string; set: (v: string) => void; placeholder: string }[]
+          ).map(({ label, val, set, placeholder }) => (
+            <View key={label} style={{ paddingVertical: 6 }}>
+              <Text style={[labelStyle, { fontSize: 12, color: c.mutedForeground, marginBottom: 3 }]}>{label}</Text>
+              <TextInput
+                value={val}
+                onChangeText={set}
+                placeholder={placeholder}
+                placeholderTextColor={c.mutedForeground}
+                style={{
+                  backgroundColor: c.muted,
+                  color: c.foreground,
+                  fontFamily: "Inter_400Regular",
+                  fontSize: 14,
+                  borderRadius: 8,
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
+                }}
+              />
+            </View>
+          ))}
+          <Pressable
+            onPress={saveCompanyProfile}
+            style={{
+              marginTop: 8,
+              backgroundColor: c.accent,
+              borderRadius: 10,
+              padding: 11,
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 14 }}>
+              {t("saveCompanyProfile")}
+            </Text>
+          </Pressable>
+        </Card>
+
+        {/* Demo Data */}
+        <Card style={{ padding: 14, gap: 8 }}>
+          <SectionHeader title="Demo" />
+          <Text style={[subStyle, { marginBottom: 4 }]}>
+            {state.locale === "de"
+              ? "Lädt 5 realistische Musterveranstaltungen und ein Demo-Firmenprofil. Nur zum Testen."
+              : "Loads 5 realistic sample events and a demo company profile. For testing only."}
+          </Text>
+          <Pressable
+            onPress={loadDemoData}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              borderColor: "#6366f1",
+              borderWidth: 1.5,
+              borderRadius: 10,
+              padding: 11,
+            }}
+          >
+            <Text style={{ color: "#6366f1", fontFamily: "Inter_600SemiBold", fontSize: 14 }}>
+              {t("loadDemoData")}
+            </Text>
+          </Pressable>
         </Card>
 
         <Button label="Abmelden" icon="log-out" variant="ghost" onPress={() => signOut()} />

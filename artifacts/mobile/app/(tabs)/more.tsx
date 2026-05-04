@@ -51,6 +51,7 @@ export default function More() {
         { icon: "bar-chart-2", label: t("multiLocationRollup"), to: "/rollup" },
         { icon: "calendar", label: t("events"), to: "/events" },
         { icon: "tag", label: t("priceServer"), to: "/priceserver" },
+        { icon: "book-open", label: t("crm"), to: "/crm", tint: "#6366f1" },
       ],
     },
     {

@@ -14,6 +14,7 @@ import type {
   CateringRequest,
   ChatMessage,
   ComplaintDraft,
+  CompanyProfile,
   Employee,
   ForecastDay,
   HaccpLog,
@@ -93,7 +94,10 @@ type Action =
   | { type: "updateEvent"; event: CateringEvent }
   | { type: "removeEvent"; id: string }
   | { type: "setPriceList"; entries: PriceListEntry[] }
-  | { type: "setPriceServerConfig"; config: PriceServerConfig };
+  | { type: "setPriceServerConfig"; config: PriceServerConfig }
+  // ---- Company + CRM + Demo ----
+  | { type: "setCompanyProfile"; profile: CompanyProfile }
+  | { type: "loadDemoData"; events: CateringEvent[]; company: CompanyProfile };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -285,6 +289,10 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, priceList: action.entries };
     case "setPriceServerConfig":
       return { ...state, priceServerConfig: action.config };
+    case "setCompanyProfile":
+      return { ...state, companyProfile: action.profile };
+    case "loadDemoData":
+      return { ...state, events: action.events, companyProfile: action.company };
     default:
       return state;
   }
@@ -339,6 +347,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           events: pick("events"),
           priceList: pick("priceList"),
           priceServerConfig: pick("priceServerConfig"),
+          companyProfile: pick("companyProfile"),
         };
         dispatch({ type: "hydrate", state: merged });
       }

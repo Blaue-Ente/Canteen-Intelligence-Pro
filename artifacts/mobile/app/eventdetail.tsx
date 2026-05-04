@@ -9,6 +9,7 @@ import {
   Pressable,
   ScrollView,
   Share,
+  Switch,
   Text,
   TextInput,
   View,
@@ -19,6 +20,7 @@ import { Card } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { generateEventOffer } from "@/lib/ai";
+import { eventInvoiceHtml, eventTransportChecklistHtml, sharePdf } from "@/lib/pdf";
 import type { CateringEvent, EventMenuItem, EventStatus, Recipe } from "@/types";
 
 const STATUS_ORDER: EventStatus[] = [
@@ -89,6 +91,12 @@ export default function EventDetailScreen() {
   const [overheadPct, setOverheadPct] = useState(String(existing?.overheadPct ?? 15));
   const [vatPct, setVatPct] = useState(String(existing?.vatPct ?? 19));
   const [offerText, setOfferText] = useState(existing?.offerText ?? "");
+  const [invoiceNo, setInvoiceNo] = useState(existing?.invoiceNo ?? "");
+  const [invoiceDate, setInvoiceDate] = useState(
+    existing?.invoiceDate ?? new Date().toISOString().slice(0, 10),
+  );
+  const [paymentDueDays, setPaymentDueDays] = useState(String(existing?.paymentDueDays ?? 14));
+  const [invoicePaid, setInvoicePaid] = useState(existing?.invoicePaid ?? false);
   const [recipePicker, setRecipePicker] = useState(false);
   const [generatingOffer, setGeneratingOffer] = useState(false);
 
@@ -138,6 +146,10 @@ export default function EventDetailScreen() {
       vatPct: parseFloat(vatPct) || 19,
       notes: notes.trim() || undefined,
       offerText: offerText || undefined,
+      invoiceNo: invoiceNo.trim() || undefined,
+      invoiceDate: invoiceDate || undefined,
+      paymentDueDays: parseInt(paymentDueDays) || 14,
+      invoicePaid: invoicePaid || undefined,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
@@ -145,7 +157,9 @@ export default function EventDetailScreen() {
     existing,
     title, clientName, clientEmail, clientPhone, eventDate, eventTime,
     venue, guests, status, menuItems, staffCost, equipmentCost, transportCost,
-    overheadPct, vatPct, notes, offerText, t,
+    overheadPct, vatPct, notes, offerText,
+    invoiceNo, invoiceDate, paymentDueDays, invoicePaid,
+    t,
   ]);
 
   function handleSave() {
@@ -202,6 +216,39 @@ export default function EventDetailScreen() {
   async function handleShareOffer() {
     if (!offerText) return;
     await Share.share({ message: offerText, title });
+  }
+
+  async function handleShareInvoice() {
+    const ev = buildEvent();
+    try {
+      const html = eventInvoiceHtml(
+        ev,
+        totals,
+        parseFloat(vatPct) || 19,
+        state.companyProfile,
+        state.locale,
+      );
+      await sharePdf(html, `Rechnung-${invoiceNo || ev.id.slice(0, 8)}`);
+    } catch (e) {
+      Alert.alert(t("syncError"), String(e));
+    }
+  }
+
+  async function handleShareTransport() {
+    const ev = buildEvent();
+    if (ev.menuItems.length === 0) {
+      Alert.alert(
+        t("transportChecklist"),
+        state.locale === "de" ? "Keine Menüpositionen vorhanden." : "No menu items yet.",
+      );
+      return;
+    }
+    try {
+      const html = eventTransportChecklistHtml(ev, state.locale);
+      await sharePdf(html, `Transport-${(title || ev.id).slice(0, 20)}`);
+    } catch (e) {
+      Alert.alert(t("syncError"), String(e));
+    }
   }
 
   function addRecipe(recipe: Recipe) {
@@ -694,6 +741,125 @@ export default function EventDetailScreen() {
               </Pressable>
             </>
           ) : null}
+        </Card>
+
+        {/* Transport Checklist */}
+        <Card style={{ padding: 14, gap: 10 }}>
+          {sectionTitle(t("transportChecklist"))}
+          <Pressable
+            onPress={handleShareTransport}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              borderColor: "#0ea5e9",
+              borderWidth: 1.5,
+              borderRadius: 10,
+              padding: 12,
+            }}
+          >
+            <Feather name="truck" size={16} color="#0ea5e9" />
+            <Text style={{ color: "#0ea5e9", fontFamily: "Inter_600SemiBold", fontSize: 14 }}>
+              {t("shareChecklist")}
+            </Text>
+          </Pressable>
+          <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 11, textAlign: "center" }}>
+            {state.locale === "de"
+              ? "GN-Behälter, Temperaturen, HACCP-Unterschriftsfeld"
+              : "GN containers, temperatures, HACCP signature field"}
+          </Text>
+        </Card>
+
+        {/* Invoice (Rechnung) */}
+        <Card style={{ padding: 14, gap: 10 }}>
+          {sectionTitle(t("invoiceSection"))}
+
+          {/* Invoice Number */}
+          <View>
+            <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 12, marginBottom: 4 }}>
+              {t("invoiceNo")}
+            </Text>
+            <TextInput
+              style={inputStyle}
+              value={invoiceNo}
+              onChangeText={setInvoiceNo}
+              placeholder="RE-2025-0001"
+              placeholderTextColor={c.mutedForeground}
+            />
+          </View>
+
+          {/* Invoice Date + Payment Days */}
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <View style={{ flex: 2 }}>
+              <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 12, marginBottom: 4 }}>
+                {t("invoiceDate")}
+              </Text>
+              <TextInput
+                style={inputStyle}
+                value={invoiceDate}
+                onChangeText={setInvoiceDate}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={c.mutedForeground}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 12, marginBottom: 4 }}>
+                {t("paymentDueDays")}
+              </Text>
+              <TextInput
+                style={inputStyle}
+                value={paymentDueDays}
+                onChangeText={setPaymentDueDays}
+                keyboardType="numeric"
+                placeholder="14"
+                placeholderTextColor={c.mutedForeground}
+              />
+            </View>
+          </View>
+
+          {/* Paid toggle */}
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <Text style={{ color: c.foreground, fontFamily: "Inter_500Medium", fontSize: 14 }}>
+              {t("invoicePaid")}
+            </Text>
+            <Switch
+              value={invoicePaid}
+              onValueChange={setInvoicePaid}
+              trackColor={{ true: "#16a34a", false: c.border }}
+            />
+          </View>
+
+          {/* Share Invoice PDF */}
+          <Pressable
+            onPress={handleShareInvoice}
+            disabled={!invoiceNo.trim()}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              backgroundColor: invoiceNo.trim() ? c.accent : c.muted,
+              borderRadius: 10,
+              padding: 12,
+            }}
+          >
+            <Feather name="file-text" size={16} color={invoiceNo.trim() ? "#fff" : c.mutedForeground} />
+            <Text
+              style={{
+                color: invoiceNo.trim() ? "#fff" : c.mutedForeground,
+                fontFamily: "Inter_600SemiBold",
+                fontSize: 14,
+              }}
+            >
+              {t("shareInvoice")}
+            </Text>
+          </Pressable>
+          {!invoiceNo.trim() && (
+            <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 11, textAlign: "center" }}>
+              {state.locale === "de" ? "Rechnungsnummer eingeben um Rechnung zu erstellen." : "Enter invoice number to generate PDF."}
+            </Text>
+          )}
         </Card>
 
         {/* Save */}

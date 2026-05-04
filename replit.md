@@ -35,6 +35,11 @@ The mobile application features a charcoal and amber theme (`#0a0a0b` / `#f59e0b
 - **Staff Management**: Shift planning (`Dienstplan`) and team leaderboards.
 - **Sales and Reporting**: Daily sales entry, Zettle Z-report OCR, margin alerts, and multi-location rollup reports.
 - **Customer Engagement**: Guest pre-order system, customer accounts (regular, business), guest feedback with multi-criteria ratings, and catering offer generation.
+- **Event Invoicing (Rechnung)**: Each CateringEvent now has `invoiceNo`, `invoiceDate`, `paymentDueDays`, `invoicePaid` fields. `eventInvoiceHtml()` in `lib/pdf.ts` generates a formal DE Rechnung PDF (company letterhead from `CompanyProfile`, itemised positions, VAT breakdown, IBAN payment block). Share via `sharePdf()` directly from the event detail screen.
+- **Transport Checklist (Transportcheckliste)**: `eventTransportChecklistHtml()` in `lib/pdf.ts` calculates GN 1/1 container counts per dish (ceil(portions/20) for hot, ceil(portions/25) for cold), shows temperature zone per item (min +65°C / max +7°C), HACCP signature field, and totals per vehicle type. Share button in event detail.
+- **CRM Light**: `app/crm.tsx` — groups all events by clientEmail (fallback: clientName), shows event count, total revenue, unpaid invoice count per client, expandable list of their events with status indicator and navigation to event detail. Linked from Mehr → Operations.
+- **Company Profile**: Stored in `AppState.companyProfile?: CompanyProfile`. Editable in Settings screen. Used as sender block on invoices.
+- **Demo Account**: Settings screen has a "Demo-Daten laden" button that dispatches `loadDemoData` and populates 5 realistic catering events (Hochzeitsfeier Müller-Braun 180 Gäste, Firmenevent TechAG 85 Gäste, Stadtfest 350 Gäste, Jubiläum Dr. Schmidt completed+paid, Weihnachtsfeier enquiry) plus the KüchenMeister GmbH company profile.
 - **Notifications**: Push notifications for daily tasks, HACCP reminders, low stock, and expiring items.
 
 ### System Design Choices

@@ -2,7 +2,7 @@ import { Platform } from "react-native";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 
-import type { CateringRequest, OrderDraft, Recipe, Locale } from "@/types";
+import type { CateringEvent, CateringRequest, CompanyProfile, OrderDraft, Recipe, Locale } from "@/types";
 
 const baseHtml = (title: string, body: string) => `<!DOCTYPE html>
 <html lang="de"><head><meta charset="utf-8"/><title>${escapeHtml(title)}</title>
@@ -171,6 +171,370 @@ export function aushangHtml(
     <div class="footer">KItchenOS · ${labels.title} · ${escapeHtml(recipe.id.slice(0, 8))}</div>
   `;
   return baseHtml(labels.title, body);
+}
+
+// ---- Event Invoice (Rechnung) ----
+
+export interface InvoiceTotals {
+  foodCost: number;
+  staffCost: number;
+  equipmentCost: number;
+  transportCost: number;
+  overhead: number;
+  vatAmount: number;
+  grandTotal: number;
+  perPerson: number;
+}
+
+export function eventInvoiceHtml(
+  event: CateringEvent,
+  totals: InvoiceTotals,
+  vatPct: number,
+  company: CompanyProfile | undefined,
+  locale: "de" | "en",
+): string {
+  const fmt = locale === "de" ? "de-DE" : "en-GB";
+  const cur = (v: number) => `€${v.toFixed(2)}`;
+  const L = locale === "de"
+    ? {
+        invoice: "RECHNUNG",
+        from: "Absender",
+        to: "Rechnungsempfänger",
+        invoiceNo: "Rechnungsnummer",
+        invoiceDate: "Rechnungsdatum",
+        due: "Zahlungsziel",
+        event: "Veranstaltung",
+        venue: "Veranstaltungsort",
+        guests: "Gäste",
+        pos: "Pos.",
+        description: "Leistungsbeschreibung",
+        qty: "Menge",
+        unit: "Einheit",
+        unitPrice: "Einzelpreis",
+        total: "Betrag",
+        netto: "Zwischensumme (netto)",
+        vat: `MwSt. ${vatPct} %`,
+        brutto: "Gesamtbetrag (brutto)",
+        perPerson: "Pro Person",
+        payment: "Zahlungshinweis",
+        paymentText: (iban: string, days: number) =>
+          `Bitte überweisen Sie den Betrag innerhalb von ${days} Tagen auf folgendes Konto: IBAN ${iban}. Verwendungszweck: Rechnungsnummer.`,
+        portions: "Port.",
+        staff: "Personalkosten",
+        equipment: "Ausstattung",
+        transport: "Transport",
+        overhead: "Gemeinkosten",
+        thanks: "Vielen Dank für Ihr Vertrauen!",
+      }
+    : {
+        invoice: "INVOICE",
+        from: "From",
+        to: "Bill to",
+        invoiceNo: "Invoice no.",
+        invoiceDate: "Invoice date",
+        due: "Due date",
+        event: "Event",
+        venue: "Venue",
+        guests: "Guests",
+        pos: "No.",
+        description: "Description",
+        qty: "Qty",
+        unit: "Unit",
+        unitPrice: "Unit price",
+        total: "Amount",
+        netto: "Subtotal (net)",
+        vat: `VAT ${vatPct} %`,
+        brutto: "Total (gross)",
+        perPerson: "Per person",
+        payment: "Payment instructions",
+        paymentText: (iban: string, days: number) =>
+          `Please transfer the amount within ${days} days to: IBAN ${iban}. Reference: Invoice number.`,
+        portions: "port.",
+        staff: "Staff costs",
+        equipment: "Equipment",
+        transport: "Transport",
+        overhead: "Overhead",
+        thanks: "Thank you for your trust!",
+      };
+
+  const companyName = company?.name ?? "KitchenOS";
+  const companyAddr = company?.address ?? "";
+  const companyIban = company?.iban ?? "—";
+  const companyTax = company?.taxId ? (locale === "de" ? `St.-Nr.: ${company.taxId}` : `Tax ID: ${company.taxId}`) : "";
+  const companyEmail = company?.email ?? "";
+  const companyPhone = company?.phone ?? "";
+  const payDays = event.paymentDueDays ?? 14;
+  const invoiceDate = event.invoiceDate ?? new Date().toISOString().slice(0, 10);
+  const dueDateObj = new Date(invoiceDate);
+  dueDateObj.setDate(dueDateObj.getDate() + payDays);
+  const dueDate = dueDateObj.toLocaleDateString(fmt);
+
+  let pos = 1;
+  const menuRows = event.menuItems.map((item) => {
+    const lineTotal = item.portions * item.pricePerPortion;
+    return `<tr>
+      <td>${pos++}</td>
+      <td>${escapeHtml(item.recipeName)}</td>
+      <td class="right">${item.portions}</td>
+      <td>${L.portions}</td>
+      <td class="right">${cur(item.pricePerPortion)}</td>
+      <td class="right">${cur(lineTotal)}</td>
+    </tr>`;
+  });
+
+  const extraRows: string[] = [];
+  if (totals.staffCost > 0)
+    extraRows.push(`<tr><td>${pos++}</td><td>${L.staff}</td><td class="right">1</td><td>Psch.</td><td class="right">${cur(totals.staffCost)}</td><td class="right">${cur(totals.staffCost)}</td></tr>`);
+  if (totals.equipmentCost > 0)
+    extraRows.push(`<tr><td>${pos++}</td><td>${L.equipment}</td><td class="right">1</td><td>Psch.</td><td class="right">${cur(totals.equipmentCost)}</td><td class="right">${cur(totals.equipmentCost)}</td></tr>`);
+  if (totals.transportCost > 0)
+    extraRows.push(`<tr><td>${pos++}</td><td>${L.transport}</td><td class="right">1</td><td>Psch.</td><td class="right">${cur(totals.transportCost)}</td><td class="right">${cur(totals.transportCost)}</td></tr>`);
+  if (totals.overhead > 0)
+    extraRows.push(`<tr><td>${pos++}</td><td>${L.overhead}</td><td class="right">1</td><td>Psch.</td><td class="right">${cur(totals.overhead)}</td><td class="right">${cur(totals.overhead)}</td></tr>`);
+
+  const body = `
+    <style>
+      .two-col { display:flex; justify-content:space-between; gap:24px; margin-bottom:28px; }
+      .addr-block { flex:1; }
+      .addr-block strong { display:block; margin-bottom:4px; font-size:13px; }
+      .addr-block div { font-size:12px; color:#57534e; line-height:1.6; }
+      .meta-grid { display:grid; grid-template-columns:auto auto; gap:4px 24px; font-size:12px; }
+      .meta-grid .label { color:#78716c; }
+      .meta-grid .val { font-weight:600; }
+      .invoice-title { font-size:28px; font-weight:800; letter-spacing:.05em; color:#1c1917; margin:0 0 20px; }
+      .pos-table th { font-size:10px; }
+      .pos-table td { font-size:12px; }
+      .summary { margin-top:20px; text-align:right; }
+      .summary table { margin-left:auto; min-width:240px; }
+      .summary td { font-size:13px; padding:4px 8px; }
+      .summary .grand { font-size:17px; font-weight:800; color:#1c1917; border-top:2px solid #f59e0b; }
+      .payment-box { margin-top:28px; background:#fef9f0; border:1px solid #fcd34d; border-radius:8px; padding:14px; font-size:12px; line-height:1.6; color:#57534e; }
+      .payment-box strong { color:#1c1917; }
+      .thanks { margin-top:24px; text-align:center; font-size:13px; color:#78716c; font-style:italic; }
+    </style>
+    <div class="header">
+      <div>
+        <div class="brand">KITCHENOS</div>
+        <div class="invoice-title">${L.invoice}</div>
+      </div>
+      <div class="meta-grid">
+        <span class="label">${L.invoiceNo}</span><span class="val">${escapeHtml(event.invoiceNo ?? "—")}</span>
+        <span class="label">${L.invoiceDate}</span><span class="val">${new Date(invoiceDate).toLocaleDateString(fmt)}</span>
+        <span class="label">${L.due}</span><span class="val">${dueDate}</span>
+      </div>
+    </div>
+
+    <div class="two-col" style="margin-top:24px">
+      <div class="addr-block">
+        <strong>${L.from}</strong>
+        <div>${escapeHtml(companyName)}<br/>${escapeHtml(companyAddr).replace(/, /g, "<br/>")}</div>
+        ${companyEmail ? `<div>${escapeHtml(companyEmail)}</div>` : ""}
+        ${companyPhone ? `<div>${escapeHtml(companyPhone)}</div>` : ""}
+        ${companyTax ? `<div>${escapeHtml(companyTax)}</div>` : ""}
+      </div>
+      <div class="addr-block">
+        <strong>${L.to}</strong>
+        <div>${escapeHtml(event.clientName)}</div>
+        ${event.clientAddress ? `<div>${escapeHtml(event.clientAddress).replace(/, /g, "<br/>")}</div>` : ""}
+        ${event.clientEmail ? `<div>${escapeHtml(event.clientEmail)}</div>` : ""}
+        ${event.clientPhone ? `<div>${escapeHtml(event.clientPhone)}</div>` : ""}
+      </div>
+    </div>
+
+    <h2>${L.event}: ${escapeHtml(event.title)}</h2>
+    <div style="font-size:12px;color:#57534e;margin-bottom:16px">
+      ${L.event.replace(":", "")}: <strong>${new Date(event.eventDate).toLocaleDateString(fmt)}${event.eventTime ? " " + event.eventTime : ""}</strong>
+      ${event.venue ? ` &nbsp;·&nbsp; ${L.venue}: <strong>${escapeHtml(event.venue)}</strong>` : ""}
+      &nbsp;·&nbsp; ${L.guests}: <strong>${event.guestCount}</strong>
+    </div>
+
+    <table class="pos-table">
+      <thead>
+        <tr>
+          <th style="width:32px">${L.pos}</th>
+          <th>${L.description}</th>
+          <th class="right" style="width:60px">${L.qty}</th>
+          <th style="width:50px">${L.unit}</th>
+          <th class="right" style="width:90px">${L.unitPrice}</th>
+          <th class="right" style="width:90px">${L.total}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${menuRows.join("")}
+        ${extraRows.join("")}
+      </tbody>
+    </table>
+
+    <div class="summary">
+      <table>
+        <tr><td>${L.netto}</td><td class="right">${cur(totals.grandTotal - totals.vatAmount)}</td></tr>
+        <tr><td>${L.vat}</td><td class="right">${cur(totals.vatAmount)}</td></tr>
+        <tr class="grand"><td><strong>${L.brutto}</strong></td><td class="right"><strong>${cur(totals.grandTotal)}</strong></td></tr>
+        ${event.guestCount > 0 ? `<tr><td style="color:#78716c;font-size:12px">${L.perPerson}</td><td class="right" style="color:#78716c;font-size:12px">${cur(totals.perPerson)}</td></tr>` : ""}
+      </table>
+    </div>
+
+    <div class="payment-box">
+      <strong>${L.payment}:</strong><br/>
+      ${L.paymentText(companyIban, payDays)}
+    </div>
+    <div class="thanks">${L.thanks}</div>
+    <div class="footer">${escapeHtml(companyName)} · ${L.invoiceNo}: ${escapeHtml(event.invoiceNo ?? "—")}</div>
+  `;
+  return baseHtml(`${L.invoice} ${event.invoiceNo ?? ""}`, body);
+}
+
+// ---- Transport Checklist (Transportcheckliste) ----
+
+function isHotDish(name: string): boolean {
+  const cold = /salat|dessert|eis|kalt|cold|tiramisu|mousse|pudding|obst|fruit|salad/i;
+  return !cold.test(name);
+}
+
+function gnCount(portions: number, hot: boolean): number {
+  return Math.max(1, Math.ceil(portions / (hot ? 20 : 25)));
+}
+
+export function eventTransportChecklistHtml(
+  event: CateringEvent,
+  locale: "de" | "en",
+): string {
+  const fmt = locale === "de" ? "de-DE" : "en-GB";
+  const L = locale === "de"
+    ? {
+        title: "Transportcheckliste",
+        event: "Veranstaltung",
+        date: "Datum",
+        venue: "Veranstaltungsort",
+        guests: "Gäste",
+        dish: "Gericht",
+        portions: "Portionen",
+        containers: "GN-Behälter",
+        type: "Typ",
+        temp: "Temperaturzone",
+        hot: "Warmgericht",
+        cold: "Kaltspeise",
+        minTemp: "min. +65 °C",
+        maxTemp: "max. +7 °C",
+        vehicleNote: "Fahrzeugplanung",
+        hotVehicle: "Thermobehälter / Heißhaltebox",
+        coldVehicle: "Kühlbox / Kühlfahrzeug",
+        haccp: "HACCP-Hinweis: Temperatur bei Abfahrt UND Ankunft dokumentieren.",
+        sign: "Fahrer",
+        signLine: "Unterschrift / Datum",
+        check: "□",
+        totalContainers: "Gesamt GN-Behälter",
+        hot_req: "Warm (≥65°C)",
+        cold_req: "Kalt (≤7°C)",
+      }
+    : {
+        title: "Transport Checklist",
+        event: "Event",
+        date: "Date",
+        venue: "Venue",
+        guests: "Guests",
+        dish: "Dish",
+        portions: "Portions",
+        containers: "GN containers",
+        type: "Type",
+        temp: "Temperature zone",
+        hot: "Hot dish",
+        cold: "Cold dish",
+        minTemp: "min. +65 °C",
+        maxTemp: "max. +7 °C",
+        vehicleNote: "Vehicle planning",
+        hotVehicle: "Insulated container / hot box",
+        coldVehicle: "Cool box / refrigerated vehicle",
+        haccp: "HACCP note: document temperature at departure AND arrival.",
+        sign: "Driver",
+        signLine: "Signature / Date",
+        check: "□",
+        totalContainers: "Total GN containers",
+        hot_req: "Hot (≥65°C)",
+        cold_req: "Cold (≤7°C)",
+      };
+
+  let totalHot = 0;
+  let totalCold = 0;
+
+  const rows = event.menuItems.map((item) => {
+    const hot = isHotDish(item.recipeName);
+    const gn = gnCount(item.portions, hot);
+    if (hot) totalHot += gn; else totalCold += gn;
+    return `<tr>
+      <td>${L.check}</td>
+      <td>${escapeHtml(item.recipeName)}</td>
+      <td class="right">${item.portions}</td>
+      <td>${gn}× <strong>GN 1/1</strong> 65mm</td>
+      <td><span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:${hot ? "#fee2e2" : "#dbeafe"};color:${hot ? "#991b1b" : "#1e40af"}">${hot ? L.hot : L.cold}</span></td>
+      <td style="font-size:11px;color:#57534e">${hot ? L.minTemp : L.maxTemp}</td>
+    </tr>`;
+  });
+
+  const body = `
+    <div class="header">
+      <div>
+        <div class="brand">KITCHENOS</div>
+        <h1>${L.title}</h1>
+      </div>
+      <div class="muted">${new Date(event.eventDate).toLocaleDateString(fmt)}</div>
+    </div>
+
+    <h2>${L.event}</h2>
+    <div style="font-size:13px;margin-bottom:8px">
+      <strong>${escapeHtml(event.title)}</strong><br/>
+      ${new Date(event.eventDate).toLocaleDateString(fmt)}${event.eventTime ? " · " + event.eventTime : ""}
+      ${event.venue ? ` · ${escapeHtml(event.venue)}` : ""}
+      &nbsp;·&nbsp; ${L.guests}: <strong>${event.guestCount}</strong>
+    </div>
+
+    <h2>${L.dish}</h2>
+    ${rows.length === 0
+      ? `<div class="muted">—</div>`
+      : `<table>
+          <thead>
+            <tr>
+              <th style="width:24px"></th>
+              <th>${L.dish}</th>
+              <th class="right">${L.portions}</th>
+              <th>${L.containers}</th>
+              <th>${L.temp}</th>
+              <th>°C</th>
+            </tr>
+          </thead>
+          <tbody>${rows.join("")}</tbody>
+        </table>`}
+
+    <div style="margin-top:20px;display:flex;gap:24px">
+      <div style="flex:1;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:12px">
+        <div style="font-weight:700;font-size:12px;color:#9a3412;margin-bottom:6px">🔴 ${L.hot_req} — ${totalHot} GN</div>
+        <div style="font-size:12px;color:#57534e">${L.hotVehicle}</div>
+      </div>
+      <div style="flex:1;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px">
+        <div style="font-weight:700;font-size:12px;color:#1e40af;margin-bottom:6px">🔵 ${L.cold_req} — ${totalCold} GN</div>
+        <div style="font-size:12px;color:#57534e">${L.coldVehicle}</div>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:12px;font-size:12px;color:#713f12">
+      ⚠️ ${L.haccp}
+    </div>
+
+    <div style="margin-top:28px;display:grid;grid-template-columns:1fr 1fr;gap:24px">
+      <div>
+        <div style="font-size:11px;color:#78716c;margin-bottom:4px">${L.sign}</div>
+        <div style="border-bottom:1px solid #1c1917;height:40px"></div>
+        <div style="font-size:11px;color:#78716c;margin-top:4px">${L.signLine}</div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:#78716c;margin-bottom:4px">${L.totalContainers}</div>
+        <div style="font-size:24px;font-weight:800">${totalHot + totalCold}</div>
+        <div style="font-size:11px;color:#78716c">${totalHot} warm · ${totalCold} kalt</div>
+      </div>
+    </div>
+    <div class="footer">KItchenOS · ${L.title} · ${escapeHtml(event.title)}</div>
+  `;
+  return baseHtml(L.title, body);
 }
 
 export async function sharePdf(html: string, filename: string): Promise<void> {

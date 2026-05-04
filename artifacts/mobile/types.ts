@@ -325,12 +325,22 @@ export interface EventMenuItem {
   note?: string;
 }
 
+export interface CompanyProfile {
+  name: string;
+  address: string;
+  iban: string;
+  taxId?: string;
+  email?: string;
+  phone?: string;
+}
+
 export interface CateringEvent {
   id: string;
   title: string;
   clientName: string;
   clientEmail?: string;
   clientPhone?: string;
+  clientAddress?: string;
   eventDate: string; // YYYY-MM-DD
   eventTime?: string; // HH:mm
   venue?: string;
@@ -344,6 +354,11 @@ export interface CateringEvent {
   vatPct?: number; // default 19
   notes?: string;
   offerText?: string;
+  // ---- Invoice ----
+  invoiceNo?: string;
+  invoiceDate?: string;   // YYYY-MM-DD
+  paymentDueDays?: number; // default 14
+  invoicePaid?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -406,4 +421,6 @@ export interface AppState {
   events: CateringEvent[];
   priceList: PriceListEntry[];
   priceServerConfig?: PriceServerConfig;
+  // ---- Company + CRM ----
+  companyProfile?: CompanyProfile;
 }
