@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { askKios } from "@/lib/kios";
-import { speak, stopSpeaking } from "@/lib/voice";
+import { speak, stopSpeaking, isSafari } from "@/lib/voice";
 import { useApp } from "@/contexts/AppContext";
 import type { AppState } from "@/types";
 
@@ -207,7 +207,8 @@ export function useKios() {
 
     const rec = new SR();
     rec.lang          = "de-DE";
-    rec.continuous    = true;
+    // Safari/iOS has unreliable continuous recognition — use single-shot + auto-restart instead.
+    rec.continuous    = !isSafari();
     rec.interimResults = true;
     r.current.rec     = rec;
 
