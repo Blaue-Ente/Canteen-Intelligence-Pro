@@ -207,6 +207,24 @@ entries, плюс 3 single-item секции (Filialen / Öko / Settings). Но�
 - **Изисква re-publish** за да влезе в сила в production. Dev preview вече показва
   marketing site на `/` коректно.
 
+### T019b — Mobile production blank screen fix (May 2026)
+- **Problem**: след re-publish от T019, `kitchenos.de/app/` връщаше бял екран.
+  Причина: `serve-web.js` (статичен Node сървър за `dist/`) не махаше `/app/`
+  префикса от входящите URL-и преди да резолвне до файл. Expo build-ът с
+  `experiments.baseUrl = "/app"` пише в `dist/index.html` с asset референции
+  към `/app/_expo/static/js/foo.js`, но физическите файлове са в `dist/_expo/...`.
+  Заявките попадаха в SPA fallback и връщаха HTML за JS заявки → blank screen.
+- **Fix**:
+  - `artifacts/mobile/server/serve-web.js`: добавена `normalizeBase(BASE_PATH)`
+    която нормализира към `/app` (без trailing slash), и логика която маха
+    префикса от `urlPath` преди `path.join(DIST_ROOT, ...)`. Health check на
+    `/healthz` остава непокътнат (само `/app` префикси се махат).
+  - `artifacts/mobile/.replit-artifact/artifact.toml`: добавен `BASE_PATH = "/app/"`
+    в `[services.production.run.env]` за да го получи runtime; `paths` разширен
+    на `["/app", "/app/"]` за да обхване и URL без trailing slash.
+- **Изисква втори re-publish** за да влезе в production. Dev mode не е засегнат
+  (използва `pnpm run dev`, не `serve-web.js`).
+
 ## System Architecture
 
 KItchenOS is built as a cross-platform Expo app for iOS, Android, and Web, complemented by an Express.js API server.

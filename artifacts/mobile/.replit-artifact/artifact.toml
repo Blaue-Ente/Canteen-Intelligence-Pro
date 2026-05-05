@@ -11,7 +11,7 @@ version = "1.0.0"
 
 [[services]]
 name = "expo"
-paths = [ "/app/" ]
+paths = [ "/app", "/app/" ]
 localPort = 18115
 
 [services.development]
@@ -26,6 +26,7 @@ args = ["node", "artifacts/mobile/server/serve-web.js"]
 [services.production.run.env]
 PORT = "18115"
 NODE_ENV = "production"
+BASE_PATH = "/app/"
 
 [services.production.health.startup]
 path = "/app/"
