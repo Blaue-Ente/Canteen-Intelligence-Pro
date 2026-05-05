@@ -2,19 +2,14 @@ import React, { useState } from "react";
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "@clerk/expo";
-import { AuthGate } from "@/components/AuthGate";
 import { Button, Card, SectionHeader } from "@/components/ui";
 import { useAuthCtx } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { apiFetch } from "@/lib/api";
 
 export default function Onboarding() {
-  return (
-    <>
-      <AuthGate />
-      <OnboardingInner />
-    </>
-  );
+  // Auth gating is centralised in root `_layout.tsx` — no AuthGate here.
+  return <OnboardingInner />;
 }
 
 function OnboardingInner() {

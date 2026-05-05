@@ -1,11 +1,18 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { AppState } from "@/types";
 
-const KEY = "kitchenos.state.v1";
+// State is keyed per Clerk user so multiple demo accounts on the same device
+// don't pollute each other. Anonymous (pre-auth) state — used only briefly
+// during the splash before AuthGate redirects — uses the legacy bare key.
+const BASE_KEY = "kitchenos.state.v1";
 
-export async function loadState(): Promise<AppState | null> {
+function storageKey(userId?: string | null): string {
+  return userId ? `${BASE_KEY}.${userId}` : BASE_KEY;
+}
+
+export async function loadState(userId?: string | null): Promise<AppState | null> {
   try {
-    const raw = await AsyncStorage.getItem(KEY);
+    const raw = await AsyncStorage.getItem(storageKey(userId));
     if (!raw) return null;
     return JSON.parse(raw) as AppState;
   } catch {
@@ -13,17 +20,17 @@ export async function loadState(): Promise<AppState | null> {
   }
 }
 
-export async function saveState(state: AppState): Promise<void> {
+export async function saveState(state: AppState, userId?: string | null): Promise<void> {
   try {
-    await AsyncStorage.setItem(KEY, JSON.stringify(state));
+    await AsyncStorage.setItem(storageKey(userId), JSON.stringify(state));
   } catch {
     // ignore
   }
 }
 
-export async function resetState(): Promise<void> {
+export async function resetState(userId?: string | null): Promise<void> {
   try {
-    await AsyncStorage.removeItem(KEY);
+    await AsyncStorage.removeItem(storageKey(userId));
   } catch {
     // ignore
   }

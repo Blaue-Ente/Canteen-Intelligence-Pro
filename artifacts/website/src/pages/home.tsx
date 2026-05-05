@@ -3,6 +3,12 @@ import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Check,
   Sparkles,
   ArrowRight,
@@ -10,6 +16,11 @@ import {
   Mic,
   Receipt,
   Database,
+  Play,
+  ChevronDown,
+  Building2,
+  GraduationCap,
+  PartyPopper,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL;
@@ -63,13 +74,47 @@ export default function Home() {
               ))}
             </ul>
             <div className="mt-8 flex flex-wrap gap-3">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="lg" className="gap-2">
+                    <Play className="w-4 h-4" /> {t("ctaDemoStart")}
+                    <ChevronDown className="w-4 h-4 opacity-70" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-72">
+                  <DropdownMenuItem asChild>
+                    <a href="/app/?demo=kantine" className="flex items-start gap-3 cursor-pointer">
+                      <Building2 className="w-5 h-5 mt-0.5 text-primary shrink-0" />
+                      <div>
+                        <div className="font-medium">{t("demoKantineTitle")}</div>
+                        <div className="text-xs text-muted-foreground">{t("demoKantineDesc")}</div>
+                      </div>
+                    </a>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <a href="/app/?demo=schule" className="flex items-start gap-3 cursor-pointer">
+                      <GraduationCap className="w-5 h-5 mt-0.5 text-primary shrink-0" />
+                      <div>
+                        <div className="font-medium">{t("demoSchuleTitle")}</div>
+                        <div className="text-xs text-muted-foreground">{t("demoSchuleDesc")}</div>
+                      </div>
+                    </a>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <a href="/app/?demo=catering" className="flex items-start gap-3 cursor-pointer">
+                      <PartyPopper className="w-5 h-5 mt-0.5 text-primary shrink-0" />
+                      <div>
+                        <div className="font-medium">{t("demoCateringTitle")}</div>
+                        <div className="text-xs text-muted-foreground">{t("demoCateringDesc")}</div>
+                      </div>
+                    </a>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Link href="/demo">
-                <Button size="lg" className="gap-2">
+                <Button size="lg" variant="outline" className="gap-2">
                   {t("ctaDemo")} <ArrowRight className="w-4 h-4" />
                 </Button>
-              </Link>
-              <Link href="/compare">
-                <Button size="lg" variant="outline">{t("navCompare")}</Button>
               </Link>
             </div>
           </div>
@@ -174,8 +219,13 @@ export default function Home() {
           <h2 className="text-3xl sm:text-4xl font-serif font-bold tracking-tight">{t("finalCtaTitle")}</h2>
           <p className="mt-3 text-muted-foreground max-w-xl mx-auto">{t("finalCtaSub")}</p>
           <div className="mt-8 flex flex-wrap gap-3 justify-center">
-            <Link href="/demo">
+            <a href="/app/?demo=kantine">
               <Button size="lg" className="gap-2">
+                <Play className="w-4 h-4" /> {t("ctaDemoStart")}
+              </Button>
+            </a>
+            <Link href="/demo">
+              <Button size="lg" variant="outline" className="gap-2">
                 {t("ctaDemo")} <ArrowRight className="w-4 h-4" />
               </Button>
             </Link>

@@ -6,7 +6,13 @@
   "scripts": {
     "hello": "tsx ./src/hello.ts",
     "gen:marketing": "tsx ./src/generate-marketing-pdfs.ts",
+    "seed:demo": "tsx ./src/seed-demo-users.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@clerk/backend": "^2.16.4",
+    "@workspace/db": "workspace:*",
+    "drizzle-orm": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

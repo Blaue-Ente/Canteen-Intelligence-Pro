@@ -5,6 +5,7 @@ import React, {
   useEffect,
   useMemo,
   useReducer,
+  useRef,
   useState,
 } from "react";
 
@@ -45,6 +46,7 @@ import type {
 } from "@/types";
 import { seedState } from "@/constants/seedData";
 import { loadState, saveState, uid } from "@/lib/storage";
+import { useAuthCtx } from "@/contexts/AuthContext";
 
 type Action =
   | { type: "hydrate"; state: AppState }
@@ -120,6 +122,7 @@ type Action =
   // ---- Company + CRM + Demo ----
   | { type: "setCompanyProfile"; profile: CompanyProfile }
   | { type: "loadDemoData"; events: CateringEvent[]; company: CompanyProfile }
+  | { type: "setDemoSeed"; seed: AppState }
   // ---- Öko Wizard ----
   | { type: "setOkoEnabled"; enabled: boolean }
   | { type: "setKiosVoice"; voice: KiosVoice }
@@ -392,6 +395,10 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, companyProfile: action.profile };
     case "loadDemoData":
       return { ...state, events: action.events, companyProfile: action.company };
+    case "setDemoSeed":
+      // Atomic full-state replacement used when a demo user signs in. We keep
+      // the user's locale preference if they had set one before signing in.
+      return { ...action.seed, locale: state.locale ?? action.seed.locale };
     case "setOkoEnabled":
       return { ...state, okoEnabled: action.enabled };
     case "setKiosVoice":
@@ -435,19 +442,49 @@ interface Ctx {
   newId: () => string;
   /** Current active location object (or null when "All filiale"). */
   currentLocation: import("@/types").Location | null;
+  /**
+   * Apply a demo seed. Safe to call from `sign-in.tsx` immediately after
+   * `signIn.create` succeeds (even before `setActive` resolves): the seed
+   * is queued and applied at the next hydrate-completion for a non-null
+   * userId. This guarantees the seed lands under the demo user's storage
+   * key — never the anonymous or previous-user key — eliminating cross-
+   * account data leaks.
+   */
+  applyDemoSeed: (seed: AppState) => void;
+  /**
+   * Drop any queued demo seed. Call this when a demo sign-in flow fails
+   * (e.g. setActive throws) so the seed cannot leak into a subsequent
+   * unrelated sign-in within the 30s expiry window.
+   */
+  clearPendingDemoSeed: () => void;
 }
 
 const AppCtx = createContext<Ctx | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
+  const auth = useAuthCtx();
+  const userId = auth.me?.userId ?? null;
   const [state, dispatch] = useReducer(reducer, seedState);
   const [ready, setReady] = useState(false);
+  // Track which userId we last hydrated for, so we re-hydrate on sign-in /
+  // sign-out / demo-variant swap. `undefined` = never loaded yet.
+  const lastLoadedFor = useRef<string | null | undefined>(undefined);
+  // Pending demo seed queued by sign-in.tsx. Consumed by the hydrate effect
+  // below at the next completed hydrate for a non-null userId — i.e. once
+  // Clerk has propagated the demo session and AppProvider has loaded that
+  // user's storage key. A 30s expiry guards against stale seeds (e.g. the
+  // user backs out of the demo flow before sign-in completes).
+  const pendingDemoSeed = useRef<{ seed: AppState; queuedAt: number } | null>(null);
 
   useEffect(() => {
+    if (!auth.ready) return;
+    if (lastLoadedFor.current === userId) return;
     let mounted = true;
+    setReady(false);
     void (async () => {
-      const loaded = await loadState();
-      if (mounted && loaded) {
+      const loaded = await loadState(userId);
+      if (!mounted) return;
+      if (loaded) {
         const pick = <K extends keyof AppState>(k: K): AppState[K] =>
           (loaded[k] !== undefined ? loaded[k] : seedState[k]) as AppState[K];
         const salesCutoff = (() => {
@@ -499,17 +536,100 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           dgeStandard: pick("dgeStandard"),
         };
         dispatch({ type: "hydrate", state: merged });
+      } else {
+        // No prior state for this user → reset to seedState so a previous
+        // user's in-memory state doesn't leak across.
+        dispatch({ type: "hydrate", state: seedState });
       }
-      if (mounted) setReady(true);
+      lastLoadedFor.current = userId;
+      // If a demo seed was queued during the auth handoff and we now have a
+      // real userId, consume it before flipping `ready` so the very first
+      // save under this user's key is the seed itself. The hard timer above
+      // already guarantees expiry, so we only need to consume here — never
+      // age out manually.
+      const pending = pendingDemoSeed.current;
+      if (pending && userId !== null) {
+        dispatch({ type: "setDemoSeed", seed: pending.seed });
+        pendingDemoSeed.current = null;
+        if (pendingDemoSeedTimer.current) {
+          clearTimeout(pendingDemoSeedTimer.current);
+          pendingDemoSeedTimer.current = null;
+        }
+      }
+      setReady(true);
     })();
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [auth.ready, userId]);
 
   useEffect(() => {
-    if (ready) void saveState(state);
-  }, [state, ready]);
+    // Strict guard: only save when the in-memory state truly belongs to the
+    // current `userId`. Otherwise a userId change can cause the previous
+    // user's state to be flushed to the new user's storage key on the next
+    // render before re-hydration completes.
+    if (!ready) return;
+    if (lastLoadedFor.current !== userId) return;
+    void saveState(state, userId);
+  }, [state, ready, userId]);
+
+  // Hard timer that drops the pending seed exactly 30s after queueing,
+  // regardless of any subsequent hydrate / userId activity. This is the
+  // belt to the suspenders inside the hydrate effect: it ensures a queued
+  // seed cannot survive past 30s even if no further auth transition ever
+  // triggers a hydrate (e.g. setActive succeeded but `/api/me` failed and
+  // `auth.me` stays null indefinitely).
+  const pendingDemoSeedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearPendingDemoSeed = useCallback(() => {
+    pendingDemoSeed.current = null;
+    if (pendingDemoSeedTimer.current) {
+      clearTimeout(pendingDemoSeedTimer.current);
+      pendingDemoSeedTimer.current = null;
+    }
+  }, []);
+
+  const applyDemoSeed = useCallback(
+    (seed: AppState) => {
+      // If we're already hydrated for a real user (e.g. the user signs in
+      // again as a different demo variant after already being signed in as
+      // a demo user), apply immediately. Otherwise queue for the next
+      // hydrate completion.
+      if (ready && userId !== null && lastLoadedFor.current === userId) {
+        dispatch({ type: "setDemoSeed", seed });
+        return;
+      }
+      pendingDemoSeed.current = { seed, queuedAt: Date.now() };
+      if (pendingDemoSeedTimer.current) clearTimeout(pendingDemoSeedTimer.current);
+      pendingDemoSeedTimer.current = setTimeout(() => {
+        pendingDemoSeed.current = null;
+        pendingDemoSeedTimer.current = null;
+      }, 30_000);
+    },
+    [ready, userId],
+  );
+
+  // Drop any queued seed when Clerk reports the user is no longer signed
+  // in. We key on `auth.isSignedIn` (Clerk-backed) rather than
+  // `userId === null` because the latter can also be null when the user IS
+  // signed in but `/api/me` failed to load — in which case clearing would
+  // be both wrong (the demo flow is still in progress) AND fail to fire on
+  // a real sign-out that came AFTER `/api/me` had already gone null.
+  // `isSignedIn` is the only authoritative signed-out signal.
+  useEffect(() => {
+    if (auth.ready && !auth.isSignedIn) {
+      clearPendingDemoSeed();
+    }
+  }, [auth.ready, auth.isSignedIn, clearPendingDemoSeed]);
+
+  // On unmount, make sure the timer doesn't leak.
+  useEffect(() => {
+    return () => {
+      if (pendingDemoSeedTimer.current) {
+        clearTimeout(pendingDemoSeedTimer.current);
+      }
+    };
+  }, []);
 
   const currentLocation = useMemo(
     () =>
@@ -520,8 +640,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo<Ctx>(
-    () => ({ state, ready, dispatch, newId: uid, currentLocation }),
-    [state, ready, currentLocation],
+    () => ({
+      state,
+      ready,
+      dispatch,
+      newId: uid,
+      currentLocation,
+      applyDemoSeed,
+      clearPendingDemoSeed,
+    }),
+    [state, ready, currentLocation, applyDemoSeed, clearPendingDemoSeed],
   );
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;

@@ -7,9 +7,10 @@ import {
 } from "@expo-google-fonts/inter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ClerkProvider } from "@clerk/expo";
-import { Stack } from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
+import { ActivityIndicator, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -17,15 +18,68 @@ import { StatusBar } from "expo-status-bar";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppProvider } from "@/contexts/AppContext";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider, useAuthCtx } from "@/contexts/AuthContext";
 import { tokenCache } from "@/lib/clerkTokenCache";
+import { useColors } from "@/hooks/useColors";
 
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "";
 
+/**
+ * Auth-aware redirect hook. Runs alongside the Stack navigator: when auth
+ * state changes (sign-in, sign-out, membership loaded), it pushes the user
+ * to the right screen group instead of letting them stay on a screen they
+ * shouldn't see.
+ *
+ * Three zones:
+ *   - (auth)/*    → unauthenticated only
+ *   - onboarding  → authed but no org membership yet
+ *   - (tabs)/*    → authed + member
+ *
+ * We deliberately do NOT use the `<AuthGate />` Slot wrapper here because the
+ * root layout owns a Stack navigator (not a Slot), and AuthGate's redirects
+ * would fight the Stack's screen stack. Effect-based redirects play nicely
+ * with Stack and avoid double-navigation flashes.
+ */
+function useProtectedRoute(): { ready: boolean } {
+  const { ready, isSignedIn, currentMembership } = useAuthCtx();
+  const segments = useSegments();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!ready) return;
+    const inAuthGroup = segments[0] === "(auth)";
+    const onOnboarding = segments[0] === "onboarding";
+
+    if (!isSignedIn && !inAuthGroup) {
+      router.replace("/(auth)/sign-in");
+    } else if (isSignedIn && !currentMembership && !onOnboarding) {
+      router.replace("/onboarding");
+    } else if (isSignedIn && currentMembership && (inAuthGroup || onOnboarding)) {
+      router.replace("/(tabs)");
+    }
+  }, [ready, isSignedIn, currentMembership, segments, router]);
+
+  return { ready };
+}
+
 function RootLayoutNav() {
+  const { ready } = useProtectedRoute();
+  const c = useColors();
+
+  if (!ready) {
+    // Don't flash the Stack while Clerk is still resolving the session —
+    // it would briefly render whichever screen the URL points at, even if
+    // the user has no business being there.
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: c.background }}>
+        <ActivityIndicator color={c.primary} />
+      </View>
+    );
+  }
+
   return (
     <Stack
       screenOptions={{
