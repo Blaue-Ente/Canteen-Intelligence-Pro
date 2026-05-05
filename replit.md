@@ -390,3 +390,29 @@ Building on T015's wake/followup/confirm state machine, Kios learned seven new t
 - **T016g — Rush mode (terse replies)**. `isRushMode()` returns `true` during 11:30–13:30 and 17:30–19:30 (lunch + dinner service). `terseQuickReply(nav)` swaps verbose nav replies for one-word forms ("Lager." instead of "Ich zeige dir den Lagerbestand."). The "Ja?" wake-prompt is skipped entirely in rush mode (saves ~600 ms). Outside rush, the verbose form is friendlier. Note: `SaleEntry` is a daily aggregate, so we cannot derive sales velocity for rush detection — time-of-day is the only signal.
 
 **Files**: `artifacts/mobile/hooks/useKios.ts` (sole touch-point — additions ~700 LOC; existing T015 confirm-window machinery handles all five new pending actions). New imports: `AsyncStorage`, `generateRecipe`, `HaccpLog`, `WasteEntry`. No server, schema, or i18n changes.
+
+### T017 — Marketing-site App dropdown (May 2026)
+
+`artifacts/website/src/components/layout.tsx` gained an "Zur App / Open App" dropdown in top-nav, mobile-menu, and footer. Two entries: Pre-Order Portal (`/preorder/`) and App Demo (`/`). Both open in a new tab via `target="_blank" rel="noopener noreferrer"` so marketing context isn't lost. Inline comment notes the swap point for absolute custom-domain URLs once each artifact is published separately. New i18n keys (DE+EN): `navApp`, `navAppPreorder`, `navAppPreorderDesc`, `navAppDemo`, `navAppDemoDesc`, `navAppNote`.
+
+### T018 — Hardware comparison page (iPad vs Android, May 2026)
+
+User strategy decision: at contract signing the customer chooses iPad or rugged Android. New page `artifacts/website/src/pages/hardware.tsx`, route `/hardware`, nav-link between Standards and Pricing.
+
+- **Hero + Cloud-First guarantee card**: prominent EU-cloud (Frankfurt), AES-256, 30-day backups, sub-5-min tablet swap, AVV. This is the architectural promise that makes the device interchangeable.
+- **Two device summary cards**: iPad 10.9″ (10th Gen) + Jamf School/Mosyle vs Galaxy Tab Active5 + Android Enterprise/Knox, with hardware cost and per-month MDM cost. Android card carries an "Empfehlung Küche / Kitchen Pick" badge.
+- **10-row comparison table** (`<ScoreCell>` with best/good/ok states): Robustheit, Anschaffungspreis, MDM, PWA-Support, Sprachsteuerung (Kios), Display, Akku, Service in DE, Markenwirkung, Beschaffung öffentlicher Sektor. Honest trade-offs — Android wins durability/price/PWA-storage/voice/battery/procurement, iPad wins MDM-maturity/display/service-network/image.
+- **4 recommendation cards** ("Wann welche Plattform?"): rugged-environment → Android, tight-budget/public-sector → Android, existing Apple-ecosystem → iPad, premium-restaurant → iPad.
+- **CTA to /demo + /contact** at the bottom.
+- ~70 new i18n keys (DE + EN) under `hw*` prefix in `src/lib/i18n.tsx`.
+
+Critical fix during build: removed two duplicate `ctaTalk` entries (key already existed in both DE and EN sections). The page reuses the existing `ctaTalk` ("Mit uns sprechen / Talk to us").
+
+### Strategy decisions captured (deployment & data, May 2026)
+
+Pending implementation tasks captured here so they aren't lost:
+
+- **Customer device strategy**: Safari PWA on iPad OR Chrome PWA on Android (rugged Galaxy Tab Active5), customer picks at contract signing. Both run via MDM in Single-App Mode locked to the app + a separate `hilfe.kitchenos.de` support subdomain (subdomain not yet provisioned).
+- **Auth**: invitation-only via Clerk (already wired). No public sign-up. Operator provisions accounts after contract.
+- **Add-on activation**: planned tier-based flow — instant for <€20/month items, 24h admin-approval window for higher-tier modules. Not yet built. UX target: in-app catalogue → "Anfrage senden" → admin dashboard ticket → feature-flag flip after approval window.
+- **Cloud-first data sync (CRITICAL GAP)**: customer-facing message says "all data lives in the EU cloud" but mobile AppState (orders, sales, inventory, HACCP, waste, recipes, events, shifts, cleaning) currently persists ONLY in `AsyncStorage` via `lib/storage.ts`. Already-cloud-backed: Clerk identity, suppliers/producers search, TSE signing, mail, preorder customer profiles. **Required next phase**: extend `lib/api-spec/openapi.yaml` with sync endpoints for the operational state, add server routes under `artifacts/api-server/src/routes/`, build offline-first sync layer in `artifacts/mobile/contexts/AppContext.tsx` (last-write-wins per row with `updated_at` timestamps initially; CRDT only if true multi-writer conflicts emerge in field testing). Ship the schema + endpoints first as one phase, then mobile sync as a second phase.

@@ -14,16 +14,22 @@ interface Row {
   android: { score: Score; note: string };
 }
 
-function ScoreCell({ score, note }: { score: Score; note: string }) {
+function ScoreCell({ score, note, label }: { score: Score; note: string; label: { best: string; good: string; ok: string } }) {
   const cls =
     score === "best" ? "bg-primary/10 text-primary"
       : score === "good" ? "bg-muted text-foreground"
       : "bg-muted/50 text-muted-foreground";
   const Icon = score === "best" ? Check : score === "good" ? Check : Minus;
+  const ariaLabel = score === "best" ? label.best : score === "good" ? label.good : label.ok;
   return (
     <div className="flex items-start gap-2">
-      <span className={`mt-0.5 inline-flex items-center justify-center w-6 h-6 rounded-full shrink-0 ${cls}`}>
-        <Icon className="w-3.5 h-3.5" />
+      <span
+        className={`mt-0.5 inline-flex items-center justify-center w-6 h-6 rounded-full shrink-0 ${cls}`}
+        role="img"
+        aria-label={ariaLabel}
+        title={ariaLabel}
+      >
+        <Icon className="w-3.5 h-3.5" aria-hidden="true" />
       </span>
       <span className="text-sm text-muted-foreground">{note}</span>
     </div>
@@ -32,6 +38,7 @@ function ScoreCell({ score, note }: { score: Score; note: string }) {
 
 export default function Hardware() {
   const { t } = useI18n();
+  const scoreLabels = { best: t("hwScoreBest"), good: t("hwScoreGood"), ok: t("hwScoreOk") };
 
   // Each row: feature label + which device wins. "best" = clear winner,
   // "good" = solid, "ok" = workable but not ideal. We are deliberately
@@ -226,8 +233,8 @@ export default function Hardware() {
                     <div className="font-medium">{row.feature}</div>
                     <div className="text-xs text-muted-foreground mt-1">{row.detail}</div>
                   </td>
-                  <td className="p-4 align-top"><ScoreCell score={row.ipad.score} note={row.ipad.note} /></td>
-                  <td className="p-4 align-top bg-primary/[0.02]"><ScoreCell score={row.android.score} note={row.android.note} /></td>
+                  <td className="p-4 align-top"><ScoreCell score={row.ipad.score} note={row.ipad.note} label={scoreLabels} /></td>
+                  <td className="p-4 align-top bg-primary/[0.02]"><ScoreCell score={row.android.score} note={row.android.note} label={scoreLabels} /></td>
                 </tr>
               ))}
             </tbody>

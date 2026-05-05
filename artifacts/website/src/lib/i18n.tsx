@@ -61,6 +61,9 @@ const de: Dict = {
   hwColIpad: "iPad",
   hwColAndroid: "Android-Tablet (rugged)",
   hwTableLegend: "Bewertung pro Zeile relativ zur jeweils anderen Plattform für den Einsatz in der Großküche.",
+  hwScoreBest: "Klarer Vorteil",
+  hwScoreGood: "Gut",
+  hwScoreOk: "Akzeptabel mit Einschränkungen",
 
   hwRowDurability: "Robustheit",
   hwRowDurabilityDetail: "Schutz gegen Wasser, Dampf, Stürze, Hitze",
@@ -126,7 +129,6 @@ const de: Dict = {
 
   hwCtaTitle: "Unsicher, was zu Ihrer Küche passt?",
   hwCtaBody: "Wir beraten Sie unverbindlich und stellen Ihnen ein Testgerät auf Wunsch zur Verfügung. Bei Vertragsabschluss legen wir die Plattform gemeinsam fest.",
-  ctaTalk: "Beratung anfragen",
   ctaDemo: "Kostenlose Demo",
   ctaStart: "Jetzt starten",
   ctaTalk: "Mit uns sprechen",
@@ -554,6 +556,9 @@ const en: Dict = {
   hwColIpad: "iPad",
   hwColAndroid: "Android Tablet (rugged)",
   hwTableLegend: "Rating per row relative to the other platform for use in commercial kitchens.",
+  hwScoreBest: "Clear advantage",
+  hwScoreGood: "Good",
+  hwScoreOk: "Acceptable with caveats",
 
   hwRowDurability: "Durability",
   hwRowDurabilityDetail: "Protection against water, steam, drops, heat",
@@ -619,7 +624,6 @@ const en: Dict = {
 
   hwCtaTitle: "Unsure which fits your kitchen?",
   hwCtaBody: "We'll advise you free of charge and provide a test device on request. At contract signing, we choose the platform together.",
-  ctaTalk: "Request consultation",
   ctaDemo: "Free demo",
   ctaStart: "Get started",
   ctaTalk: "Talk to us",
