@@ -1,5 +1,4 @@
 import { Router, type IRouter } from "express";
-import { createClerkClient } from "@clerk/express";
 
 /**
  * Demo sign-in token endpoint.
@@ -14,6 +13,14 @@ import { createClerkClient } from "@clerk/express";
  * one-shot credential server-side. The frontend then exchanges it via
  * `signIn.create({ strategy: "ticket", ticket })`, which Clerk treats as a
  * fully-verified first factor and bypasses the reverification challenge.
+ *
+ * Implementation note: we deliberately use Clerk's REST API directly (not
+ * the @clerk/express SDK) for both the user lookup and the token creation.
+ * The SDK's `users.getUserList({ emailAddress: [...] })` call returned empty
+ * results from the production runtime even though the same secret key
+ * resolved the users correctly via direct REST. The REST API behaves
+ * identically across environments, so it is the safer surface for a
+ * critical path like demo sign-in.
  *
  * Security: the only thing this endpoint exposes is access to the three
  * pre-provisioned demo accounts. Their data is intentionally public per
@@ -48,21 +55,33 @@ router.post("/auth/demo-sign-in-token", async (req, res) => {
   }
 
   const email = DEMO_EMAILS[variant];
-  const clerk = createClerkClient({ secretKey: secret });
 
   try {
-    const list = await clerk.users.getUserList({
-      emailAddress: [email],
-      limit: 1,
+    const lookupUrl = `https://api.clerk.com/v1/users?email_address=${encodeURIComponent(email)}&limit=1`;
+    const lookupRes = await fetch(lookupUrl, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${secret}` },
     });
-    const user = list.data[0];
-    if (!user) {
-      req.log.error({ email }, "demo user not provisioned in Clerk");
+    if (!lookupRes.ok) {
+      const errBody = await lookupRes.text().catch(() => "");
+      req.log.error(
+        { status: lookupRes.status, body: errBody.slice(0, 500), email },
+        "Clerk user lookup failed",
+      );
+      res.status(502).json({ error: "user_lookup_failed" });
+      return;
+    }
+    const lookupData = (await lookupRes.json()) as Array<{ id?: string }>;
+    const user = Array.isArray(lookupData) ? lookupData[0] : undefined;
+    if (!user?.id) {
+      req.log.error(
+        { email, returnedCount: Array.isArray(lookupData) ? lookupData.length : "non-array" },
+        "demo user not provisioned in Clerk",
+      );
       res.status(503).json({ error: "demo_user_not_seeded" });
       return;
     }
 
-    // Clerk SDK does not expose sign-in tokens directly; use the REST API.
     // expires_in_seconds is short because the ticket is consumed within
     // the same client tick on the frontend.
     const tokenRes = await fetch("https://api.clerk.com/v1/sign_in_tokens", {
