@@ -2,15 +2,15 @@
  * Demo account configuration.
  *
  * Three demo Clerk users are pre-provisioned (see `scripts/src/seed-demo-users.ts`),
- * each scoped to one realistic operating profile. All three share a single
- * publicly-known password — anyone visiting the marketing site is meant to
- * sign in instantly without registering. There are no real customers behind
- * these accounts, so the password is deliberately public.
+ * each scoped to one realistic operating profile. The mobile demo flow no
+ * longer signs in with a password — Clerk's instance reverification policy
+ * forces an email_code second factor that nobody can read for shared accounts.
+ * Instead, the api-server route `/api/auth/demo-sign-in-token` mints a Clerk
+ * sign-in token (ticket) that the frontend exchanges via
+ * `signIn.create({ strategy: "ticket", ticket })`, which bypasses 2FA.
  */
 
 export type DemoVariant = "kantine" | "schule" | "catering";
-
-export const DEMO_PASSWORD = "KitchenOS-Demo-2025!";
 
 export const DEMO_USERS: Record<DemoVariant, { email: string; label: string; subtitle: string }> = {
   kantine: {

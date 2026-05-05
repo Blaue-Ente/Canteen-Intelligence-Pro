@@ -17,7 +17,6 @@ import { Button, Card } from "@/components/ui";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/contexts/AppContext";
 import {
-  DEMO_PASSWORD,
   DEMO_USERS,
   DEMO_VARIANTS,
   type DemoVariant,
@@ -51,19 +50,35 @@ export default function SignInScreen() {
   };
 
   /**
-   * Drives the demo flow: sign the user in with the pre-provisioned demo
-   * Clerk credentials, then atomically swap AppContext state to the variant's
-   * seed so the dashboard isn't empty on first paint.
+   * Drives the demo flow: ask the api-server to mint a one-shot Clerk
+   * sign-in token for the demo user, then exchange it via the ticket
+   * strategy. Bypasses Clerk's reverification policy (which forces an
+   * email-code second factor for new clients) — that policy makes a
+   * normal password flow unusable for shared public demo accounts.
+   *
+   * After successful sign-in, atomically swap AppContext state to the
+   * variant's seed so the dashboard isn't empty on first paint.
    */
   const startDemo = async (variant: DemoVariant): Promise<void> => {
     if (!isLoaded || demoBusy) return;
     setDemoBusy(variant);
     setShowVariants(false);
     try {
-      const res = await signIn.create({
-        identifier: DEMO_USERS[variant].email,
-        password: DEMO_PASSWORD,
+      const tokenRes = await fetch("/api/auth/demo-sign-in-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ variant }),
       });
+      if (!tokenRes.ok) {
+        const body = await tokenRes.text().catch(() => "");
+        throw new Error(
+          `Demo-Token konnte nicht erstellt werden (${tokenRes.status}): ${body.slice(0, 200)}`,
+        );
+      }
+      const { ticket } = (await tokenRes.json()) as { ticket?: string };
+      if (!ticket) throw new Error("Kein Demo-Ticket vom Server erhalten");
+
+      const res = await signIn.create({ strategy: "ticket", ticket });
       if (res.status === "complete") {
         // Queue the seed BEFORE setActive completes. AppProvider consumes
         // pending seeds at the next hydrate-for-real-user, guaranteeing the
