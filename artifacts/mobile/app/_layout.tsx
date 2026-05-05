@@ -10,7 +10,7 @@ import { ClerkProvider } from "@clerk/expo";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { ActivityIndicator, Platform, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -26,6 +26,25 @@ SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "";
+
+/**
+ * Route Clerk frontend-API requests through our own api-server's
+ * `/api/__clerk` proxy on web. Why: pk_live (production Clerk) origin-locks
+ * direct calls to the configured Clerk domain (app.kitchenos.de). The dev
+ * preview is served from a *.replit.dev host, so direct calls 403. Routing
+ * through the same-origin proxy bypasses this — api-server forwards to
+ * Clerk with the proper Clerk-Proxy-Url header. The proxy is mounted on the
+ * api-server in every NODE_ENV (see clerkProxyMiddleware.ts), so this works
+ * for both dev preview and production deploys.
+ *
+ * Native (iOS / Android) is not affected by browser CORS / origin checks
+ * and uses the Clerk SDK's native transport, so we leave proxyUrl unset
+ * there to keep the proven native code path.
+ */
+const clerkProxyProps =
+  Platform.OS === "web" && typeof window !== "undefined"
+    ? { proxyUrl: `${window.location.origin}/api/__clerk` }
+    : {};
 
 /**
  * Auth-aware redirect hook. Runs alongside the Stack navigator: when auth
@@ -154,7 +173,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
-        <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+        <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache} {...clerkProxyProps}>
           <QueryClientProvider client={queryClient}>
             <GestureHandlerRootView style={{ flex: 1 }}>
               <KeyboardProvider>

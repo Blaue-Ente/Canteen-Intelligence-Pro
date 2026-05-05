@@ -11,7 +11,15 @@
  * dashboard — all auth configuration is done through the Auth pane.
  *
  * IMPORTANT:
- * - Only active in production (Clerk proxying doesn't work for dev instances)
+ * - Active whenever CLERK_SECRET_KEY is set. The proxy works for any Clerk
+ *   *production* instance (pk_live), regardless of NODE_ENV. The original
+ *   prod-only gate dated from when this project also used a pk_test dev
+ *   instance (where Clerk does not allow proxying). Now that we use pk_live
+ *   globally, the proxy MUST also work in dev — otherwise the dev preview
+ *   (served on a *.replit.dev origin) cannot talk to Clerk at all because
+ *   pk_live origin-locks all direct calls to the configured Clerk domain
+ *   (app.kitchenos.de). Routing through this proxy bypasses the origin
+ *   check by setting Clerk-Proxy-Url to the request's actual public host.
  * - Must be mounted BEFORE express.json() middleware
  *
  * Usage in app.ts:
@@ -53,11 +61,9 @@ export function getClerkProxyHost(req: {
 }
 
 export function clerkProxyMiddleware(): RequestHandler {
-  // Only run proxy in production — Clerk proxying doesn't work for dev instances
-  if (process.env.NODE_ENV !== "production") {
-    return (_req, _res, next) => next();
-  }
-
+  // Gate on CLERK_SECRET_KEY only. We deliberately do NOT gate on NODE_ENV:
+  // pk_live works through this proxy in any env, and dev preview origins
+  // (*.replit.dev) MUST proxy or Clerk's origin lock blocks every request.
   const secretKey = process.env.CLERK_SECRET_KEY;
   if (!secretKey) {
     return (_req, _res, next) => next();
