@@ -47,7 +47,7 @@ router.post("/auth/demo-sign-in-token", async (req, res) => {
   }
   const variant = variantRaw as DemoVariant;
 
-  const secret = process.env.CLERK_SECRET_KEY;
+  const secret = process.env.CLERK_SECRET_KEY_PROD ?? process.env.CLERK_SECRET_KEY;
   if (!secret) {
     req.log.error("CLERK_SECRET_KEY is not set");
     res.status(500).json({ error: "clerk_not_configured" });

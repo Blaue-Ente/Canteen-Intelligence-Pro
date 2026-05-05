@@ -6,7 +6,9 @@ import { requireAuth, type AuthedRequest } from "../lib/auth";
 
 const router: IRouter = Router();
 
-const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY ?? "" });
+const clerk = createClerkClient({
+  secretKey: process.env.CLERK_SECRET_KEY_PROD ?? process.env.CLERK_SECRET_KEY ?? "",
+});
 
 interface CreateOrgBody {
   name: string;

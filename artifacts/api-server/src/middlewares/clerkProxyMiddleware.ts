@@ -64,7 +64,7 @@ export function clerkProxyMiddleware(): RequestHandler {
   // Gate on CLERK_SECRET_KEY only. We deliberately do NOT gate on NODE_ENV:
   // pk_live works through this proxy in any env, and dev preview origins
   // (*.replit.dev) MUST proxy or Clerk's origin lock blocks every request.
-  const secretKey = process.env.CLERK_SECRET_KEY;
+  const secretKey = process.env.CLERK_SECRET_KEY_PROD ?? process.env.CLERK_SECRET_KEY;
   if (!secretKey) {
     return (_req, _res, next) => next();
   }
