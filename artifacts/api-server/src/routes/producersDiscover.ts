@@ -4,12 +4,16 @@ import { eq, inArray } from "drizzle-orm";
 
 const router: IRouter = Router();
 
-// Berlin + Brandenburg bounding box
-const BBOX = { south: 51.36, west: 11.27, north: 53.56, east: 14.77 };
+// Default bounding box used only when the caller did NOT provide a location
+// (lat/lng). The default covers Berlin + Brandenburg because that's where the
+// historical static fallback dataset is centred. Any caller that supplies a
+// location uses an `around:radius,lat,lng` query instead, which works for the
+// whole of Germany (and beyond).
+const DEFAULT_BBOX = { south: 51.36, west: 11.27, north: 53.56, east: 14.77 };
 
 const PRODUCER_CATEGORIES: Record<string, { osmTags: string[]; productGroups: string[]; labelDe: string }> = {
   farm: {
-    osmTags: ["landuse=farmyard", "place=farm"],
+    osmTags: ["landuse=farmyard", "place=farm", "shop=farm"],
     productGroups: ["vegetable", "fruit", "meat", "dairy"],
     labelDe: "Bauernhof",
   },
@@ -24,7 +28,7 @@ const PRODUCER_CATEGORIES: Record<string, { osmTags: string[]; productGroups: st
     labelDe: "Obstanbau",
   },
   dairy_farm: {
-    osmTags: ["amenity=dairy_kitchen"],
+    osmTags: ["amenity=dairy_kitchen", "shop=dairy"],
     productGroups: ["dairy"],
     labelDe: "Milchbetrieb",
   },
@@ -49,20 +53,23 @@ const PRODUCER_CATEGORIES: Record<string, { osmTags: string[]; productGroups: st
     labelDe: "Direktvermarktung",
   },
   butcher_farm: {
-    osmTags: ["craft=butcher"],
+    osmTags: ["craft=butcher", "shop=butcher"],
     productGroups: ["meat"],
     labelDe: "Hofmetzgerei",
   },
   beekeeper: {
-    osmTags: ["craft=beekeeper"],
+    osmTags: ["craft=beekeeper", "shop=honey"],
     productGroups: ["other"],
     labelDe: "Imkerei",
   },
 };
 
 // ---------------------------------------------------------------------------
-// Static fallback data — shown when Overpass is unavailable and cache is empty.
-// These are representative but NOT live OSM data; coordinates are approximate.
+// Static fallback data — shown ONLY when every live and cached path fails.
+// These are representative Berlin/Brandenburg producers; they're a last
+// resort so the UI is never empty. Distance is computed but the radius
+// filter is intentionally NOT applied to fallback rows — otherwise users
+// far from Berlin would see an empty screen even though the API "succeeded".
 // ---------------------------------------------------------------------------
 interface FallbackRow {
   id: string;
@@ -162,17 +169,64 @@ interface OverpassResponse {
   elements: OverpassElement[];
 }
 
-function buildProducerQuery(category: string): string {
+// ─── Haversine ──────────────────────────────────────────────────────────────
+function distKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const toRad = (n: number) => (n * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// ─── Overpass query builders ────────────────────────────────────────────────
+function buildAroundQuery(category: string, lat: number, lng: number, radiusM: number): string {
   const cfg = PRODUCER_CATEGORIES[category];
   if (!cfg) throw new Error("invalid category");
-  const bbox = `${BBOX.south},${BBOX.west},${BBOX.north},${BBOX.east}`;
+  const around = `around:${radiusM},${lat},${lng}`;
+  const filters = cfg.osmTags
+    .map((tag) => {
+      const [k, v] = tag.split("=");
+      return `node["${k}"="${v}"](${around});way["${k}"="${v}"](${around});relation["${k}"="${v}"](${around});`;
+    })
+    .join("");
+  // 14s timeout matches the suppliers route — keeps total request under
+  // the api-server's request budget and lets the client see a quick fallback
+  // if Overpass is slow.
+  return `[out:json][timeout:14];(${filters});out center tags 200;`;
+}
+
+function buildBboxQuery(category: string): string {
+  const cfg = PRODUCER_CATEGORIES[category];
+  if (!cfg) throw new Error("invalid category");
+  const bbox = `${DEFAULT_BBOX.south},${DEFAULT_BBOX.west},${DEFAULT_BBOX.north},${DEFAULT_BBOX.east}`;
   const filters = cfg.osmTags
     .map((tag) => {
       const [k, v] = tag.split("=");
       return `node["${k}"="${v}"](${bbox});way["${k}"="${v}"](${bbox});relation["${k}"="${v}"](${bbox});`;
     })
     .join("");
-  return `[out:json][timeout:30];(${filters});out center tags 200;`;
+  return `[out:json][timeout:25];(${filters});out center tags 200;`;
+}
+
+async function runOverpass(query: string, timeoutMs: number): Promise<OverpassElement[]> {
+  // Overpass rejects requests without a User-Agent with HTTP 406.
+  // Node's native fetch does NOT send a default UA, so we must set one.
+  const r = await fetch("https://overpass-api.de/api/interpreter", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent": "KitchenOS/1.0 (contact@kitchenos.de)",
+      Accept: "application/json",
+    },
+    body: `data=${encodeURIComponent(query)}`,
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!r.ok) throw new Error(`Overpass ${r.status}`);
+  const j = (await r.json()) as OverpassResponse;
+  return j.elements ?? [];
 }
 
 function formatAddress(tags: Record<string, string>): string {
@@ -187,42 +241,40 @@ function formatAddress(tags: Record<string, string>): string {
   return parts.join(", ");
 }
 
-async function fetchOverpassProducers(category: string): Promise<OverpassElement[]> {
-  const query = buildProducerQuery(category);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 25_000);
-  try {
-    const r = await fetch("https://overpass-api.de/api/interpreter", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: `data=${encodeURIComponent(query)}`,
-      signal: controller.signal,
-    });
-    if (!r.ok) throw new Error(`Overpass ${r.status}`);
-    const j = (await r.json()) as OverpassResponse;
-    return j.elements ?? [];
-  } finally {
-    clearTimeout(timer);
-  }
-}
+// ─── Map Overpass element → result row (unsaved) ────────────────────────────
+type MappedRow = {
+  id: string;
+  source: "osm";
+  name: string;
+  category: string;
+  productGroups: string[];
+  address: string | null;
+  lat: number | null;
+  lng: number | null;
+  phone: string | null;
+  website: string | null;
+  email: string | null;
+  rating: null;
+  isProducer: true;
+  distanceKm?: number;
+};
 
-const TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
-const PRODUCER_CACHE_PREFIX = "prod:";
-
-async function refreshProducerCategory(category: string) {
-  const elements = await fetchOverpassProducers(category);
-  const cfg = PRODUCER_CATEGORY_CONFIG(category);
-  const rows = elements
-    .map((e) => {
+function mapElements(
+  elements: OverpassElement[],
+  category: string,
+  origin: { lat: number; lng: number } | null,
+): MappedRow[] {
+  const cfg = PRODUCER_CATEGORIES[category]!;
+  return elements
+    .map((e): MappedRow | null => {
       const tags = e.tags ?? {};
       const lat = e.lat ?? e.center?.lat ?? null;
       const lng = e.lon ?? e.center?.lon ?? null;
       const name = tags["name"];
-      if (!name) return null;
+      if (!name || lat === null || lng === null) return null;
       return {
-        id: `${PRODUCER_CACHE_PREFIX}${e.type[0]}${e.id}`,
-        source: "osm" as const,
-        externalId: `${e.type[0]}${e.id}`,
+        id: `osm:${e.type[0]}${e.id}`,
+        source: "osm",
         name,
         category: `producer_${category}`,
         productGroups: cfg.productGroups,
@@ -233,15 +285,20 @@ async function refreshProducerCategory(category: string) {
         website: tags["website"] ?? tags["contact:website"] ?? null,
         email: tags["email"] ?? tags["contact:email"] ?? null,
         rating: null,
-        raw: tags,
-        organic: tags["organic"] === "yes" || tags["shop"] === "organic" || false,
-        certified: tags["organic:certified"] === "yes" || false,
+        isProducer: true,
+        distanceKm: origin ? distKm(origin.lat, origin.lng, lat, lng) : undefined,
       };
     })
-    .filter((r): r is NonNullable<typeof r> => r !== null);
+    .filter((r): r is MappedRow => r !== null);
+}
 
-  if (rows.length > 0) {
-    const dbRows = rows.map(({ raw: _raw, externalId: _e, organic: _o, certified: _c, ...rest }) => rest);
+// ─── DB cache helpers ───────────────────────────────────────────────────────
+const TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
+
+async function cacheRows(rows: MappedRow[]): Promise<void> {
+  if (!rows.length) return;
+  const dbRows = rows.slice(0, 200).map(({ distanceKm: _d, isProducer: _p, ...rest }) => rest);
+  try {
     await db
       .insert(supplierDirectory)
       .values(dbRows)
@@ -256,17 +313,9 @@ async function refreshProducerCategory(category: string) {
           cachedAt: new Date(),
         },
       });
+  } catch {
+    // swallow cache errors — we still return live results to the caller
   }
-  return rows.map(({ raw: _raw, externalId: _e, ...rest }) => ({
-    ...rest,
-    id: rest.id,
-  }));
-}
-
-function PRODUCER_CATEGORY_CONFIG(category: string) {
-  const cfg = PRODUCER_CATEGORIES[category];
-  if (!cfg) throw new Error("invalid category");
-  return cfg;
 }
 
 router.get("/producers/discover", async (req, res: Response) => {
@@ -274,86 +323,107 @@ router.get("/producers/discover", async (req, res: Response) => {
   const q = String(req.query.q ?? "").toLowerCase().trim();
   const lat = req.query.lat ? Number(req.query.lat) : null;
   const lng = req.query.lng ? Number(req.query.lng) : null;
-  const radiusKm = req.query.radiusKm ? Math.min(200, Math.max(1, Number(req.query.radiusKm))) : null;
+  const radiusKm = req.query.radiusKm
+    ? Math.min(200, Math.max(1, Number(req.query.radiusKm)))
+    : null;
 
   if (!PRODUCER_CATEGORIES[category]) {
     res.status(400).json({ error: "invalid category", categories: Object.keys(PRODUCER_CATEGORIES) });
     return;
   }
 
+  const hasLocation =
+    lat !== null && lng !== null && Number.isFinite(lat) && Number.isFinite(lng);
+  const origin = hasLocation ? { lat: lat!, lng: lng! } : null;
   const dbCategory = `producer_${category}`;
-  const cached = await db
-    .select()
-    .from(supplierDirectory)
-    .where(eq(supplierDirectory.category, dbCategory))
-    .limit(500);
 
-  let rows = cached;
-  const stale =
-    cached.length === 0 ||
-    cached.every((r) => Date.now() - new Date(r.cachedAt).getTime() > TTL_MS);
+  type ResultRow = MappedRow | (FallbackRow & { distanceKm?: number; isFallback?: true });
 
-  let overpassOk = true;
-  if (stale) {
+  let results: ResultRow[] = [];
+  let source: "osm" | "db" | "fallback" = "fallback";
+  let usingFallback = false;
+
+  // 1) Live Overpass — `around:` query when we have a location, BBOX otherwise.
+  try {
+    const query = hasLocation
+      ? buildAroundQuery(category, lat!, lng!, (radiusKm ?? 50) * 1000)
+      : buildBboxQuery(category);
+    const timeoutMs = hasLocation ? 15_000 : 26_000;
+    const elements = await runOverpass(query, timeoutMs);
+    const mapped = mapElements(elements, category, origin);
+    if (mapped.length > 0) {
+      results = mapped;
+      source = "osm";
+      // Persist to cache asynchronously (fire-and-forget)
+      void cacheRows(mapped);
+    }
+  } catch (err) {
+    req.log.warn({ err, category }, "overpass producers query failed");
+  }
+
+  // 2) DB cache — only if Overpass returned nothing.
+  if (!results.length) {
     try {
-      const fresh = await refreshProducerCategory(category);
-      const ids = fresh.map((f) => f.id);
-      if (ids.length > 0) {
-        rows = await db
-          .select()
-          .from(supplierDirectory)
-          .where(inArray(supplierDirectory.id, ids));
+      const cached = await db
+        .select()
+        .from(supplierDirectory)
+        .where(eq(supplierDirectory.category, dbCategory))
+        .limit(500);
+      const fresh = cached.filter((r) => Date.now() - new Date(r.cachedAt).getTime() < TTL_MS);
+      if (fresh.length > 0) {
+        const mapped: MappedRow[] = fresh
+          .filter((r) => r.lat !== null && r.lng !== null)
+          .map((r) => ({
+            id: r.id,
+            source: "osm" as const,
+            name: r.name,
+            category: r.category,
+            productGroups: r.productGroups,
+            address: r.address,
+            lat: r.lat,
+            lng: r.lng,
+            phone: r.phone,
+            website: r.website,
+            email: r.email,
+            rating: null,
+            isProducer: true as const,
+            distanceKm: origin && r.lat !== null && r.lng !== null
+              ? distKm(origin.lat, origin.lng, r.lat, r.lng)
+              : undefined,
+          }));
+        // Apply radius filter against cached rows (cache may include rows
+        // far outside the requested radius from previous queries).
+        const filtered = origin && radiusKm !== null
+          ? mapped.filter((r) => (r.distanceKm ?? Infinity) <= radiusKm)
+          : mapped;
+        if (filtered.length > 0) {
+          results = filtered;
+          source = "db";
+        }
       }
     } catch (err) {
-      overpassOk = false;
-      req.log.warn({ err }, "overpass producers refresh failed — using fallback data");
+      req.log.warn({ err, category }, "producers db cache lookup failed");
     }
   }
 
-  // If Overpass failed and cache is empty, use static fallback data.
-  const useFallback = !overpassOk && rows.length === 0;
-
-  type ResultRow = {
-    id: string;
-    source: string;
-    name: string;
-    category: string;
-    productGroups: string[];
-    address: string | null;
-    lat: number | null;
-    lng: number | null;
-    phone: string | null;
-    website: string | null;
-    email: string | null;
-    rating: number | null;
-    isProducer: true;
-    distanceKm?: number | null;
-    isFallback?: boolean;
-  };
-
-  let results: ResultRow[];
-
-  if (useFallback) {
-    const fallback = FALLBACK[category] ?? [];
-    results = fallback.map((r) => ({ ...r, isFallback: true }));
-  } else {
-    results = rows.map((r) => ({
-      id: r.id,
-      source: r.source,
-      name: r.name,
-      category: r.category,
-      productGroups: r.productGroups,
-      address: r.address,
-      lat: r.lat,
-      lng: r.lng,
-      phone: r.phone,
-      website: r.website,
-      email: r.email,
-      rating: r.rating,
-      isProducer: true as const,
+  // 3) Static fallback — last resort. NOT filtered by radius, otherwise users
+  //    far from Berlin would see an empty screen even though the API replied
+  //    successfully. Distance is still computed for sorting / display.
+  if (!results.length) {
+    usingFallback = true;
+    source = "fallback";
+    const fb = FALLBACK[category] ?? [];
+    results = fb.map((r) => ({
+      ...r,
+      distanceKm:
+        origin && r.lat !== null && r.lng !== null
+          ? distKm(origin.lat, origin.lng, r.lat, r.lng)
+          : undefined,
+      isFallback: true as const,
     }));
   }
 
+  // ── Optional in-memory text filter ──────────────────────────────────────
   if (q) {
     results = results.filter(
       (r) =>
@@ -362,39 +432,20 @@ router.get("/producers/discover", async (req, res: Response) => {
     );
   }
 
-  if (lat !== null && lng !== null && Number.isFinite(lat) && Number.isFinite(lng)) {
-    const calcDistKm = (a: number, b: number, c: number, d: number) => {
-      const R = 6371;
-      const toRad = (n: number) => (n * Math.PI) / 180;
-      const dLat = toRad(c - a);
-      const dLng = toRad(d - b);
-      const x =
-        Math.sin(dLat / 2) ** 2 +
-        Math.cos(toRad(a)) * Math.cos(toRad(c)) * Math.sin(dLng / 2) ** 2;
-      return 2 * R * Math.asin(Math.sqrt(x));
-    };
-    results = results
-      .map((r) => ({
-        ...r,
-        distanceKm: r.lat !== null && r.lng !== null ? calcDistKm(lat, lng, r.lat, r.lng) : null,
-      }))
-      .filter((r) => {
-        if (radiusKm === null) return true;
-        if (r.distanceKm === null || r.distanceKm === undefined) return true;
-        return r.distanceKm <= radiusKm;
-      })
-      .sort((a, b) => {
-        if (a.distanceKm === null || a.distanceKm === undefined) return 1;
-        if (b.distanceKm === null || b.distanceKm === undefined) return -1;
-        return (a.distanceKm as number) - (b.distanceKm as number);
-      });
-  }
+  // ── Sort by distance (when available), then by name ─────────────────────
+  results.sort((a, b) => {
+    const ad = a.distanceKm ?? Number.POSITIVE_INFINITY;
+    const bd = b.distanceKm ?? Number.POSITIVE_INFINITY;
+    if (ad !== bd) return ad - bd;
+    return a.name.localeCompare(b.name);
+  });
 
   res.json({
     category,
     categoryLabelDe: PRODUCER_CATEGORIES[category]?.labelDe,
     count: results.length,
-    usingFallback: useFallback,
+    usingFallback,
+    source,
     results: results.slice(0, 100),
   });
 });
@@ -410,3 +461,5 @@ router.get("/producers/categories", (_req, res: Response) => {
 });
 
 export default router;
+
+void inArray;

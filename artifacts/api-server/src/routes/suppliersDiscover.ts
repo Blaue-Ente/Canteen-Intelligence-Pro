@@ -121,9 +121,14 @@ async function fetchOverpassAround(
   category: string, lat: number, lng: number, radiusM: number,
 ): Promise<OverpassElement[]> {
   const query = buildOverpassAroundQuery(category, lat, lng, radiusM);
+  // Overpass rejects requests without a User-Agent with HTTP 406.
   const r = await fetch("https://overpass-api.de/api/interpreter", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent": "KitchenOS/1.0 (contact@kitchenos.de)",
+      Accept: "application/json",
+    },
     body: `data=${encodeURIComponent(query)}`,
     signal: AbortSignal.timeout(14_000),
   });
