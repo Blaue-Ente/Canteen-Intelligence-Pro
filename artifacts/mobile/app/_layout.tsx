@@ -29,22 +29,29 @@ const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "";
 
 /**
  * Route Clerk frontend-API requests through our own api-server's
- * `/api/__clerk` proxy on web. Why: pk_live (production Clerk) origin-locks
- * direct calls to the configured Clerk domain (app.kitchenos.de). The dev
- * preview is served from a *.replit.dev host, so direct calls 403. Routing
- * through the same-origin proxy bypasses this — api-server forwards to
- * Clerk with the proper Clerk-Proxy-Url header. The proxy is mounted on the
- * api-server in every NODE_ENV (see clerkProxyMiddleware.ts), so this works
- * for both dev preview and production deploys.
+ * `/api/__clerk` proxy ONLY on Replit-hosted dev/preview origins. Why:
+ * pk_live (production Clerk) origin-locks direct calls to the configured
+ * Clerk domain. Dev preview is served from a *.replit.dev host which is
+ * not in the Clerk instance's allowed origins, so direct calls 400/403.
+ * Routing through the same-origin proxy bypasses this.
+ *
+ * For the production custom domain (kitchenos.de) the new Clerk instance
+ * (clerk.app.kitchenos.de) DOES accept direct calls from kitchenos.de, and
+ * its proxy URL is NOT registered in Clerk's dashboard, so going through
+ * our proxy would return `proxy_request_invalid_secret_key` (401). We
+ * therefore skip the proxy on non-Replit hosts and let Clerk JS talk to
+ * its frontend API directly.
  *
  * Native (iOS / Android) is not affected by browser CORS / origin checks
  * and uses the Clerk SDK's native transport, so we leave proxyUrl unset
  * there to keep the proven native code path.
  */
-const clerkProxyProps =
-  Platform.OS === "web" && typeof window !== "undefined"
-    ? { proxyUrl: `${window.location.origin}/api/__clerk` }
-    : {};
+const clerkProxyProps = (() => {
+  if (Platform.OS !== "web" || typeof window === "undefined") return {};
+  const host = window.location.hostname;
+  const needsProxy = host.endsWith(".replit.dev") || host.endsWith(".replit.app");
+  return needsProxy ? { proxyUrl: `${window.location.origin}/api/__clerk` } : {};
+})();
 
 /**
  * Auth-aware redirect hook. Runs alongside the Stack navigator: when auth
