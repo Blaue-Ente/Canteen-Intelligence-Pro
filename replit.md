@@ -416,3 +416,66 @@ Pending implementation tasks captured here so they aren't lost:
 - **Auth**: invitation-only via Clerk (already wired). No public sign-up. Operator provisions accounts after contract.
 - **Add-on activation**: planned tier-based flow — instant for <€20/month items, 24h admin-approval window for higher-tier modules. Not yet built. UX target: in-app catalogue → "Anfrage senden" → admin dashboard ticket → feature-flag flip after approval window.
 - **Cloud-first data sync (CRITICAL GAP)**: customer-facing message says "all data lives in the EU cloud" but mobile AppState (orders, sales, inventory, HACCP, waste, recipes, events, shifts, cleaning) currently persists ONLY in `AsyncStorage` via `lib/storage.ts`. Already-cloud-backed: Clerk identity, suppliers/producers search, TSE signing, mail, preorder customer profiles. **Required next phase**: extend `lib/api-spec/openapi.yaml` with sync endpoints for the operational state, add server routes under `artifacts/api-server/src/routes/`, build offline-first sync layer in `artifacts/mobile/contexts/AppContext.tsx` (last-write-wins per row with `updated_at` timestamps initially; CRDT only if true multi-writer conflicts emerge in field testing). Ship the schema + endpoints first as one phase, then mobile sync as a second phase.
+
+### Pricing tier proposal (May 2026, awaiting customer approval)
+
+User wants "most features at lowest price vs competition". Proposal captured here for later implementation in `artifacts/website/src/pages/pricing.tsx`. **Do not implement until user confirms** the tier limits, setup fees, and Lite-tier inclusion.
+
+**4-tier structure (per site, monthly, netto, 12-month commitment):**
+
+| Tier | Price | Limit | Target |
+|---|---|---|---|
+| Lite (Schule) | €49 | 80 meals/day | Small Kita, single small school, small care home |
+| Starter | €99 | 200 meals/day | Small canteen, restaurant |
+| Professional ★ | €179 | 600 meals/day | Medium canteen, hotel, hospital ward |
+| Enterprise | from ~€299, custom quote | unlimited | Multi-site chains, large caterers |
+
+**Feature distribution (cumulative — each tier includes everything below):**
+
+- **Lite** (legal must-haves only): DGE-Score live + PDF cert, LMIV allergens, HACCP digital, BIO basic (no quotas), mobile app (no Kios voice), cloud sync, daily backups, AVV/DSGVO docs.
+- **Starter** adds: Kios voice assistant (basic — navigation, queries, simple commands), pre-order portal + 08:00 cutoff, AI leftover Mixer, Smart Daily Closing (90s flow), digital Inventur with voice dictation, Shift-Handover, ESG basic.
+- **Professional** adds: **Fiskaly TSE-POS + DSFinV-K** (alone worth €99/m at Foodics), Kios PRO (all 7 T016 intelligence features incl. anaphora, voice mutations, internet recipe search), AI vision scanner, tablet-waste-photo analysis, Catering & Event CRM + Outlook lead capture, B2B customers (credit limits, SEPA, invoicing), BuT/RKSH school accounts, Producer Discovery, Dish Analysis Scorecard.
+- **Enterprise** adds: Multi-site rollup, custom domain + white-label, API access, SLA 99.9%, on-prem option, dedicated CSM, custom reports (bank, ESG corp), custom integrations (SAP, ZEP, payroll).
+
+**Add-ons (à la carte, attach to any tier ≥ Starter):**
+- Hardware-as-a-Service (rugged Android + MDM): +€15/device/month
+- Premium Support (phone Mon-Sun 8-22): +€39/m
+- AI Quota Boost (+1000 vision scans): +€19/m
+- Producer Discovery PRO (RFQ, saved searches): +€19/m
+- Custom Report Builder PRO (scheduled email PDFs): +€19/m
+
+**Setup fees (one-time):**
+- Lite: €99 (self-onboarding video)
+- Starter: €299 (1× video session)
+- Professional: €499 (2× onsite half-day, recipe import)
+- Enterprise: per quote
+- Note: consider waiving setup fee for annual prepay commitments.
+
+**Discounts:**
+- Annual prepay: −10%
+- 36-month commitment: −15%
+- 5+ sites: chain pricing
+- Public sector (Träger, Kommune, state institution): −10%
+
+**Competitive positioning rationale:**
+1. €49 entry-point — no DACH compliance tool exists below €99. Opens 3000+ public-sector targets (schools, Kitas, social facilities).
+2. TSE-POS bundled in €179 — Foodics/Lightspeed/Vectron charge €99–149 for POS alone + €50–100 DSFinV-K module separately.
+3. Voice assistant from €99 — no other product in the world has a kitchen voice assistant. Critical to expose at low tier so customers discover it.
+4. AI vision + waste analysis bundled in €179 — competitors sell as €50–100/m add-on.
+5. Multi-site always Enterprise — protects Pro-tier margin, creates "upgrade pull" for chains.
+
+**Risks to monitor:**
+- Lite-tier cannibalization: technical soft-limits at 80 meals/day with warning + auto-upgrade nudge.
+- Pro-tier unit-economics: AI vision and Outlook CRM cost real API money — monitor margin per active site.
+- Setup fees may deter small customers: bundle setup-free into annual prepay.
+
+**Open questions for user before implementing:**
+1. Soft technical limits ("X meals/day") or contract-only guidelines?
+2. Is €499 setup for Pro acceptable in DE market, or too high?
+3. Confirm 4-tier structure (Lite included) vs keeping 3 tiers?
+4. Pricing in EUR netto (B2B standard) or brutto incl. VAT for marketing display?
+
+**Financial scenario (rough)** at mix Lite 25% / Starter 40% / Pro 30% / Ent 5%:
+- ARPU ≈ €130/site/month
+- Break-even at ~50 paying sites (~€6,500/m revenue)
+- With add-ons avg €25/m/site → ARPU ~€155 (+19%)
