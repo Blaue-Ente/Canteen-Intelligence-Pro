@@ -1,5 +1,5 @@
 kind = "web"
-previewPath = "/website/"
+previewPath = "/"
 title = "KitchenOS Marketing"
 version = "1.0.0"
 id = "artifacts/website"
@@ -11,7 +11,7 @@ version = "1.0.0"
 
 [[services]]
 name = "web"
-paths = [ "/website/" ]
+paths = [ "/" ]
 localPort = 19161
 
 [services.development]
@@ -28,4 +28,4 @@ to = "/index.html"
 
 [services.env]
 PORT = "19161"
-BASE_PATH = "/website/"
+BASE_PATH = "/"

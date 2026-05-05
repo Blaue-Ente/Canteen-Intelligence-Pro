@@ -33,7 +33,7 @@ export function Layout({ children }: { children: ReactNode }) {
   // URLs (e.g. https://app.kitchenos.de) — the rest of the layout stays.
   const appLinks: Array<{ href: string; label: string; desc: string; Icon: typeof ShoppingBag }> = [
     { href: "/preorder/", label: t("navAppPreorder"), desc: t("navAppPreorderDesc"), Icon: ShoppingBag },
-    { href: "/", label: t("navAppDemo"), desc: t("navAppDemoDesc"), Icon: Smartphone },
+    { href: "/app/", label: t("navAppDemo"), desc: t("navAppDemoDesc"), Icon: Smartphone },
   ];
 
   return (
@@ -228,7 +228,7 @@ export function Layout({ children }: { children: ReactNode }) {
               </li>
               <li>
                 <a
-                  href="/"
+                  href="/app/"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 hover:text-foreground"

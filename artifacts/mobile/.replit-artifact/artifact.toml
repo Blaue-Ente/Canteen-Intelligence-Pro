@@ -1,5 +1,5 @@
 kind = "mobile"
-previewPath = "/"
+previewPath = "/app/"
 title = "KitchenOS"
 version = "1.0.0"
 id = "artifacts/mobile"
@@ -11,7 +11,7 @@ version = "1.0.0"
 
 [[services]]
 name = "expo"
-paths = [ "/" ]
+paths = [ "/app/" ]
 localPort = 18115
 
 [services.development]
@@ -28,8 +28,8 @@ PORT = "18115"
 NODE_ENV = "production"
 
 [services.production.health.startup]
-path = "/"
+path = "/app/"
 
 [services.env]
 PORT = "18115"
-BASE_PATH = "/"
+BASE_PATH = "/app/"

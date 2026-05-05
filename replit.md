@@ -190,6 +190,23 @@ entries, плюс 3 single-item секции (Filialen / Öko / Settings). Но�
   `mobile/app/_layout.tsx` (+help Stack.Screen), `mobile/app/(tabs)/more.tsx`
   (пренаписан с 8-section IA + Hilfe entry).
 
+### T019 — Production routing swap (May 2026)
+- **Problem**: на published deployment (`kitchenos.de`) корен пътят `/` сервираше
+  мобилното Expo приложение вместо маркетинговия сайт. Причина: `artifacts/mobile`
+  беше регистриран на `previewPath = "/"`, а `artifacts/website` на `/website/`.
+- **Fix**: размяна на пътищата чрез `verifyAndReplaceArtifactToml`:
+  - `artifacts/website` → `previewPath = "/"`, `paths = ["/"]`, `BASE_PATH = "/"`
+  - `artifacts/mobile`  → `previewPath = "/app/"`, `paths = ["/app/"]`, `BASE_PATH = "/app/"`,
+    плюс `expo.experiments.baseUrl = "/app"` в `app.json` за коректни asset URL-и при web build.
+  - `artifacts/preorder` остава `/preorder/`, `artifacts/api-server` остава `/api`.
+- **Layout fix**: `artifacts/website/src/components/layout.tsx` — `appLinks` Demo entry
+  и footer Demo link обновени от `/` на `/app/` (на 2 места).
+- **Note**: `Link href="/"` в logo + `Link href="/"` в nav за Home остават коректни
+  (вече реално сочат към marketing home). Wouter base се чете от `import.meta.env.BASE_URL`,
+  така че работи автоматично с новия BASE_PATH.
+- **Изисква re-publish** за да влезе в сила в production. Dev preview вече показва
+  marketing site на `/` коректно.
+
 ## System Architecture
 
 KItchenOS is built as a cross-platform Expo app for iOS, Android, and Web, complemented by an Express.js API server.
