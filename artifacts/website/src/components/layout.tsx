@@ -22,6 +22,7 @@ export function Layout({ children }: { children: ReactNode }) {
     ["/for-operators", t("navOperators")],
     ["/compare", t("navCompare")],
     ["/standards", t("navStandards")],
+    ["/hardware", t("navHardware")],
     ["/pricing", t("navPricing")],
     ["/about", t("navAbout")],
   ];
