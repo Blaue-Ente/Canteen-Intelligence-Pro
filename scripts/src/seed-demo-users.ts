@@ -111,7 +111,8 @@ async function main(): Promise<void> {
       console.log(`  ✓ Created Clerk user: ${userId}`);
     }
 
-    // 2. Upsert org row.
+    // 2. Upsert org row — true upsert so name/owner drift is reconciled if
+    //    the spec changes or the user was recreated under a new Clerk ID.
     const orgRow = await db
       .select()
       .from(organizations)
@@ -125,16 +126,40 @@ async function main(): Promise<void> {
       });
       console.log(`  ✓ Created org: ${d.orgId}`);
     } else {
-      console.log(`  ✓ Org exists: ${d.orgId}`);
+      const existingOrg = orgRow[0]!;
+      if (existingOrg.name !== d.orgName || existingOrg.ownerUserId !== userId) {
+        await db
+          .update(organizations)
+          .set({ name: d.orgName, ownerUserId: userId })
+          .where(eq(organizations.id, d.orgId));
+        console.log(`  ✓ Updated org (name/owner reconciled): ${d.orgId}`);
+      } else {
+        console.log(`  ✓ Org exists (no drift): ${d.orgId}`);
+      }
     }
 
-    // 3. Upsert membership.
-    const memRow = await db
+    // 3. Reconcile stale memberships: any membership row for this org with
+    //    a userId that no longer exists in Clerk would otherwise persist
+    //    forever. Strategy: delete other memberships for this demo org
+    //    whose userId differs from the freshly-resolved one. Demo orgs are
+    //    single-owner by design, so this is safe.
+    const allMems = await db
       .select()
       .from(memberships)
-      .where(and(eq(memberships.orgId, d.orgId), eq(memberships.userId, userId)))
-      .limit(1);
-    if (memRow.length === 0) {
+      .where(eq(memberships.orgId, d.orgId));
+    const stale = allMems.filter((m) => m.userId !== userId);
+    if (stale.length > 0) {
+      for (const s of stale) {
+        await db
+          .delete(memberships)
+          .where(and(eq(memberships.orgId, d.orgId), eq(memberships.userId, s.userId)));
+      }
+      console.log(`  ✓ Removed ${stale.length} stale membership(s) from previous Clerk user(s)`);
+    }
+
+    // 4. Upsert membership for the current Clerk userId.
+    const memRow = allMems.find((m) => m.userId === userId);
+    if (!memRow) {
       await db.insert(memberships).values({
         orgId: d.orgId,
         userId,
@@ -144,8 +169,24 @@ async function main(): Promise<void> {
         employeeRole: d.employeeRole,
       });
       console.log("  ✓ Created membership");
+    } else if (
+      memRow.role !== "owner" ||
+      memRow.displayName !== d.displayName ||
+      memRow.email !== d.email ||
+      memRow.employeeRole !== d.employeeRole
+    ) {
+      await db
+        .update(memberships)
+        .set({
+          role: "owner",
+          displayName: d.displayName,
+          email: d.email,
+          employeeRole: d.employeeRole,
+        })
+        .where(and(eq(memberships.orgId, d.orgId), eq(memberships.userId, userId)));
+      console.log("  ✓ Updated membership (fields reconciled)");
     } else {
-      console.log("  ✓ Membership exists");
+      console.log("  ✓ Membership exists (no drift)");
     }
   }
 

@@ -17,7 +17,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { AppProvider } from "@/contexts/AppContext";
+import { AppProvider, useApp } from "@/contexts/AppContext";
 import { AuthProvider, useAuthCtx } from "@/contexts/AuthContext";
 import { tokenCache } from "@/lib/clerkTokenCache";
 import { useColors } from "@/hooks/useColors";
@@ -44,9 +44,19 @@ const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "";
  * with Stack and avoid double-navigation flashes.
  */
 function useProtectedRoute(): { ready: boolean } {
-  const { ready, isSignedIn, currentMembership } = useAuthCtx();
+  const { ready: authReady, isSignedIn, currentMembership } = useAuthCtx();
+  const { ready: appReady } = useApp();
   const segments = useSegments();
   const router = useRouter();
+
+  // Gate on BOTH auth and app hydration. Auth alone is not enough: when a
+  // user signs in (or swaps demo variant), AppContext re-runs its hydrate
+  // effect to load that user's storage key. During the gap between
+  // `authReady=true` and `appReady=true`, in-memory state still belongs to
+  // the previous user (or the seed default), so rendering protected screens
+  // would briefly flash stale data — including potentially showing a
+  // previous demo's recipes/sales to a freshly-signed-in real account.
+  const ready = authReady && appReady;
 
   useEffect(() => {
     if (!ready) return;

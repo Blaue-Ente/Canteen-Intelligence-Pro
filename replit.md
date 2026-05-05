@@ -44,7 +44,7 @@ The mobile application uses a charcoal and amber theme (`#0a0a0b` / `#f59e0b`) w
 - **Eco-Sustainability (Öko Wizard)**: Advisor with challenges and scoring.
 - **Dish Analysis**: Performance scorecard for recipes.
 - **In-App Help**: Structured user manual for all functions with full-text search.
-- **Demo System**: Three variants (Kantine, Bio-Schulmensa, Catering) available for quick access via sign-in screen or URL parameter.
+- **Demo System (T020)**: Auth gate via `useProtectedRoute()` hook in `_layout.tsx` (Stack-compatible, redirects unauthenticated users to `/(auth)/sign-in`). Three pre-provisioned demo Clerk accounts (`demo-kantine@`, `demo-schule@`, `demo-catering@kitchenos.de`, public password `KitchenOS-Demo-2025!`) seeded via `pnpm --filter @workspace/scripts run seed:demo`. Each variant has a full coherent `AppState` bundle (`constants/demoSeeds.ts`) — Kantine München (200 portions/day, lite mode), Bio-Schulmensa (vegan/vegetarian, DGE schule standard, Öko enabled), Eventküche Berlin (catering-driven, 6 employees, 4 upcoming events, full mode). Per-user AsyncStorage isolation (`kitchenos.state.v1.<userId>`) ensures variants don't leak across each other. Two entry paths: (1) sign-in screen "Demo testen" button → modal with 3 variant cards; (2) marketing site hero/CTA → `/app/?demo=<variant>` → auto-launch on web. Seed application is queue-based: `applyDemoSeed` queues the seed before `setActive()` resolves, then `AppProvider` consumes it at the next hydrate completion under the demo user's storage key — eliminating cross-account data leaks. 30s expiry timer guards against stale queued seeds.
 
 ### System Design Choices
 - **API Design**: OpenAPI specification (`lib/api-spec/openapi.yaml`) with Zod validation.

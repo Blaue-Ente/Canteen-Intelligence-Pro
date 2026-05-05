@@ -4,11 +4,13 @@ import { Link, useRouter } from "expo-router";
 import { useSignUp } from "@clerk/expo/legacy";
 import { Button, Card } from "@/components/ui";
 import { useColors } from "@/hooks/useColors";
+import { useApp } from "@/contexts/AppContext";
 
 export default function SignUpScreen() {
   const c = useColors();
   const router = useRouter();
   const { isLoaded, signUp, setActive } = useSignUp();
+  const { clearPendingDemoSeed } = useApp();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -31,6 +33,11 @@ export default function SignUpScreen() {
 
   const submit = async () => {
     if (!isLoaded) return;
+    // Defensive: drop any pending demo seed before any non-demo auth flow.
+    // If the user opened the demo modal, dismissed it, then signed up
+    // normally as a real account, an in-flight queued seed (30s TTL) would
+    // otherwise leak realistic-looking demo data into their fresh workspace.
+    clearPendingDemoSeed();
     setBusy(true);
     try {
       await signUp.create({
@@ -51,6 +58,12 @@ export default function SignUpScreen() {
 
   const verify = async () => {
     if (!isLoaded) return;
+    // Belt-and-suspenders: also clear right before the session is activated.
+    // The submit-time clear above handles the common case, but a queued seed
+    // could theoretically be re-added between submit() and verify() if the
+    // user re-opens the demo flow on another tab — extremely unlikely but
+    // free to guard against here.
+    clearPendingDemoSeed();
     setBusy(true);
     try {
       const res = await signUp.attemptEmailAddressVerification({ code: code.trim() });
