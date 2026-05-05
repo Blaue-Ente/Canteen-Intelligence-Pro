@@ -207,6 +207,49 @@ const FALLBACK: Record<string, Array<{
   ],
 };
 
+// ─── Reverse geocode (lat/lng → city) ───────────────────────────────────────
+async function reverseGeocodeNominatim(lat: number, lng: number): Promise<string | null> {
+  const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=12&addressdetails=1`;
+  try {
+    const r = await fetch(url, {
+      headers: {
+        "User-Agent": "KitchenOS/1.0 (contact@kitchenos.de)",
+        Accept: "application/json",
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) return null;
+    const j = (await r.json()) as { address?: { city?: string; town?: string; village?: string; municipality?: string; suburb?: string; county?: string } };
+    return (
+      j.address?.city ??
+      j.address?.town ??
+      j.address?.village ??
+      j.address?.municipality ??
+      j.address?.suburb ??
+      j.address?.county ??
+      null
+    );
+  } catch {
+    return null;
+  }
+}
+
+router.get("/suppliers/reverse-geocode", async (req, res: Response) => {
+  const lat = Number(req.query.lat);
+  const lng = Number(req.query.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    res.status(400).json({ error: "lat/lng required" });
+    return;
+  }
+  try {
+    const city = await reverseGeocodeNominatim(lat, lng);
+    res.json({ lat, lng, city });
+  } catch (err) {
+    req.log.warn({ err }, "nominatim reverse geocode failed");
+    res.status(502).json({ error: "Reverse-Geocoding nicht verfügbar" });
+  }
+});
+
 // ─── Geocode endpoint ───────────────────────────────────────────────────────
 router.get("/suppliers/geocode", async (req, res: Response) => {
   const plz = String(req.query.plz ?? "").trim();

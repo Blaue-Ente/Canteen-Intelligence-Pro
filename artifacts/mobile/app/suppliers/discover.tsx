@@ -15,6 +15,7 @@ import { Button, Card, Chip } from "@/components/ui";
 import { useApp } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { apiFetch } from "@/lib/api";
+import { getCurrentLocation, LocationDeniedError } from "@/lib/location";
 import type { Supplier } from "@/types";
 
 const CATEGORIES: { id: string; label: string }[] = [
@@ -57,6 +58,7 @@ export default function DiscoverSuppliers() {
   const [radiusKm, setRadiusKm] = useState(25);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [geocoding, setGeocoding] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [results, setResults] = useState<DiscoverSupplier[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +126,28 @@ export default function DiscoverSuppliers() {
       setError("PLZ nicht gefunden. Bitte prüfen.");
     } finally {
       setGeocoding(false);
+    }
+  };
+
+  // ── Auto-detect device location ───────────────────────────────────────────
+  const handleUseMyLocation = async () => {
+    Keyboard.dismiss();
+    setLocating(true);
+    setError(null);
+    try {
+      const loc = await getCurrentLocation();
+      setCoords({ lat: loc.lat, lng: loc.lng });
+      setPlzCity(loc.city ?? "Mein Standort");
+      setPlz("");
+      await load(category, { lat: loc.lat, lng: loc.lng }, radiusKm);
+    } catch (err) {
+      if (err instanceof LocationDeniedError) {
+        setError("Standort-Zugriff verweigert. Bitte Berechtigung erteilen oder PLZ eingeben.");
+      } else {
+        setError("Standort konnte nicht ermittelt werden. Bitte PLZ eingeben.");
+      }
+    } finally {
+      setLocating(false);
     }
   };
 
@@ -243,12 +267,38 @@ export default function DiscoverSuppliers() {
             </TouchableOpacity>
           </View>
 
-          {/* PLZ confirmed */}
+          {/* Mein Standort button */}
+          <TouchableOpacity
+            onPress={handleUseMyLocation}
+            disabled={locating || loading || geocoding}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              borderColor: c.primary,
+              borderWidth: 1.5,
+              borderRadius: 10,
+              paddingVertical: 9,
+              opacity: locating || loading || geocoding ? 0.6 : 1,
+            }}
+          >
+            {locating ? (
+              <ActivityIndicator color={c.primary} size="small" />
+            ) : (
+              <Feather name="navigation" size={14} color={c.primary} />
+            )}
+            <Text style={{ color: c.primary, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
+              {locating ? "Standort wird ermittelt…" : "Mein Standort verwenden"}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Location confirmed */}
           {coords && plzCity && (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
               <Feather name="map-pin" size={12} color="#059669" />
               <Text style={{ color: "#059669", fontFamily: "Inter_500Medium", fontSize: 12 }}>
-                {plzCity} ({plz}) · Umkreissuche aktiv
+                {plzCity}{plz ? ` (${plz})` : ""} · Umkreissuche aktiv
               </Text>
               <TouchableOpacity
                 onPress={() => { setCoords(null); setPlzCity(null); setPlz(""); void load(category, null, radiusKm); }}
