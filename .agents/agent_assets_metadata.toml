@@ -23,3 +23,15 @@ id = "BT8npVTKwFCfWO_oDTUqR"
 uri = "file://artifacts/website/public/downloads/lead-list.pdf"
 type = "pdf"
 title = "Ziel-Liste DE-B2B — 40 reale Operator und Träger"
+
+[[outputs]]
+id = "lMi_Q2eDUwsziiw_i3icB"
+uri = "file://artifacts/website/public/downloads/kitchenos-ai-secretary-kit.md"
+type = "text"
+title = "AI Secretary Kit (Markdown — за AI)"
+
+[[outputs]]
+id = "eXcusygymgcGgSDSn3QHT"
+uri = "file://artifacts/website/public/downloads/kitchenos-ai-secretary-kit.pdf"
+type = "pdf"
+title = "AI Secretary Kit (PDF — за четене)"
