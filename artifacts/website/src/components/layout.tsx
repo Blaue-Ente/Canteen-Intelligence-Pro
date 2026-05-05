@@ -2,7 +2,15 @@ import { ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
-import { ChefHat, Menu as MenuIcon, X } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { ChefHat, Menu as MenuIcon, X, ChevronDown, ExternalLink, ShoppingBag, Smartphone } from "lucide-react";
 
 export function Layout({ children }: { children: ReactNode }) {
   const { t, lang, setLang } = useI18n();
@@ -16,6 +24,15 @@ export function Layout({ children }: { children: ReactNode }) {
     ["/standards", t("navStandards")],
     ["/pricing", t("navPricing")],
     ["/about", t("navAbout")],
+  ];
+
+  // External app entry-points. Both live on the same Replit deployment but
+  // open in a new window so the marketing context isn't lost. Once each
+  // artifact is published to its own custom domain, swap these for absolute
+  // URLs (e.g. https://app.kitchenos.de) — the rest of the layout stays.
+  const appLinks: Array<{ href: string; label: string; desc: string; Icon: typeof ShoppingBag }> = [
+    { href: "/preorder/", label: t("navAppPreorder"), desc: t("navAppPreorderDesc"), Icon: ShoppingBag },
+    { href: "/", label: t("navAppDemo"), desc: t("navAppDemoDesc"), Icon: Smartphone },
   ];
 
   return (
@@ -43,6 +60,49 @@ export function Layout({ children }: { children: ReactNode }) {
                 </Link>
               );
             })}
+            {/* "App / Portal" dropdown — lives at the end of the nav so it's
+                visually separated from the marketing pages. Each item opens
+                its target artifact in a new browser tab. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="px-3 py-2 text-sm rounded-md transition-colors text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                >
+                  {t("navApp")}
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-72">
+                <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+                  {t("navAppNote")}
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {appLinks.map(({ href, label, desc, Icon }) => (
+                  <DropdownMenuItem key={href} asChild>
+                    <a
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-start gap-3 cursor-pointer"
+                    >
+                      <span className="mt-0.5 inline-flex items-center justify-center w-8 h-8 rounded-md bg-primary/10 text-primary">
+                        <Icon className="w-4 h-4" />
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="flex items-center gap-1 text-sm font-medium">
+                          {label}
+                          <ExternalLink className="w-3 h-3 text-muted-foreground" />
+                        </span>
+                        <span className="block text-xs text-muted-foreground mt-0.5">
+                          {desc}
+                        </span>
+                      </span>
+                    </a>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </nav>
           <div className="flex items-center gap-2">
             <Button
@@ -81,6 +141,37 @@ export function Layout({ children }: { children: ReactNode }) {
                   {label}
                 </Link>
               ))}
+              {/* Mobile equivalent of the App dropdown — same target=_blank
+                  behaviour so guests can switch into the app without losing
+                  the marketing site in their tab history. */}
+              <div className="mt-2 pt-2 border-t border-border/60">
+                <div className="px-3 py-1.5 text-xs uppercase tracking-wide text-muted-foreground">
+                  {t("navApp")} · {t("navAppNote")}
+                </div>
+                {appLinks.map(({ href, label, desc, Icon }) => (
+                  <a
+                    key={href}
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setOpen(false)}
+                    className="flex items-start gap-3 px-3 py-2 rounded-md hover:bg-muted"
+                  >
+                    <span className="mt-0.5 inline-flex items-center justify-center w-8 h-8 rounded-md bg-primary/10 text-primary">
+                      <Icon className="w-4 h-4" />
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="flex items-center gap-1 text-sm font-medium">
+                        {label}
+                        <ExternalLink className="w-3 h-3 text-muted-foreground" />
+                      </span>
+                      <span className="block text-xs text-muted-foreground mt-0.5">
+                        {desc}
+                      </span>
+                    </span>
+                  </a>
+                ))}
+              </div>
               <Button size="sm" className="w-full mt-2" asChild>
                 <Link href="/demo" onClick={() => setOpen(false)}>{t("ctaDemo")}</Link>
               </Button>
@@ -123,8 +214,29 @@ export function Layout({ children }: { children: ReactNode }) {
           <div>
             <h4 className="text-sm font-semibold mb-3">{t("contactTitleFooter")}</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
+              <li>
+                <a
+                  href="/preorder/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 hover:text-foreground"
+                >
+                  {t("navAppPreorder")}
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </li>
+              <li>
+                <a
+                  href="/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 hover:text-foreground"
+                >
+                  {t("navAppDemo")}
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </li>
               <li>hello@kitchenos.de</li>
-              <li>+49 30 1234567</li>
               <li><Link href="/contact#imprint" className="hover:text-foreground">{t("footerImprint")}</Link></li>
             </ul>
           </div>
