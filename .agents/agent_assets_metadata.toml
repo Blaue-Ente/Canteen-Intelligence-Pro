@@ -12,6 +12,12 @@ uri = "file://artifacts/preorder/public/hero-canteen.png"
 type = "image"
 title = "Appetizing canteen food"
 
+[[generated]]
+id = "y3Vaep9dlLrn52FCkualU"
+uri = "file://artifacts/website/public/downloads/kitchenos-logo.png"
+type = "image"
+title = "kitchenos brand logo"
+
 [[outputs]]
 id = "uvY-iRZZv9cqgGqpV5G21"
 uri = "file://artifacts/website/public/downloads/sales-emails.pdf"
@@ -35,3 +41,15 @@ id = "eXcusygymgcGgSDSn3QHT"
 uri = "file://artifacts/website/public/downloads/kitchenos-ai-secretary-kit.pdf"
 type = "pdf"
 title = "AI Secretary Kit (PDF — за четене)"
+
+[[outputs]]
+id = "bga9vMFX0gk4189M66oZn"
+uri = "file://artifacts/website/public/downloads/kitchenos-logo.png"
+type = "image"
+title = "KItchenOS лого"
+
+[[outputs]]
+id = "LFXs4u6qh4GuJlW-uS79_"
+uri = "file://artifacts/website/public/downloads/kitchenos-video-style-guide.md"
+type = "text"
+title = "Video Style Guide & AI Prompt Либрария"
