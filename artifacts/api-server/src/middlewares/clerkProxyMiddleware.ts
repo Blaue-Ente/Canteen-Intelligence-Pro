@@ -83,6 +83,10 @@ export function clerkProxyMiddleware(): RequestHandler {
     on: {
       proxyReq: (proxyReq, req) => {
         const protocol = req.headers["x-forwarded-proto"] || "https";
+        // Always use the override (app.kitchenos.de) so Clerk's FAPI can
+        // attribute the request to our instance. The FAPI redirect that results
+        // (e.g. for the Clerk JS bundle) is rewritten in proxyRes below so the
+        // browser never sees a cross-origin redirect.
         const host = proxyHostOverride || getClerkProxyHost(req) || "";
         const proxyUrl = `${protocol}://${host}${CLERK_PROXY_PATH}`;
 
@@ -96,6 +100,39 @@ export function clerkProxyMiddleware(): RequestHandler {
           "";
         if (clientIp) {
           proxyReq.setHeader("X-Forwarded-For", clientIp);
+        }
+      },
+      proxyRes: (proxyRes, req) => {
+        // FAPI sometimes redirects (307) the Clerk JS bundle to the canonical
+        // proxy URL, e.g. https://app.kitchenos.de/api/__clerk/npm/...
+        // When the request came from a dev/preview origin the browser cannot
+        // follow that cross-origin redirect (CORS). Rewrite the Location header
+        // to use the actual request host so the redirect stays same-origin.
+        const location = proxyRes.headers["location"];
+        if (location && typeof location === "string" && proxyHostOverride) {
+          const actualHost = getClerkProxyHost(req as { headers: IncomingHttpHeaders });
+          if (
+            actualHost &&
+            actualHost !== proxyHostOverride &&
+            location.includes(proxyHostOverride)
+          ) {
+            const protocol =
+              (req as { headers: IncomingHttpHeaders }).headers[
+                "x-forwarded-proto"
+              ] || "https";
+            proxyRes.headers["location"] = location.replace(
+              `https://${proxyHostOverride}`,
+              `${protocol}://${actualHost}`,
+            );
+          }
+        }
+        // Ensure CORS headers survive the proxy hop so browsers on any origin
+        // (dev or production) can consume the response.
+        const origin = (req as { headers: IncomingHttpHeaders }).headers["origin"];
+        if (origin) {
+          proxyRes.headers["access-control-allow-origin"] = origin;
+          proxyRes.headers["access-control-allow-credentials"] = "true";
+          proxyRes.headers["vary"] = "Origin";
         }
       },
     },

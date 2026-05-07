@@ -29,21 +29,22 @@ const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "";
 
 /**
  * Route ALL Clerk frontend-API requests through our own api-server's
- * `/api/__clerk` proxy on web. The proxy middleware sets Clerk-Proxy-Url
- * to the canonical Clerk domain (app.kitchenos.de) via CLERK_PROXY_HOST_OVERRIDE,
- * so Clerk's FAPI accepts the request regardless of which host the browser
- * is actually on (kitchenos.de, *.replit.app, *.replit.dev, etc.).
+ * `/api/__clerk` proxy on web — but ONLY when using a live (pk_live) key.
  *
- * Without this, browsers on kitchenos.de or canteen-intelligence-pro.replit.app
- * would either call Clerk directly (and be rejected for unknown domain) or
- * proxy with the wrong host header (and get 401 proxy_request_invalid_secret_key).
+ * Live keys are domain-locked to app.kitchenos.de; any other origin gets CORS
+ * errors. The proxy middleware sets Clerk-Proxy-Url to the canonical domain so
+ * FAPI accepts the request from *.replit.dev / *.replit.app as well.
  *
- * Native (iOS / Android) is not affected by browser CORS / origin checks
- * and uses the Clerk SDK's native transport, so we leave proxyUrl unset
- * there to keep the proven native code path.
+ * Test keys (pk_test) are not domain-locked and work from any origin without a
+ * proxy — setting proxyUrl with a test key causes a 400 "unable to attribute".
+ *
+ * Native (iOS / Android) is not affected by browser CORS checks — leave
+ * proxyUrl unset there to keep the proven native code path.
  */
 const clerkProxyProps = (() => {
   if (Platform.OS !== "web" || typeof window === "undefined") return {};
+  // Only proxy for live keys — test keys work directly from any origin.
+  if (!publishableKey.startsWith("pk_live")) return {};
   return { proxyUrl: `${window.location.origin}/api/__clerk` };
 })();
 
