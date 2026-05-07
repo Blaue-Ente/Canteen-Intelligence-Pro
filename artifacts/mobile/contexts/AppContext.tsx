@@ -152,7 +152,11 @@ type Action =
   | { type: "removeQueuedSale"; id: string }
   | { type: "clearQueuedSales" }
   // ---- T023: POS Terminal ----
-  | { type: "setTerminalConfig"; config: import("@/types").PosTerminalConfig };
+  | { type: "setTerminalConfig"; config: import("@/types").PosTerminalConfig }
+  // ---- Preorder Branding ----
+  | { type: "setPreorderBranding"; branding: import("@/types").PreorderBranding }
+  // ---- Inventory Transfer ----
+  | { type: "transferInventory"; fromItemId: string; toLocationId: string; qty: number };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -511,6 +515,36 @@ function reducer(state: AppState, action: Action): AppState {
     // ---- T023 ----
     case "setTerminalConfig":
       return { ...state, terminalConfig: action.config };
+    // ---- Preorder Branding ----
+    case "setPreorderBranding":
+      return { ...state, preorderBranding: action.branding };
+    // ---- Inventory Transfer ----
+    case "transferInventory": {
+      const item = state.inventory.find((i) => i.id === action.fromItemId);
+      if (!item || action.qty <= 0) return state;
+      const clampedQty = Math.min(action.qty, item.quantity);
+      const uid2 = uid();
+      // Reduce source item quantity
+      const updatedSource = { ...item, quantity: item.quantity - clampedQty, updatedAt: new Date().toISOString() };
+      // Look for matching item at target location (same name + unit)
+      const targetItem = state.inventory.find(
+        (i) => i.id !== item.id && i.locationId === action.toLocationId && i.nameDe === item.nameDe && i.unit === item.unit,
+      );
+      let nextInventory: typeof state.inventory;
+      if (targetItem) {
+        nextInventory = state.inventory.map((i) => {
+          if (i.id === item.id) return updatedSource;
+          if (i.id === targetItem.id) return { ...targetItem, quantity: targetItem.quantity + clampedQty, updatedAt: new Date().toISOString() };
+          return i;
+        });
+      } else {
+        // Create new item at target location
+        const newItem = { ...item, id: uid2, locationId: action.toLocationId, quantity: clampedQty, updatedAt: new Date().toISOString() };
+        nextInventory = state.inventory.map((i) => (i.id === item.id ? updatedSource : i));
+        nextInventory = [...nextInventory, newItem];
+      }
+      return { ...state, inventory: nextInventory };
+    }
     default:
       return state;
   }
@@ -622,6 +656,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           queuedSales: pick("queuedSales"),
           // ---- T023 ----
           terminalConfig: pick("terminalConfig"),
+          // ---- Preorder Branding ----
+          preorderBranding: pick("preorderBranding"),
         };
         dispatch({ type: "hydrate", state: merged });
       } else {

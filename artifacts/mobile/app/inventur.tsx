@@ -1,17 +1,115 @@
 import { Feather } from "@expo/vector-icons";
 import React, { useMemo, useState } from "react";
-import { Alert, ScrollView, Text, TextInput, View } from "react-native";
+import { Alert, Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
-import { Badge, Button, Card, EmptyState, SectionHeader, Stat } from "@/components/ui";
+import { Badge, Button, Card, Chip, EmptyState, Field, SectionHeader, Stat } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useAuthor } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import type { InventurCount, InventurSession } from "@/types";
 
+// ─── Inventory Transfer Modal ────────────────────────────────────────────────
+function TransferModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const { state, dispatch } = useApp();
+  const c = useColors();
+  const isDe = state.locale === "de";
+  const [itemId, setItemId] = useState("");
+  const [toLoc, setToLoc] = useState("");
+  const [qty, setQty] = useState("");
+
+  const otherLocations = state.locations.filter((l) => {
+    const item = state.inventory.find((i) => i.id === itemId);
+    return item ? l.id !== item.locationId : true;
+  });
+
+  function doTransfer() {
+    const parsed = Number(qty.replace(",", "."));
+    if (!itemId || !toLoc || !parsed || parsed <= 0) {
+      Alert.alert(isDe ? "Ungültige Eingabe" : "Invalid input", "");
+      return;
+    }
+    dispatch({ type: "transferInventory", fromItemId: itemId, toLocationId: toLoc, qty: parsed });
+    setItemId(""); setToLoc(""); setQty("");
+    onClose();
+    Alert.alert("✓", isDe ? "Bestand transferiert." : "Stock transferred.");
+  }
+
+  const item = state.inventory.find((i) => i.id === itemId);
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: c.background, padding: 20, gap: 14 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <Feather name="shuffle" size={18} color={c.primary} />
+          <Text style={{ flex: 1, color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 17 }}>
+            {isDe ? "Bestand transferieren" : "Transfer Stock"}
+          </Text>
+          <Pressable onPress={onClose}><Feather name="x" size={20} color={c.mutedForeground} /></Pressable>
+        </View>
+        <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 13 }}>
+          {isDe ? "Wähle Artikel, Zielstandort und Menge:" : "Select item, target location and quantity:"}
+        </Text>
+        {/* Item selector */}
+        <Text style={{ color: c.foreground, fontFamily: "Inter_500Medium", fontSize: 13, marginBottom: -8 }}>
+          {isDe ? "Artikel" : "Item"}
+        </Text>
+        <ScrollView style={{ maxHeight: 140, borderWidth: 1, borderColor: c.border, borderRadius: 8 }} nestedScrollEnabled>
+          {state.inventory.map((i) => (
+            <Pressable
+              key={i.id}
+              onPress={() => { setItemId(i.id); setToLoc(""); }}
+              style={{ padding: 10, backgroundColor: itemId === i.id ? c.muted : "transparent" }}
+            >
+              <Text style={{ color: c.foreground, fontFamily: "Inter_500Medium", fontSize: 13 }}>
+                {isDe ? i.nameDe : i.name} — {i.quantity} {i.unit}
+                {i.locationId ? ` (${state.locations.find((l) => l.id === i.locationId)?.name ?? i.locationId})` : ""}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+        {/* Target location */}
+        {item && (
+          <>
+            <Text style={{ color: c.foreground, fontFamily: "Inter_500Medium", fontSize: 13, marginBottom: -8 }}>
+              {isDe ? "Zielstandort" : "Target location"}
+            </Text>
+            <ScrollView style={{ maxHeight: 110, borderWidth: 1, borderColor: c.border, borderRadius: 8 }} nestedScrollEnabled>
+              {otherLocations.map((l) => (
+                <Pressable
+                  key={l.id}
+                  onPress={() => setToLoc(l.id)}
+                  style={{ padding: 10, backgroundColor: toLoc === l.id ? c.muted : "transparent" }}
+                >
+                  <Text style={{ color: c.foreground, fontFamily: "Inter_500Medium", fontSize: 13 }}>{l.name}</Text>
+                </Pressable>
+              ))}
+              {otherLocations.length === 0 && (
+                <Text style={{ padding: 10, color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12 }}>
+                  {isDe ? "Keine anderen Standorte vorhanden." : "No other locations available."}
+                </Text>
+              )}
+            </ScrollView>
+          </>
+        )}
+        {/* Quantity */}
+        <Field
+          label={isDe ? `Menge (max. ${item?.quantity ?? "?"} ${item?.unit ?? ""})` : `Quantity (max. ${item?.quantity ?? "?"} ${item?.unit ?? ""})`}
+          value={qty}
+          onChangeText={setQty}
+          keyboardType="numeric"
+          placeholder="1"
+        />
+        <Button label={isDe ? "Transferieren" : "Transfer"} icon="shuffle" onPress={doTransfer} />
+      </View>
+    </Modal>
+  );
+}
+
 export default function Inventur() {
   const { state, dispatch, newId } = useApp();
   const t = useT();
   const c = useColors();
+  const [transferOpen, setTransferOpen] = useState(false);
 
   const open = useMemo(
     () => state.inventurs.find((s) => s.status === "open"),
@@ -107,7 +205,32 @@ export default function Inventur() {
 
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
+      <TransferModal visible={transferOpen} onClose={() => setTransferOpen(false)} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 60 }}>
+        {/* T008: Inventory Transfer between locations */}
+        {state.locations.length > 1 && (
+          <Card>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Feather name="shuffle" size={16} color={c.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: c.foreground, fontFamily: "Inter_600SemiBold", fontSize: 14 }}>
+                  {state.locale === "de" ? "Bestand transferieren" : "Transfer stock"}
+                </Text>
+                <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 11, marginTop: 2 }}>
+                  {state.locale === "de"
+                    ? "Artikel zwischen Standorten verschieben"
+                    : "Move items between locations"}
+                </Text>
+              </View>
+              <Button
+                label={state.locale === "de" ? "Transfer" : "Transfer"}
+                icon="shuffle"
+                variant="ghost"
+                onPress={() => setTransferOpen(true)}
+              />
+            </View>
+          </Card>
+        )}
         {!open ? (
           <Card>
             <EmptyState

@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { Alert, Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Badge, Button, Card, Chip, EmptyState, Field, SectionHeader } from "@/components/ui";
@@ -335,6 +335,26 @@ export default function Procurement() {
                       </Text>
                     </View>
                   ))}
+                  {sup?.email ? (
+                    <Button
+                      label={isDe ? "E-Mail an Lieferant" : "Email supplier"}
+                      icon="mail"
+                      variant="ghost"
+                      onPress={() => {
+                        const subject = encodeURIComponent(
+                          isDe
+                            ? `Bestellanfrage – KitchenOS (${new Date().toLocaleDateString("de-DE")})`
+                            : `Order request – KitchenOS (${new Date().toLocaleDateString("en-GB")})`,
+                        );
+                        const body = encodeURIComponent(
+                          `${isDe ? "Sehr geehrte Damen und Herren" : "Dear team"},\n\n${isDe ? "wir benötigen folgende Artikel" : "we need the following items"}:\n\n` +
+                          items.map((it) => `- ${it.name}: ${it.needed} ${it.unit}`).join("\n") +
+                          `\n\n${isDe ? "Gesamtwert ca." : "Estimated total"}: €${subtotal.toFixed(2)}\n\n${isDe ? "Mit freundlichen Grüßen" : "Kind regards"},\nKitchenOS`,
+                        );
+                        void Linking.openURL(`mailto:${sup.email}?subject=${subject}&body=${body}`);
+                      }}
+                    />
+                  ) : null}
                 </Card>
               );
             })}

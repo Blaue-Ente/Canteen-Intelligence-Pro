@@ -155,6 +155,18 @@ export function buildKitchenContext(state: AppState): string {
   const samplesToday  = samples.filter((s) => s.date === today).length;
   const samplesPending = samples.filter((s) => !s.taken && s.retentionUntil >= today).length;
 
+  // ── Preorder Branding ────────────────────────────────────────────────────
+  const brandingName  = state.preorderBranding?.restaurantName;
+  const brandingColor = state.preorderBranding?.primaryColor;
+
+  // ── Öko-Challenges ───────────────────────────────────────────────────────
+  const okoScore       = state.okoProgress?.score ?? 0;
+  const okoCompletions = state.okoProgress?.completions?.length ?? 0;
+  const okoEnabled     = state.okoEnabled ?? false;
+
+  // ── Inventory transfer (multi-location context) ──────────────────────────
+  const multiLocation = (state.locations ?? []).length > 1;
+
   // ── T013: Subscription tier + app mode ──────────────────────────────────
   const tier    = state.subscription?.tier ?? "free";
   const appMode = state.appMode ?? "lite";
@@ -193,6 +205,9 @@ export function buildKitchenContext(state: AppState): string {
       (samplesPending > 0 ? `, ${samplesPending} noch nicht physisch genommen` : ""),
     dgeLine,
     `Stamm: ${recipeCount} Rezepte, ${supplierCount} Lieferanten, ${locationCount} Standorte, ${teamCount} Mitarbeiter`,
+    multiLocation ? `Multi-Standort aktiv: Bestand-Transfer zwischen Standorten möglich (Inventur-Seite)` : null,
+    okoEnabled ? `Öko-Wizard: ${okoScore} Punkte, ${okoCompletions} erledigte Aufgaben` : null,
+    brandingName ? `Vorbestellung-Branding: Name "${brandingName}"${brandingColor ? `, Farbe ${brandingColor}` : ""}` : null,
   ].filter(Boolean).join("\n");
 }
 
@@ -307,6 +322,14 @@ Beispiele:
   "Reinigung erledigt" → answer: "Reinigungsplan wird geöffnet." navigate: cleaning
   "Rechnung schreiben" → answer: "Kasse wird geöffnet." navigate: kasse
   "Welcher Tarif bin ich?" → answer: "Du bist im [Tier]-Tarif." navigate: settings
+  "Bestand von Standort A nach B transferieren" → answer: "Inventur-Seite wird geöffnet, dort kannst du den Transfer starten." navigate: inventur
+  "E-Mail an Lieferant schicken" → answer: "Bestellvorschlag wird geöffnet, dort findest du den E-Mail-Button pro Lieferant." navigate: procurement
+  "Öffnungszeiten für Standort ändern" → answer: "Ich öffne die Standortverwaltung, dort kannst du Öffnungs- und Schließzeiten eintragen." navigate: locations
+  "Öko-Punkte wie viele?" → answer: "Du hast aktuell [okoScore] Öko-Punkte aus [okoCompletions] erledigten Challenges." navigate: okowizard
+  "Foto-Nachweis für Öko-Challenge" → answer: "Öko-Wizard wird geöffnet, beim Erledigen einer Challenge kannst du ein Foto beifügen." navigate: okowizard
+  "Branding für Vorbestellung ändern" → answer: "Einstellungen werden geöffnet, dort findest du den Abschnitt Vorbestellung-Branding." navigate: settings
+  "Benachrichtigungen einrichten" → answer: "Ich öffne Einstellungen — dort findest du alle Notification-Optionen inkl. Öko-Reminder und Vorbestellungs-Alerts." navigate: settings
+  "Abwesenheit melden" → answer: "Dienstplan wird geöffnet, dort kannst du Urlaub oder Krankmeldung eintragen." navigate: dienstplan
 
 Frage: "${question}"`.trim();
 

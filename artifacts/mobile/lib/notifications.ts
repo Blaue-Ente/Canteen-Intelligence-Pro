@@ -128,6 +128,26 @@ export async function rescheduleAll(prefs: NotificationPrefs, state: AppState): 
       });
     }
   }
+
+  if (prefs.ekoReminder) {
+    const t = parseHHmm(prefs.ekoReminderTime ?? "10:00");
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: T("🌿 Öko-Challenge heute?", "🌿 Eco challenge today?"),
+        body: T(
+          "Erledige eine Nachhaltigkeits-Aufgabe im Öko-Wizard und sammle Punkte.",
+          "Complete a sustainability challenge in the Eco Wizard and earn points.",
+        ),
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
+        hour: t.hour,
+        minute: t.minute,
+        repeats: true,
+        channelId: CHANNEL_ID,
+      },
+    });
+  }
 }
 
 export async function disableAll(): Promise<void> {

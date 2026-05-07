@@ -9,6 +9,28 @@ import { useActiveOrder } from "@/hooks/use-active-order";
 import { AuthNav } from "@/components/auth-nav";
 import { ListOrdered, ArrowRight, Loader2 } from "lucide-react";
 
+interface PreorderBranding {
+  restaurantName?: string;
+  primaryColor?: string;
+  logoUri?: string;
+  welcomeMessage?: string;
+}
+
+function useBranding(): PreorderBranding {
+  const [branding, setBranding] = useState<PreorderBranding>({});
+  useEffect(() => {
+    // Read orgId from query param ?orgId=xxx (set by the QR code or deep link)
+    const params = new URLSearchParams(window.location.search);
+    const orgId = params.get("orgId");
+    if (!orgId) return;
+    fetch(`/api/preorder/branding?orgId=${encodeURIComponent(orgId)}`)
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((d: PreorderBranding) => setBranding(d))
+      .catch(() => {});
+  }, []);
+  return branding;
+}
+
 function SmartRedirect({ locationCode, setLocation }: { locationCode: string; setLocation: (p: string) => void }) {
   const { data: profile, isLoading } = useGetCustomerProfile();
 
@@ -75,6 +97,7 @@ export default function Landing() {
   const [activeOrder] = useActiveOrder();
   const [locationCode, setLocationCode] = useState("");
   const { isLoaded } = useAuth();
+  const branding = useBranding();
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -99,12 +122,21 @@ export default function Landing() {
 
   return (
     <div className="min-h-[100dvh] w-full flex flex-col bg-background">
-      <header className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border px-4 py-3 flex items-center justify-between">
+      <header
+        className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border px-4 py-3 flex items-center justify-between"
+        style={branding.primaryColor ? { borderBottomColor: branding.primaryColor } : undefined}
+      >
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-full overflow-hidden">
-            <img src="/hero-canteen.png" alt="" className="w-full h-full object-cover" />
+            {branding.logoUri ? (
+              <img src={branding.logoUri} alt="Logo" className="w-full h-full object-contain" />
+            ) : (
+              <img src="/hero-canteen.png" alt="" className="w-full h-full object-cover" />
+            )}
           </div>
-          <span className="font-semibold text-sm text-foreground">KitchenOS</span>
+          <span className="font-semibold text-sm text-foreground">
+            {branding.restaurantName ?? "KitchenOS"}
+          </span>
         </div>
         {isLoaded && <AuthNav />}
       </header>
@@ -112,24 +144,42 @@ export default function Landing() {
       <div className="flex-1 flex flex-col justify-center max-w-md mx-auto w-full px-6 py-10">
         <div className="mb-8 text-center">
           <div className="w-20 h-20 bg-primary/10 rounded-full mx-auto flex items-center justify-center mb-5">
-            <img
-              src="/hero-canteen.png"
-              alt="Fresh Canteen Food"
-              className="w-full h-full object-cover rounded-full shadow-md border-4 border-white"
-            />
+            {branding.logoUri ? (
+              <img src={branding.logoUri} alt="Logo" className="w-full h-full object-contain rounded-full" />
+            ) : (
+              <img
+                src="/hero-canteen.png"
+                alt="Fresh Canteen Food"
+                className="w-full h-full object-cover rounded-full shadow-md border-4 border-white"
+              />
+            )}
           </div>
-          <h1 className="text-3xl mb-2 text-foreground">
-            Willkommen
-            <br />
-            <span className="text-xl text-muted-foreground font-sans font-normal">Welcome</span>
+          <h1 className="text-3xl mb-2 text-foreground" style={branding.primaryColor ? { color: branding.primaryColor } : undefined}>
+            {branding.restaurantName ? (
+              <>
+                {branding.restaurantName}
+                <br />
+                <span className="text-xl text-muted-foreground font-sans font-normal">Vorbestellung</span>
+              </>
+            ) : (
+              <>
+                Willkommen
+                <br />
+                <span className="text-xl text-muted-foreground font-sans font-normal">Welcome</span>
+              </>
+            )}
           </h1>
-          <p className="text-muted-foreground text-sm">
-            Scannen Sie den QR-Code in Ihrer Kantine oder geben Sie den Code hier ein.
-            <br />
-            <span className="text-xs opacity-70">
-              Scan the QR code at your canteen or enter the code here.
-            </span>
-          </p>
+          {branding.welcomeMessage ? (
+            <p className="text-muted-foreground text-sm">{branding.welcomeMessage}</p>
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              Scannen Sie den QR-Code in Ihrer Kantine oder geben Sie den Code hier ein.
+              <br />
+              <span className="text-xs opacity-70">
+                Scan the QR code at your canteen or enter the code here.
+              </span>
+            </p>
+          )}
         </div>
 
         {activeOrder && (

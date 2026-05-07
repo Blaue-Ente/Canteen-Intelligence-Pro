@@ -6,6 +6,8 @@ import {
   guestFeedbackTable,
   customerProfilesTable,
   memberships,
+  orgBranding,
+  organizations,
   type CustomerAccountType,
 } from "@workspace/db";
 import { and, desc, eq, gte, inArray, ne } from "drizzle-orm";
@@ -916,6 +918,56 @@ router.get(
         .sort((a, b) => a.customerName.localeCompare(b.customerName)),
       grandTotal: Math.round(grandTotal * 100) / 100,
     });
+  },
+);
+
+// ─── T005: Preorder Branding ─────────────────────────────────────────────────
+
+/** GET /api/preorder/branding?orgId=xxx  — public, returns branding data for an org */
+router.get(
+  "/branding",
+  async (req: Request, res: Response) => {
+    const orgId = req.query["orgId"] as string | undefined;
+    if (!orgId) return res.status(400).json({ error: "orgId required" });
+    try {
+      const [row] = await db.select().from(orgBranding).where(eq(orgBranding.orgId, orgId)).limit(1);
+      return res.json(row?.data ?? {});
+    } catch {
+      return res.json({});
+    }
+  },
+);
+
+/** PUT /api/preorder/branding  — authed (owner/manager), saves branding for the caller's org */
+router.put(
+  "/branding",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    const orgIds = await userOrgIds(userId);
+    if (orgIds.length === 0) return res.status(403).json({ error: "No organization" });
+    const targetOrgId = (req.query["orgId"] as string | undefined) ?? orgIds[0]!;
+    if (!orgIds.includes(targetOrgId)) return res.status(403).json({ error: "Forbidden" });
+    const { restaurantName, primaryColor, logoUri, welcomeMessage } = req.body as {
+      restaurantName?: string;
+      primaryColor?: string;
+      logoUri?: string;
+      welcomeMessage?: string;
+    };
+    const data = { restaurantName, primaryColor, logoUri, welcomeMessage };
+    try {
+      await db
+        .insert(orgBranding)
+        .values({ orgId: targetOrgId, data })
+        .onConflictDoUpdate({
+          target: orgBranding.orgId,
+          set: { data, updatedAt: new Date() },
+        });
+      return res.json({ ok: true });
+    } catch (err) {
+      req.log?.error({ err }, "branding upsert failed");
+      return res.status(500).json({ error: "Failed to save branding" });
+    }
   },
 );
 

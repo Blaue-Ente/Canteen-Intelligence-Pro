@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
   Alert,
+  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -11,6 +12,8 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import * as ImagePicker from "expo-image-picker";
 
 import { Button, Card } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
@@ -195,7 +198,28 @@ export default function OkoWizard() {
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
   const [noteTexts, setNoteTexts] = useState<Record<string, string>>({});
+  const [photoUris, setPhotoUris] = useState<Record<string, string>>({});
   const [tab, setTab] = useState<"challenges" | "history">("challenges");
+
+  async function pickPhoto(challengeId: string) {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      const cam = await ImagePicker.requestCameraPermissionsAsync();
+      if (!cam.granted) {
+        Alert.alert(state.locale === "de" ? "Berechtigung fehlt" : "Permission missing", "");
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({ quality: 0.6, base64: false });
+      if (!result.canceled && result.assets[0]) {
+        setPhotoUris((prev) => ({ ...prev, [challengeId]: result.assets[0]!.uri }));
+      }
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.6, base64: false });
+    if (!result.canceled && result.assets[0]) {
+      setPhotoUris((prev) => ({ ...prev, [challengeId]: result.assets[0]!.uri }));
+    }
+  }
 
   const { score, completions } = state.okoProgress;
   const medal = getMedal(score);
@@ -234,9 +258,11 @@ export default function OkoWizard() {
       challengeId: challenge.id,
       completedAt: new Date().toISOString(),
       note: note || undefined,
+      photoUri: photoUris[challenge.id] || undefined,
     };
     dispatch({ type: "completeOkoChallenge", completion });
     setNoteTexts((prev) => ({ ...prev, [challenge.id]: "" }));
+    setPhotoUris((prev) => ({ ...prev, [challenge.id]: "" }));
 
     const pts = challenge.points;
     const newScore = score + pts;
@@ -462,7 +488,7 @@ export default function OkoWizard() {
                     )}
                   </View>
 
-                  {/* Note input + button */}
+                  {/* Note input + photo + button */}
                   {!done && (
                     <View style={{ gap: 8 }}>
                       <TextInput
@@ -486,6 +512,42 @@ export default function OkoWizard() {
                           fontSize: 13,
                         }}
                       />
+                      {/* Photo proof */}
+                      {photoUris[ch.id] ? (
+                        <View style={{ gap: 6 }}>
+                          <Image
+                            source={{ uri: photoUris[ch.id] }}
+                            style={{ width: "100%", height: 120, borderRadius: 8, resizeMode: "cover" }}
+                          />
+                          <Pressable
+                            onPress={() => setPhotoUris((prev) => ({ ...prev, [ch.id]: "" }))}
+                            style={{ alignSelf: "flex-end" }}
+                          >
+                            <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12 }}>
+                              {state.locale === "de" ? "Foto entfernen" : "Remove photo"}
+                            </Text>
+                          </Pressable>
+                        </View>
+                      ) : (
+                        <Pressable
+                          onPress={() => pickPhoto(ch.id)}
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 6,
+                            padding: 8,
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: c.border,
+                            borderStyle: "dashed",
+                          }}
+                        >
+                          <Feather name="camera" size={14} color={c.mutedForeground} />
+                          <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12 }}>
+                            {state.locale === "de" ? "Foto als Nachweis (optional)" : "Photo proof (optional)"}
+                          </Text>
+                        </Pressable>
+                      )}
                       <Pressable
                         onPress={() => complete(ch)}
                         style={{

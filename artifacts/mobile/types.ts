@@ -411,6 +411,13 @@ export interface NotificationPrefs {
   salesWindowEnabled: boolean;
   salesWindowStart: string; // HH:mm
   salesWindowEnd: string;   // HH:mm
+  /** Alert when a new guest preorder arrives (mobile push). */
+  preorderAlert?: boolean;
+  /** Alert when a team member submits a time-off request. */
+  timeOffAlert?: boolean;
+  /** Daily reminder to complete at least one Öko-Challenge. */
+  ekoReminder?: boolean;
+  ekoReminderTime?: string; // HH:mm
 }
 
 // ---------- Phase 6A entities ----------
@@ -429,6 +436,12 @@ export interface Location {
   avgGuestsPerDay?: number;
   isPrimary?: boolean;
   createdAt: string;
+  /** Opening time shown in preorder (HH:mm). */
+  openTime?: string;
+  /** Closing / last-order time shown in preorder (HH:mm). */
+  closeTime?: string;
+  /** Max daily guest capacity (used for demand planning warnings). */
+  capacity?: number;
 }
 
 export interface HandoverNote extends AuditFields {
@@ -605,6 +618,9 @@ export interface AppState {
   priceServerConfig?: PriceServerConfig;
   // ---- Company + CRM ----
   companyProfile?: CompanyProfile;
+  // ---- Preorder Branding ----
+  /** Optional branding overrides shown in the guest preorder web app. */
+  preorderBranding?: PreorderBranding;
   // ---- Öko Wizard ----
   okoEnabled: boolean;
   okoProgress: OkoProgress;
@@ -852,6 +868,21 @@ export interface SignedSale extends SaleEntry {
   vatPct: number;
 }
 
+// ─── Preorder Branding ───────────────────────────────────────────────────────
+
+/** Branding overrides for the guest preorder web app. Stored in AppState and
+ * published via GET /api/preorder/branding so the preorder web can apply them. */
+export interface PreorderBranding {
+  /** Restaurant / canteen name override (falls back to companyProfile.name). */
+  restaurantName?: string;
+  /** Primary accent color as CSS hex, e.g. "#f59e0b". */
+  primaryColor?: string;
+  /** Logo — device URI or base64 data-URI. */
+  logoUri?: string;
+  /** Optional welcome message shown on the preorder landing page. */
+  welcomeMessage?: string;
+}
+
 // ─── Öko Wizard ─────────────────────────────────────────────────────────────
 
 export type OkoChallengeId =
@@ -871,6 +902,8 @@ export interface OkoCompletion {
   challengeId: OkoChallengeId;
   completedAt: string; // ISO
   note?: string;
+  /** Optional photo proof (device URI or base64 data-URI). */
+  photoUri?: string;
 }
 
 export interface OkoProgress {

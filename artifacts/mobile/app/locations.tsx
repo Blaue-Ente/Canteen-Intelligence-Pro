@@ -240,6 +240,9 @@ function LocationModal({
   const [lat, setLat] = useState(String(location?.lat ?? ""));
   const [lng, setLng] = useState(String(location?.lng ?? ""));
   const [avg, setAvg] = useState(String(location?.avgGuestsPerDay ?? "100"));
+  const [openTime, setOpenTime] = useState(location?.openTime ?? "");
+  const [closeTime, setCloseTime] = useState(location?.closeTime ?? "");
+  const [capacity, setCapacity] = useState(String(location?.capacity ?? ""));
 
   React.useEffect(() => {
     if (open) {
@@ -250,6 +253,9 @@ function LocationModal({
       setLat(String(location?.lat ?? ""));
       setLng(String(location?.lng ?? ""));
       setAvg(String(location?.avgGuestsPerDay ?? "100"));
+      setOpenTime(location?.openTime ?? "");
+      setCloseTime(location?.closeTime ?? "");
+      setCapacity(String(location?.capacity ?? ""));
     }
   }, [open, location]);
 
@@ -290,6 +296,15 @@ function LocationModal({
             </View>
           </View>
           <Field label={t("expectedGuests") + " (Ø/Tag)"} value={avg} onChangeText={setAvg} keyboardType="numeric" />
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <Field label="Öffnungszeit (HH:mm)" value={openTime} onChangeText={setOpenTime} placeholder="07:00" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Field label="Schließzeit (HH:mm)" value={closeTime} onChangeText={setCloseTime} placeholder="14:00" />
+            </View>
+          </View>
+          <Field label="Max. Kapazität (Gäste/Tag)" value={capacity} onChangeText={setCapacity} keyboardType="numeric" />
           <Button
             label={t("save")}
             icon="check"
@@ -305,6 +320,9 @@ function LocationModal({
                 avgGuestsPerDay: Number(avg) || undefined,
                 isPrimary: location?.isPrimary,
                 createdAt: location?.createdAt ?? new Date().toISOString(),
+                openTime: openTime || undefined,
+                closeTime: closeTime || undefined,
+                capacity: capacity ? Number(capacity) : undefined,
               })
             }
           />

@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import React, { useState } from "react";
-import { Alert, Platform, ScrollView, Switch, Text, TextInput, View, Pressable } from "react-native";
+import { Alert, Image, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 
 import { useRouter } from "expo-router";
 import { useAuth } from "@clerk/expo";
@@ -9,6 +10,7 @@ import { Button, Card, Chip, Row, SectionHeader } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useAuthCtx } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { apiFetch } from "@/lib/api";
 import { useSubscription } from "@/hooks/useSubscription";
 import { dgeStandardLabel } from "@/lib/dge";
 import { ensurePermissions, rescheduleAll } from "@/lib/notifications";
@@ -39,6 +41,42 @@ export default function Settings() {
   const [cpTaxId, setCpTaxId] = useState(cp?.taxId ?? "");
   const [cpEmail, setCpEmail] = useState(cp?.email ?? "");
   const [cpPhone, setCpPhone] = useState(cp?.phone ?? "");
+
+  // ---- Preorder Branding state ----
+  const branding = state.preorderBranding ?? {};
+  const [pbName, setPbName] = useState(branding.restaurantName ?? "");
+  const [pbColor, setPbColor] = useState(branding.primaryColor ?? "#f59e0b");
+  const [pbLogo, setPbLogo] = useState(branding.logoUri ?? "");
+  const [pbWelcome, setPbWelcome] = useState(branding.welcomeMessage ?? "");
+
+  async function pickBrandingLogo() {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) return;
+    const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, base64: true });
+    if (!result.canceled && result.assets[0]) {
+      const uri = result.assets[0].base64
+        ? `data:image/jpeg;base64,${result.assets[0].base64}`
+        : result.assets[0].uri;
+      setPbLogo(uri);
+    }
+  }
+
+  async function saveBranding() {
+    const branding = {
+      restaurantName: pbName.trim() || undefined,
+      primaryColor: pbColor.trim() || undefined,
+      logoUri: pbLogo || undefined,
+      welcomeMessage: pbWelcome.trim() || undefined,
+    };
+    dispatch({ type: "setPreorderBranding", branding });
+    // Sync to API server so the preorder web can read it
+    try {
+      await apiFetch("/api/preorder/branding", { method: "PUT", body: branding });
+    } catch {
+      // Non-critical — local state already saved
+    }
+    Alert.alert("✓", state.locale === "de" ? "Branding gespeichert." : "Branding saved.");
+  }
 
   function saveCompanyProfile() {
     dispatch({
@@ -380,6 +418,54 @@ export default function Settings() {
               trackColor={{ true: c.primary, false: c.border }}
             />
           </View>
+
+          {/* T010: New notification types */}
+          <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8, opacity: prefs.enabled ? 1 : 0.5 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={labelStyle}>{state.locale === "de" ? "🌿 Öko-Erinnerung" : "🌿 Eco reminder"}</Text>
+              <Text style={subStyle}>
+                {state.locale === "de" ? "Tägl. Erinnerung für Öko-Challenge" : "Daily eco challenge reminder"}
+              </Text>
+            </View>
+            {timeInput(prefs.ekoReminderTime ?? "10:00", (v) => update({ ...prefs, ekoReminderTime: v }))}
+            <Switch
+              value={!!prefs.ekoReminder}
+              disabled={!prefs.enabled}
+              onValueChange={(v) => update({ ...prefs, ekoReminder: v })}
+              trackColor={{ true: "#059669", false: c.border }}
+              style={{ marginLeft: 12 }}
+            />
+          </View>
+
+          <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8, opacity: prefs.enabled ? 1 : 0.5 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={labelStyle}>{state.locale === "de" ? "🛒 Neue Vorbestellung" : "🛒 New preorder"}</Text>
+              <Text style={subStyle}>
+                {state.locale === "de" ? "Echtzeit-Alert bei Gäste-Vorbestellung" : "Real-time alert for guest preorders"}
+              </Text>
+            </View>
+            <Switch
+              value={!!prefs.preorderAlert}
+              disabled={!prefs.enabled}
+              onValueChange={(v) => update({ ...prefs, preorderAlert: v })}
+              trackColor={{ true: c.primary, false: c.border }}
+            />
+          </View>
+
+          <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8, opacity: prefs.enabled ? 1 : 0.5 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={labelStyle}>{state.locale === "de" ? "🏖 Abwesenheits-Meldung" : "🏖 Time-off request"}</Text>
+              <Text style={subStyle}>
+                {state.locale === "de" ? "Alert wenn Mitarbeiter Urlaub/Krank meldet" : "Alert when staff submits absence"}
+              </Text>
+            </View>
+            <Switch
+              value={!!prefs.timeOffAlert}
+              disabled={!prefs.enabled}
+              onValueChange={(v) => update({ ...prefs, timeOffAlert: v })}
+              trackColor={{ true: c.primary, false: c.border }}
+            />
+          </View>
         </Card>
 
         {/* Sales entry window */}
@@ -497,6 +583,99 @@ export default function Settings() {
               />
             </View>
           )}
+        </Card>
+
+        {/* T005: Preorder Branding — logo + colors + welcome message */}
+        <Card>
+          <SectionHeader title={state.locale === "de" ? "Vorbestellung-Branding" : "Preorder Branding"} />
+          <Text style={[subStyle, { marginBottom: 10 }]}>
+            {state.locale === "de"
+              ? "Logo, Farbe und Willkommenstext der Gäste-Vorbestellungsseite anpassen."
+              : "Customize the logo, color, and welcome text on the guest preorder page."}
+          </Text>
+          {/* Logo picker */}
+          <Text style={[labelStyle, { fontSize: 12, color: c.mutedForeground, marginBottom: 6 }]}>
+            {state.locale === "de" ? "Logo" : "Logo"}
+          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 }}>
+            {pbLogo ? (
+              <Image
+                source={{ uri: pbLogo }}
+                style={{ width: 64, height: 64, borderRadius: 10, resizeMode: "contain", backgroundColor: c.muted }}
+              />
+            ) : (
+              <View style={{ width: 64, height: 64, borderRadius: 10, backgroundColor: c.muted, alignItems: "center", justifyContent: "center" }}>
+                <Feather name="image" size={22} color={c.mutedForeground} />
+              </View>
+            )}
+            <View style={{ gap: 6 }}>
+              <Button
+                label={state.locale === "de" ? "Logo wählen" : "Choose logo"}
+                icon="upload"
+                variant="ghost"
+                onPress={pickBrandingLogo}
+              />
+              {pbLogo ? (
+                <Button
+                  label={state.locale === "de" ? "Logo entfernen" : "Remove logo"}
+                  icon="x"
+                  variant="ghost"
+                  onPress={() => setPbLogo("")}
+                />
+              ) : null}
+            </View>
+          </View>
+          {/* Restaurant name */}
+          <View style={{ paddingVertical: 6 }}>
+            <Text style={[labelStyle, { fontSize: 12, color: c.mutedForeground, marginBottom: 3 }]}>
+              {state.locale === "de" ? "Name (Überschrift)" : "Restaurant name"}
+            </Text>
+            <TextInput
+              value={pbName}
+              onChangeText={setPbName}
+              placeholder={state.companyProfile?.name ?? "KüchenMeister"}
+              placeholderTextColor={c.mutedForeground}
+              style={{ backgroundColor: c.muted, color: c.foreground, fontFamily: "Inter_400Regular", fontSize: 14, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 }}
+            />
+          </View>
+          {/* Primary color */}
+          <View style={{ paddingVertical: 6 }}>
+            <Text style={[labelStyle, { fontSize: 12, color: c.mutedForeground, marginBottom: 3 }]}>
+              {state.locale === "de" ? "Akzentfarbe (CSS-Hex)" : "Accent color (CSS hex)"}
+            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <View style={{ width: 32, height: 32, borderRadius: 6, backgroundColor: pbColor.match(/^#[0-9a-fA-F]{6}$/) ? pbColor : "#f59e0b" }} />
+              <TextInput
+                value={pbColor}
+                onChangeText={setPbColor}
+                placeholder="#f59e0b"
+                placeholderTextColor={c.mutedForeground}
+                style={{ flex: 1, backgroundColor: c.muted, color: c.foreground, fontFamily: "Inter_400Regular", fontSize: 14, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 }}
+              />
+            </View>
+          </View>
+          {/* Welcome message */}
+          <View style={{ paddingVertical: 6 }}>
+            <Text style={[labelStyle, { fontSize: 12, color: c.mutedForeground, marginBottom: 3 }]}>
+              {state.locale === "de" ? "Willkommenstext" : "Welcome message"}
+            </Text>
+            <TextInput
+              value={pbWelcome}
+              onChangeText={setPbWelcome}
+              placeholder={state.locale === "de" ? "Herzlich willkommen!" : "Welcome!"}
+              placeholderTextColor={c.mutedForeground}
+              multiline
+              style={{ backgroundColor: c.muted, color: c.foreground, fontFamily: "Inter_400Regular", fontSize: 14, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, minHeight: 56 }}
+            />
+          </View>
+          <Pressable
+            onPress={saveBranding}
+            style={{ marginTop: 4, backgroundColor: c.accent, borderRadius: 10, padding: 11, alignItems: "center" }}
+          >
+            <Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 14 }}>
+              {state.locale === "de" ? "Branding speichern" : "Save branding"}
+            </Text>
+          </Pressable>
         </Card>
 
         {/* Company Profile */}
