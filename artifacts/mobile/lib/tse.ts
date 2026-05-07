@@ -186,6 +186,10 @@ export function buildZBon(args: { signedSales: SignedSale[]; date: string; kasse
   vat19Gross: number;
   vat7Gross: number;
   vat0Gross: number;
+  cashGross: number;
+  cardGross: number;
+  cashCount: number;
+  cardCount: number;
   txStart: number;
   txEnd: number;
   body: string;
@@ -198,6 +202,14 @@ export function buildZBon(args: { signedSales: SignedSale[]; date: string; kasse
   const vat0Gross  = sumMoney(day.filter((s) => s.vatPct === 0).map((s) => s.revenue));
   const vat19Net = vat19Gross / 1.19;
   const vat7Net  = vat7Gross  / 1.07;
+
+  const cashEntries = day.filter((s) => (s.paymentMethod ?? "cash") !== "card");
+  const cardEntries = day.filter((s) => s.paymentMethod === "card");
+  const cashGross = sumMoney(cashEntries.map((s) => s.revenue));
+  const cardGross = sumMoney(cardEntries.map((s) => s.revenue));
+  const cashCount = cashEntries.length;
+  const cardCount = cardEntries.length;
+
   const txStart = day[0]?.tseTxNumber ?? 0;
   const txEnd   = day[day.length - 1]?.tseTxNumber ?? 0;
   const body = [
@@ -207,8 +219,17 @@ export function buildZBon(args: { signedSales: SignedSale[]; date: string; kasse
     `  davon 19 %: ${vat19Gross.toFixed(2)} €  (USt ${(vat19Gross - vat19Net).toFixed(2)} €)`,
     `  davon  7 %: ${vat7Gross.toFixed(2)} €  (USt ${(vat7Gross - vat7Net).toFixed(2)} €)`,
     `  davon  0 %: ${vat0Gross.toFixed(2)} €`,
+    ``,
+    `Zahlungsarten:`,
+    `  💵 Bar:   ${cashCount} Belege  ${cashGross.toFixed(2)} €`,
+    `  💳 Karte: ${cardCount} Belege  ${cardGross.toFixed(2)} €`,
   ].join("\n");
-  return { date: args.date, count: day.length, gross, vat19Gross, vat7Gross, vat0Gross, txStart, txEnd, body };
+  return {
+    date: args.date, count: day.length, gross,
+    vat19Gross, vat7Gross, vat0Gross,
+    cashGross, cardGross, cashCount, cardCount,
+    txStart, txEnd, body,
+  };
 }
 
 // Touch unused imports (kept for future calc extensions to avoid TS warnings).

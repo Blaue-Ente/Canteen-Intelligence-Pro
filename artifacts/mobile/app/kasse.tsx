@@ -71,6 +71,10 @@ interface CartLine {
   recipeId: string;
   qty: number;
   vat: VatPct;
+  /** T024: Quick-add custom item name (not in state.recipes) */
+  customName?: string;
+  /** T024: Quick-add custom unit price in EUR */
+  customPrice?: number;
 }
 
 // ─── Design tokens (always-dark POS palette) ─────────────────────────────────
@@ -142,12 +146,13 @@ function buildKassenbonHtml(p: KassenbonParams): string {
   const itemRows = p.cartLines
     .map((line) => {
       const r = p.recipes.find((x) => x.id === line.recipeId);
-      if (!r) return "";
-      const unit = r.sellPrice ?? r.basePrice ?? 0;
+      const name = line.customName ?? r?.name;
+      if (!name) return "";
+      const unit = line.customPrice ?? r?.sellPrice ?? r?.basePrice ?? 0;
       const lineTotal = unit * line.qty;
       return `
         <tr>
-          <td class="name">${escapeHtml(r.name)}</td>
+          <td class="name">${escapeHtml(name)}</td>
           <td class="num">${line.qty}&times;</td>
           <td class="num">${fmt(unit)}</td>
           <td class="num bold">${fmt(lineTotal)}</td>
@@ -160,8 +165,8 @@ function buildKassenbonHtml(p: KassenbonParams): string {
   const vatMap = new Map<number, { net: number; tax: number; gross: number }>();
   for (const line of p.cartLines) {
     const r = p.recipes.find((x) => x.id === line.recipeId);
-    if (!r) continue;
-    const unit = r.sellPrice ?? r.basePrice ?? 0;
+    const unit = line.customPrice ?? r?.sellPrice ?? r?.basePrice ?? 0;
+    if (unit === 0 && !line.customName && !r) continue;
     const gross = unit * line.qty;
     const net = gross / (1 + line.vat / 100);
     const tax = gross - net;
@@ -382,6 +387,11 @@ function KassePos() {
   const terminalCfg = state.terminalConfig;
   const hasTerminal = !!(terminalCfg?.type && terminalCfg.type !== "none");
 
+  // ── T024: Quick-add + Grid compact mode
+  const [gridCompact, setGridCompact] = useState(false);
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [quickAddVat, setQuickAddVat] = useState<VatPct>(7);
+
   // Phone cart drawer animation
   const cartOpen = useRef(false);
   const cartAnim = useRef(new Animated.Value(0)).current;
@@ -432,11 +442,13 @@ function KassePos() {
     return base;
   }, [state.recipes, activeCat, showTodayMenuOnly, hasTodayMenu, todayMenuIds, searchQuery]);
 
-  // ── T022: pagination — compute cols & tiles per page based on available width
+  // ── T022 / T024: pagination — cols adapt to screen width + compact mode
   const productAreaWidth = isTablet ? width - 340 : width;
-  const cols = Math.min(5, Math.max(3, Math.floor((productAreaWidth - 24) / 150)));
+  const cols = gridCompact
+    ? Math.min(7, Math.max(5, Math.floor((productAreaWidth - 24) / 100)))
+    : Math.min(5, Math.max(3, Math.floor((productAreaWidth - 24) / 150)));
   const tileSize = Math.floor((productAreaWidth - 12 * (cols + 1)) / cols);
-  const ROWS_PER_PAGE = 4;
+  const ROWS_PER_PAGE = gridCompact ? 6 : 4;
   const tilesPerPage = cols * ROWS_PER_PAGE;
   const totalPages = Math.max(1, Math.ceil(filteredRecipes.length / tilesPerPage));
   const pagedRecipes = filteredRecipes.slice(
@@ -491,6 +503,19 @@ function KassePos() {
 
   const clearCart = useCallback(() => setCart([]), []);
 
+  // ── T024: Add a custom (quick-add) item directly to the cart
+  const addCustomToCart = useCallback(
+    (name: string, price: number, vat: VatPct) => {
+      const id = `_q_${newId()}`;
+      setCart((prev) => [...prev, { recipeId: id, qty: 1, vat, customName: name, customPrice: price }]);
+      if (!isTablet && !cartOpen.current) {
+        cartOpen.current = true;
+        Animated.spring(cartAnim, { toValue: 1, useNativeDriver: true, tension: 80, friction: 12 }).start();
+      }
+    },
+    [isTablet, cartAnim, newId],
+  );
+
   const toggleCartDrawer = () => {
     const next = !cartOpen.current;
     cartOpen.current = next;
@@ -527,6 +552,62 @@ function KassePos() {
       }
     },
     [state.companyProfile, state.recipes, activeTseConfig, stubProvider, isDe],
+  );
+
+  // ── T024: Storno — void/reverse a signed receipt
+  const stornoReceipt = useCallback(
+    async (s: import("@/types").SignedSale) => {
+      if (!cfgValid) {
+        Alert.alert(isDe ? "TSE nicht konfiguriert" : "TSE not configured", "");
+        return;
+      }
+      Alert.alert(
+        isDe ? "Storno" : "Void receipt",
+        isDe
+          ? `Beleg #${s.tseTxNumber} über ${formatEUR(s.revenue)} stornieren?\nDieser Vorgang wird als negativer Beleg gespeichert.`
+          : `Void receipt #${s.tseTxNumber} for ${formatEUR(s.revenue)}?\nThis creates a negative reversal entry.`,
+        [
+          {
+            text: isDe ? "Storno durchführen" : "Void receipt",
+            style: "destructive",
+            onPress: async () => {
+              setSigning(true);
+              try {
+                const prior = [...locationAllSales];
+                const signed = await signSale({
+                  sale: {
+                    id: newId(),
+                    date: todayKey(),
+                    recipeId: s.recipeId,
+                    cooked: 0,
+                    sold: -(s.sold ?? 1),
+                    revenue: -s.revenue,
+                    source: "storno" as any,
+                    paymentMethod: s.paymentMethod,
+                    locationId: s.locationId,
+                    ...author,
+                  },
+                  vatPct: s.vatPct ?? 7,
+                  config: activeTseConfig!,
+                  prior,
+                });
+                dispatch({ type: "addSignedSale", sale: signed });
+                Alert.alert(
+                  isDe ? "Storno erfasst" : "Receipt voided",
+                  `#${signed.tseTxNumber}  −${formatEUR(s.revenue)}`,
+                );
+              } catch (e) {
+                Alert.alert(isDe ? "Fehler" : "Error", e instanceof Error ? e.message : "unknown");
+              } finally {
+                setSigning(false);
+              }
+            },
+          },
+          { text: isDe ? "Abbrechen" : "Cancel", style: "cancel" },
+        ],
+      );
+    },
+    [cfgValid, isDe, locationAllSales, activeTseConfig, newId, dispatch, author],
   );
 
   // ── T023: Print a single already-booked receipt
@@ -631,15 +712,16 @@ function KassePos() {
     try {
       for (const line of cart) {
         const recipe = state.recipes.find((r) => r.id === line.recipeId);
-        if (!recipe) continue;
-        const unit = recipe.sellPrice ?? recipe.basePrice ?? 0;
+        // T024: skip lines with no recipe AND no custom data
+        if (!recipe && !line.customName) continue;
+        const unit = line.customPrice ?? recipe?.sellPrice ?? recipe?.basePrice ?? 0;
         const revenue = mulMoney(unit, line.qty);
 
         const signed = await signSale({
           sale: {
             id: newId(),
             date: todayKey(),
-            recipeId: recipe.id,
+            recipeId: line.recipeId,
             cooked: 0,
             sold: line.qty,
             revenue,
@@ -709,7 +791,7 @@ function KassePos() {
     }
   };
 
-  // ── Z-Bon (filtered to active location)
+  // ── Z-Bon (filtered to active location) — T024: payment breakdown
   const printZBon = async () => {
     const z = buildZBon({
       signedSales: locationAllSales,
@@ -717,24 +799,72 @@ function KassePos() {
       kassennummer: activeTseConfig?.kassennummer ?? "K-001",
     });
     const lines = z.body.split("\n").map((l) => `<div>${escapeHtml(l)}</div>`).join("");
+    const fmt = (v: number) => v.toLocaleString("de-DE", { style: "currency", currency: "EUR" });
     const html = `<!doctype html><html><head><meta charset="utf-8"><style>
       body{font-family:-apple-system,system-ui,sans-serif;padding:24px;max-width:480px}
       h1{font-size:16px;margin:0 0 8px}
       .meta{color:#666;font-size:11px;margin-bottom:16px}
       pre{font-family:ui-monospace,SF Mono,Menlo,monospace;font-size:12px;line-height:1.6;white-space:pre-wrap}
+      .pay{margin-top:14px;border-top:1px solid #ddd;padding-top:12px;display:grid;grid-template-columns:1fr auto auto;gap:4px 16px}
+      .pay .hd{color:#888;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+      .pay .v{font-size:13px;font-weight:700}
+      .pay .sub{color:#888;font-size:11px}
+      .pay .total{color:#d97706;font-size:15px;font-weight:800}
       .stub{color:#b00;font-size:11px;margin-top:16px;padding:8px;border:1px dashed #b00;border-radius:4px}
     </style></head><body>
       <h1>Z-Bon · Tagesabschluss</h1>
       <div class="meta">
-        ${state.companyProfile?.name ?? ""}
-        ${activeLocation ? ` · ${activeLocation.name}` : ""}
+        ${escapeHtml(state.companyProfile?.name ?? "")}
+        ${activeLocation ? ` · ${escapeHtml(activeLocation.name)}` : ""}
         · ${activeTseConfig?.taxId ?? ""}
         · Kasse ${activeTseConfig?.kassennummer ?? "K-001"}
       </div>
       <pre>${lines}</pre>
+      <div class="pay">
+        <span class="hd">Zahlungsart</span><span class="hd" style="text-align:right">Belege</span><span class="hd" style="text-align:right">Betrag</span>
+        <span>💵 Bargeld</span><span class="sub" style="text-align:right">${z.cashCount}</span><span class="v" style="text-align:right">${escapeHtml(fmt(z.cashGross))}</span>
+        <span>💳 Karte</span><span class="sub" style="text-align:right">${z.cardCount}</span><span class="v" style="text-align:right">${escapeHtml(fmt(z.cardGross))}</span>
+        <span style="font-weight:700">Gesamt</span><span class="sub" style="text-align:right">${z.count}</span><span class="total" style="text-align:right">${escapeHtml(fmt(z.gross))}</span>
+      </div>
       ${stubProvider ? `<div class="stub">Stub-Modus — Signaturen nicht rechtsverbindlich.</div>` : ""}
     </body></html>`;
     await sharePdf(html, `z-bon-${zDate}-${activeLocationId}.pdf`);
+  };
+
+  // ── T024: Zwischenbericht — intraday running total (no day close)
+  const printZwischenbericht = async () => {
+    const today = todayKey();
+    const now = new Date();
+    const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")} Uhr`;
+    const sales = locationSales;
+    const gross = sumMoney(sales.map((s) => s.revenue));
+    const cashEntries = sales.filter((s) => (s.paymentMethod ?? "cash") !== "card");
+    const cardEntries = sales.filter((s) => s.paymentMethod === "card");
+    const cashGross = sumMoney(cashEntries.map((s) => s.revenue));
+    const cardGross = sumMoney(cardEntries.map((s) => s.revenue));
+    const fmt = (v: number) => v.toLocaleString("de-DE", { style: "currency", currency: "EUR" });
+    const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+      body{font-family:-apple-system,system-ui,sans-serif;padding:24px;max-width:480px}
+      h1{font-size:16px;margin:0 0 4px}
+      .sub{color:#888;font-size:11px;margin-bottom:16px}
+      table{width:100%;border-collapse:collapse;margin-top:16px}
+      td,th{padding:8px 0;border-bottom:1px solid #eee;font-size:13px}
+      th{color:#888;font-size:10px;text-transform:uppercase;font-weight:600}
+      .amt{text-align:right;font-weight:700}
+      .total td{border-top:2px solid #d97706;border-bottom:none;font-weight:800;color:#d97706}
+      .interim{background:#fff8e1;border-radius:4px;padding:8px 12px;font-size:10px;color:#92400e;margin-bottom:12px}
+    </style></head><body>
+      <h1>Zwischenbericht</h1>
+      <div class="sub">${escapeHtml(state.companyProfile?.name ?? "")}${activeLocation ? ` · ${escapeHtml(activeLocation.name)}` : ""}  ·  ${today}  ·  Stand ${timeStr}</div>
+      <div class="interim">⚠ Kein Tagesabschluss — nur Zwischenstand. Z-Bon separat drucken.</div>
+      <table>
+        <tr><th>Zahlungsart</th><th style="text-align:right">Belege</th><th style="text-align:right">Betrag</th></tr>
+        <tr><td>💵 Bargeld</td><td class="amt">${cashEntries.length}</td><td class="amt">${escapeHtml(fmt(cashGross))}</td></tr>
+        <tr><td>💳 Karte</td><td class="amt">${cardEntries.length}</td><td class="amt">${escapeHtml(fmt(cardGross))}</td></tr>
+        <tr class="total"><td>Gesamt</td><td class="amt">${sales.length}</td><td class="amt">${escapeHtml(fmt(gross))}</td></tr>
+      </table>
+    </body></html>`;
+    await sharePdf(html, `zwischenbericht-${today}-${timeStr.replace(":", "")}.pdf`);
   };
 
   // ── DSFinV-K export (filtered to active location)
@@ -826,9 +956,11 @@ function KassePos() {
         ) : (
           cart.map((line) => {
             const r = state.recipes.find((x) => x.id === line.recipeId);
-            if (!r) return null;
-            const unit = r.sellPrice ?? r.basePrice ?? 0;
+            if (!r && !line.customName) return null;
+            const unit = line.customPrice ?? r?.sellPrice ?? r?.basePrice ?? 0;
             const lineTotal = mulMoney(unit, line.qty);
+            const displayName = line.customName ?? r?.name ?? line.recipeId;
+            const isCustom = !!line.customName;
             return (
               <View
                 key={line.recipeId}
@@ -837,6 +969,8 @@ function KassePos() {
                   borderRadius: 10,
                   padding: 12,
                   gap: 8,
+                  borderLeftWidth: isCustom ? 3 : 0,
+                  borderLeftColor: "#6366f1",
                 }}
               >
                 <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
@@ -845,10 +979,11 @@ function KassePos() {
                       style={{ color: P.fg, fontFamily: "Inter_600SemiBold", fontSize: 13 }}
                       numberOfLines={2}
                     >
-                      {r.name}
+                      {displayName}
                     </Text>
                     <Text style={{ color: P.fgMuted, fontSize: 11, marginTop: 2 }}>
                       {formatEUR(unit)} / {isDe ? "Portion" : "portion"}
+                      {isCustom ? "  ·  ✏️" : ""}
                     </Text>
                   </View>
                   <Text style={{ color: P.primary, fontFamily: "Inter_700Bold", fontSize: 15 }}>
@@ -1106,6 +1241,38 @@ function KassePos() {
             </Text>
           </Pressable>
         )}
+
+        {/* T024: Compact grid toggle */}
+        <Pressable
+          onPress={() => setGridCompact((v) => !v)}
+          style={{
+            padding: 9,
+            borderRadius: 10,
+            backgroundColor: gridCompact ? P.primary + "22" : P.surface,
+            borderWidth: 1,
+            borderColor: gridCompact ? P.primary : P.border,
+          }}
+          hitSlop={6}
+        >
+          <Feather name={gridCompact ? "grid" : "menu"} size={15} color={gridCompact ? P.primary : P.fgMuted} />
+        </Pressable>
+
+        {/* T024: Quick-add (+) button */}
+        <Pressable
+          onPress={() => { setQuickAddVat(defaultVat); setShowQuickAdd(true); }}
+          style={{
+            paddingHorizontal: 12,
+            paddingVertical: 9,
+            borderRadius: 10,
+            backgroundColor: P.primary,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 4,
+          }}
+          hitSlop={6}
+        >
+          <Feather name="plus" size={15} color={P.primaryFg} />
+        </Pressable>
       </View>
 
       {/* Category tabs */}
@@ -1322,19 +1489,23 @@ function KassePos() {
           const r = state.recipes.find((x) => x.id === s.recipeId);
           const accent = P.catColor[r?.category ?? "all"] ?? P.primary;
           const isCard = s.paymentMethod === "card";
+          const isStorno = (s as any).source === "storno" || s.revenue < 0;
           return (
-            <View
+            <Pressable
               key={s.id}
-              style={{
-                backgroundColor: P.surface,
+              onLongPress={() => { if (!isStorno) stornoReceipt(s); }}
+              delayLongPress={600}
+              style={({ pressed }) => ({
+                backgroundColor: pressed ? P.surfaceHigh : P.surface,
                 borderRadius: 12,
                 padding: 14,
                 flexDirection: "row",
                 alignItems: "center",
                 gap: 12,
                 borderLeftWidth: 3,
-                borderLeftColor: accent,
-              }}
+                borderLeftColor: isStorno ? P.danger : accent,
+                opacity: pressed ? 0.85 : 1,
+              })}
             >
               <Text
                 style={{
@@ -1347,19 +1518,27 @@ function KassePos() {
                 #{s.tseTxNumber}
               </Text>
               <View style={{ flex: 1 }}>
-                <Text
-                  style={{ color: P.fg, fontFamily: "Inter_600SemiBold", fontSize: 13 }}
-                  numberOfLines={1}
-                >
-                  {r?.name ?? s.recipeId}
-                </Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Text
+                    style={{ color: isStorno ? P.danger : P.fg, fontFamily: "Inter_600SemiBold", fontSize: 13 }}
+                    numberOfLines={1}
+                  >
+                    {r?.name ?? s.recipeId}
+                  </Text>
+                  {isStorno && (
+                    <View style={{ backgroundColor: P.danger + "33", borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
+                      <Text style={{ color: P.danger, fontFamily: "Inter_700Bold", fontSize: 9 }}>STORNO</Text>
+                    </View>
+                  )}
+                </View>
                 <Text style={{ color: P.fgMuted, fontSize: 11, marginTop: 2 }}>
-                  {s.sold} × {formatEUR(r?.sellPrice ?? r?.basePrice ?? 0)}
+                  {Math.abs(s.sold ?? 1)} × {formatEUR(r?.sellPrice ?? r?.basePrice ?? 0)}
                   {"  ·  MwSt "}{s.vatPct ?? 7}%
                   {isCard ? "  ·  💳" : "  ·  💵"}
+                  {!isStorno && <Text style={{ color: P.fgMuted }}>{isDe ? "  · gedrückt halten = Storno" : "  · long-press = void"}</Text>}
                 </Text>
               </View>
-              <Text style={{ color: P.primary, fontFamily: "Inter_700Bold", fontSize: 15 }}>
+              <Text style={{ color: isStorno ? P.danger : P.primary, fontFamily: "Inter_700Bold", fontSize: 15 }}>
                 {formatEUR(s.revenue)}
               </Text>
               {/* T023: Per-receipt AirPrint button */}
@@ -1374,7 +1553,7 @@ function KassePos() {
               >
                 <Feather name="printer" size={16} color={P.fgMuted} />
               </Pressable>
-            </View>
+            </Pressable>
           );
         })
       )}
@@ -1613,9 +1792,16 @@ function KassePos() {
         </ScrollView>
       </View>
 
+      {/* T024: Zwischenbericht */}
+      <ActionButton
+        icon="activity"
+        label={isDe ? `Zwischenbericht (heute · ${locationSales.length} Belege)` : `Intermediate report (today · ${locationSales.length} receipts)`}
+        onPress={printZwischenbericht}
+      />
+
       <ActionButton
         icon="printer"
-        label={isDe ? "Z-Bon drucken (PDF)" : "Print Z-Bon (PDF)"}
+        label={isDe ? "Z-Bon drucken (Tagesabschluss PDF)" : "Print Z-Bon (day close PDF)"}
         onPress={printZBon}
       />
       <ActionButton
@@ -2266,6 +2452,17 @@ function KassePos() {
             }}
           />
         )}
+
+        {/* ── T024: Quick-add custom Artikel Modal ── */}
+        {showQuickAdd && (
+          <QuickAddModal
+            isDe={isDe}
+            defaultVat={quickAddVat}
+            onVatChange={setQuickAddVat}
+            onConfirm={addCustomToCart}
+            onClose={() => setShowQuickAdd(false)}
+          />
+        )}
       </View>
     </>
   );
@@ -2722,5 +2919,233 @@ function StubWarning({ isDe }: { isDe: boolean }) {
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (ch) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] ?? ch),
+  );
+}
+
+// ─── T024: QuickAddModal ───────────────────────────────────────────────────────
+
+interface QuickAddModalProps {
+  isDe: boolean;
+  defaultVat: VatPct;
+  onVatChange: (v: VatPct) => void;
+  onConfirm: (name: string, price: number, vat: VatPct) => void;
+  onClose: () => void;
+}
+
+function QuickAddModal({ isDe, defaultVat, onVatChange, onConfirm, onClose }: QuickAddModalProps) {
+  const [name, setName] = React.useState("");
+  const [priceStr, setPriceStr] = React.useState("");
+  const [vat, setVat] = React.useState<VatPct>(defaultVat);
+  const [listening, setListening] = React.useState(false);
+
+  const price = parseFloat(priceStr.replace(",", ".")) || 0;
+  const valid = name.trim().length > 0 && price > 0;
+
+  // Web Speech API (web only)
+  const startVoice = React.useCallback(() => {
+    if (Platform.OS !== "web") return;
+    const SpeechRecognition =
+      (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      Alert.alert(isDe ? "Sprache nicht verfügbar" : "Speech not available");
+      return;
+    }
+    const rec = new SpeechRecognition();
+    rec.lang = isDe ? "de-DE" : "en-US";
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    setListening(true);
+    rec.onresult = (e: any) => {
+      const transcript: string = e.results[0][0].transcript;
+      // parse "Schnitzel 8,50" or "Schnitzel 8.50"
+      const match = transcript.match(/^(.+?)\s+(\d+[.,]\d{1,2}|\d+)\s*(?:Euro|€)?$/i);
+      if (match) {
+        setName(match[1].trim());
+        setPriceStr(match[2].replace(",", "."));
+      } else {
+        setName(transcript.trim());
+      }
+      setListening(false);
+    };
+    rec.onerror = () => setListening(false);
+    rec.onend = () => setListening(false);
+    rec.start();
+  }, [isDe]);
+
+  return (
+    <View
+      style={{
+        position: "absolute",
+        inset: 0,
+        backgroundColor: "rgba(0,0,0,0.55)",
+        justifyContent: "center",
+        alignItems: "center",
+        zIndex: 999,
+      }}
+    >
+      <Pressable style={{ position: "absolute", inset: 0 }} onPress={onClose} />
+      <View
+        style={{
+          backgroundColor: P.surface,
+          borderRadius: 20,
+          padding: 22,
+          width: Math.min(340, 340),
+          gap: 14,
+          shadowColor: "#000",
+          shadowOpacity: 0.25,
+          shadowRadius: 20,
+          elevation: 12,
+        }}
+      >
+        {/* Header */}
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <Text style={{ color: P.fg, fontFamily: "Inter_700Bold", fontSize: 16 }}>
+            {isDe ? "Artikel hinzufügen" : "Add custom item"}
+          </Text>
+          <Pressable onPress={onClose} hitSlop={10}>
+            <Feather name="x" size={20} color={P.fgMuted} />
+          </Pressable>
+        </View>
+
+        {/* Name row + voice button */}
+        <View style={{ gap: 6 }}>
+          <Text style={{ color: P.fgMuted, fontSize: 12, fontFamily: "Inter_600SemiBold" }}>
+            {isDe ? "Bezeichnung" : "Name"}
+          </Text>
+          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+            <TextInput
+              style={{
+                flex: 1,
+                backgroundColor: P.bg,
+                borderRadius: 10,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                color: P.fg,
+                fontFamily: "Inter_500Medium",
+                fontSize: 14,
+                borderWidth: 1,
+                borderColor: P.border,
+              }}
+              placeholder={isDe ? "z. B. Schnitzel Wiener Art" : "e.g. Wiener Schnitzel"}
+              placeholderTextColor={P.fgMuted}
+              value={name}
+              onChangeText={setName}
+              autoFocus
+            />
+            {Platform.OS === "web" && (
+              <Pressable
+                onPress={startVoice}
+                style={{
+                  padding: 10,
+                  borderRadius: 10,
+                  backgroundColor: listening ? P.primary + "33" : P.bg,
+                  borderWidth: 1,
+                  borderColor: listening ? P.primary : P.border,
+                }}
+              >
+                <Feather name={listening ? "loader" : "mic"} size={18} color={listening ? P.primary : P.fgMuted} />
+              </Pressable>
+            )}
+          </View>
+          {Platform.OS === "web" && (
+            <Text style={{ color: P.fgMuted, fontSize: 10 }}>
+              {isDe ? '🎤 Tippe Mikrofon oder sprich "Schnitzel 8,50"' : '🎤 Tap mic or say "Schnitzel 8.50"'}
+            </Text>
+          )}
+        </View>
+
+        {/* Price */}
+        <View style={{ gap: 6 }}>
+          <Text style={{ color: P.fgMuted, fontSize: 12, fontFamily: "Inter_600SemiBold" }}>
+            {isDe ? "Verkaufspreis (€)" : "Sell price (€)"}
+          </Text>
+          <TextInput
+            style={{
+              backgroundColor: P.bg,
+              borderRadius: 10,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              color: P.fg,
+              fontFamily: "Inter_700Bold",
+              fontSize: 16,
+              borderWidth: 1,
+              borderColor: P.border,
+            }}
+            placeholder="0,00"
+            placeholderTextColor={P.fgMuted}
+            value={priceStr}
+            onChangeText={setPriceStr}
+            keyboardType="decimal-pad"
+          />
+        </View>
+
+        {/* MwSt */}
+        <View style={{ gap: 6 }}>
+          <Text style={{ color: P.fgMuted, fontSize: 12, fontFamily: "Inter_600SemiBold" }}>
+            MwSt
+          </Text>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            {VAT_OPTIONS.map((p) => (
+              <Pressable
+                key={p}
+                onPress={() => { setVat(p); onVatChange(p); }}
+                style={{
+                  flex: 1,
+                  paddingVertical: 10,
+                  borderRadius: 10,
+                  backgroundColor: vat === p ? P.primary : P.bg,
+                  borderWidth: 1,
+                  borderColor: vat === p ? P.primary : P.border,
+                  alignItems: "center",
+                }}
+              >
+                <Text
+                  style={{
+                    color: vat === p ? P.primaryFg : P.fg,
+                    fontFamily: "Inter_700Bold",
+                    fontSize: 14,
+                  }}
+                >
+                  {p} %
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        {/* Buttons */}
+        <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+          <Pressable
+            onPress={onClose}
+            style={{
+              flex: 1,
+              paddingVertical: 13,
+              borderRadius: 12,
+              backgroundColor: P.surfaceHigh,
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: P.fg, fontFamily: "Inter_600SemiBold", fontSize: 14 }}>
+              {isDe ? "Abbrechen" : "Cancel"}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => { if (valid) { onConfirm(name.trim(), price, vat); onClose(); } }}
+            disabled={!valid}
+            style={{
+              flex: 2,
+              paddingVertical: 13,
+              borderRadius: 12,
+              backgroundColor: valid ? P.primary : P.border,
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: valid ? P.primaryFg : P.fgMuted, fontFamily: "Inter_700Bold", fontSize: 14 }}>
+              {isDe ? "Zum Warenkorb" : "Add to cart"}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </View>
   );
 }
