@@ -69,6 +69,12 @@ export function clerkProxyMiddleware(): RequestHandler {
     return (_req, _res, next) => next();
   }
 
+  // CLERK_PROXY_HOST_OVERRIDE pins the Clerk-Proxy-Url to the canonical domain
+  // that Clerk knows about (app.kitchenos.de). Without this override, requests
+  // arriving from *.replit.app or kitchenos.de would build a Clerk-Proxy-Url
+  // using the wrong host and Clerk's FAPI would return 401.
+  const proxyHostOverride = process.env.CLERK_PROXY_HOST_OVERRIDE;
+
   return createProxyMiddleware({
     target: CLERK_FAPI,
     changeOrigin: true,
@@ -77,7 +83,7 @@ export function clerkProxyMiddleware(): RequestHandler {
     on: {
       proxyReq: (proxyReq, req) => {
         const protocol = req.headers["x-forwarded-proto"] || "https";
-        const host = getClerkProxyHost(req) || "";
+        const host = proxyHostOverride || getClerkProxyHost(req) || "";
         const proxyUrl = `${protocol}://${host}${CLERK_PROXY_PATH}`;
 
         proxyReq.setHeader("Clerk-Proxy-Url", proxyUrl);
