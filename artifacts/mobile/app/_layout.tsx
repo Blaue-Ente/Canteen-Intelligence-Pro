@@ -41,12 +41,10 @@ const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "";
  * Native (iOS / Android) is not affected by browser CORS checks — leave
  * proxyUrl unset there to keep the proven native code path.
  */
-const clerkProxyProps = (() => {
-  if (Platform.OS !== "web" || typeof window === "undefined") return {};
-  // Only proxy for live keys — test keys work directly from any origin.
-  if (!publishableKey.startsWith("pk_live")) return {};
-  return { proxyUrl: `${window.location.origin}/api/__clerk` };
-})();
+// The new Clerk instance (app.kitchenos.de) has its own FAPI domain
+// (clerk.app.kitchenos.de) and does not require a proxy. Clerk JS will
+// communicate directly with clerk.app.kitchenos.de from any origin.
+const clerkProxyProps = {};
 
 /**
  * Auth-aware redirect hook. Runs alongside the Stack navigator: when auth
