@@ -50,11 +50,12 @@ export default function More() {
     {
       title: t("secDailyOps"),
       items: [
-        { icon: "check-square",   label: "Tagesabschluss",     to: "/sales" },
-        { icon: "credit-card",    label: "Kasse",              to: "/kasse" },
-        { icon: "credit-card",    label: t("zettle"),          to: "/zettle" },
-        { icon: "message-square", label: t("handover"),        to: "/handover" },
-        { icon: "calendar",       label: t("dienstplan"),      to: "/dienstplan" },
+        { icon: "check-square",   label: "Tagesabschluss",        to: "/sales" },
+        { icon: "credit-card",    label: "Kasse",                  to: "/kasse" },
+        { icon: "camera",         label: t("trayScanTitle"),       to: "/tray-scan", tint: "#f59e0b" },
+        { icon: "credit-card",    label: t("zettle"),              to: "/zettle" },
+        { icon: "message-square", label: t("handover"),            to: "/handover" },
+        { icon: "calendar",       label: t("dienstplan"),          to: "/dienstplan" },
       ],
     },
     // 3. Küche & Produktion — Mise-en-Place, Chargen, Rezepte, Rest-Verwertung

@@ -9,11 +9,13 @@ import rollupRouter from "./rollup";
 import mailRouter from "./mail";
 import tseRouter from "./tse";
 import demoAuthRouter from "./demoAuth";
+import trayScanRouter from "./trayScan";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(aiRouter);
+router.use(trayScanRouter);
 router.use(meRouter);
 router.use(suppliersDiscoverRouter);
 router.use(producersDiscoverRouter);

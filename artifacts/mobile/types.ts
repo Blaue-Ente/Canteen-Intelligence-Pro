@@ -613,6 +613,74 @@ export interface AppState {
    * requirements; Senioren focuses on hydration + protein adequacy; etc.).
    */
   dgeStandard?: DgeStandard;
+  // ---- T021: AI Tray Scanner + Time Machine ----
+  /** Last 200 tray scan sessions (newest first). Reference images kept here. */
+  traySessions: TraySession[];
+  /** Offline sale queue — sales waiting to be synced when connectivity returns. */
+  queuedSales: QueuedSale[];
+}
+
+// ─── T021: AI Tray Scanner + Time Machine ───────────────────────────────────
+
+/** One item recognised on a customer's tray by the AI scanner. */
+export interface TrayItem {
+  /** Matches Recipe.id, or undefined when the AI cannot map to a known dish. */
+  recipeId?: string;
+  /** AI-generated or manually typed name. */
+  name: string;
+  /** Number of portions visible (usually 1). */
+  qty: number;
+  /** 0..1 confidence returned by the model. */
+  confidence: number;
+  /** Sell price in EUR (copied from Recipe.sellPrice or AI estimate). */
+  pricePerUnit: number;
+  /** Cashier has explicitly confirmed this line. */
+  confirmed: boolean;
+  /** Cashier has removed this line from the final order. */
+  removed: boolean;
+}
+
+export type TrayScanStatus =
+  | "scanning"    // AI call in progress
+  | "reviewing"   // waiting for cashier confirmation
+  | "confirmed"   // cashier confirmed → ready to record as sale
+  | "queued"      // offline — held in queue
+  | "synced";     // successfully posted to server / recorded
+
+/** One complete tray scan session (photo → AI result → cashier confirmation). */
+export interface TraySession {
+  id: string;
+  /** ISO timestamp of capture. */
+  capturedAt: string;
+  /** base64-encoded JPEG (kept as reference image for future training). */
+  photoBase64?: string;
+  items: TrayItem[];
+  status: TrayScanStatus;
+  confirmedAt?: string;
+  /** Total EUR at time of confirmation. */
+  totalEur?: number;
+  locationId?: string;
+  /** Error message when AI call fails. */
+  error?: string;
+}
+
+/** Why a sale sits in the offline queue instead of being committed immediately. */
+export type QueueReason = "offline" | "tse_unavailable" | "manual_hold";
+
+/** A sale held locally pending server sync (Time Machine). */
+export interface QueuedSale {
+  id: string;
+  queuedAt: string;
+  reason: QueueReason;
+  /** The TraySession that produced this sale. */
+  sessionId: string;
+  items: TrayItem[];
+  totalEur: number;
+  locationId?: string;
+  /** How many sync attempts have been made. */
+  attempts: number;
+  lastAttemptAt?: string;
+  lastError?: string;
 }
 
 // ─── T014: DGE-Qualitätsstandard ────────────────────────────────────────────

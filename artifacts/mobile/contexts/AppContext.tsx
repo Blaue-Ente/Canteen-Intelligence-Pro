@@ -36,12 +36,14 @@ import type {
   OrderDraft,
   PriceListEntry,
   PriceServerConfig,
+  QueuedSale,
   Recipe,
   SaleEntry,
   ShiftEntry,
   StorageLocation,
   Supplier,
   SupplierDelivery,
+  TraySession,
   WasteEntry,
 } from "@/types";
 import { seedState } from "@/constants/seedData";
@@ -137,7 +139,15 @@ type Action =
   | { type: "completeOkoChallenge"; completion: OkoCompletion }
   | { type: "removeOkoCompletion"; id: string }
   // ---- T014: DGE-Qualitätsstandard ----
-  | { type: "setDgeStandard"; standard: import("@/types").DgeStandard | undefined };
+  | { type: "setDgeStandard"; standard: import("@/types").DgeStandard | undefined }
+  // ---- T021: AI Tray Scanner + Time Machine ----
+  | { type: "addTraySession"; session: TraySession }
+  | { type: "updateTraySession"; session: TraySession }
+  | { type: "removeTraySession"; id: string }
+  | { type: "addQueuedSale"; sale: QueuedSale }
+  | { type: "updateQueuedSale"; sale: QueuedSale }
+  | { type: "removeQueuedSale"; id: string }
+  | { type: "clearQueuedSales" };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -452,6 +462,43 @@ function reducer(state: AppState, action: Action): AppState {
       };
     case "setDgeStandard":
       return { ...state, dgeStandard: action.standard };
+    // ---- T021: AI Tray Scanner + Time Machine ----
+    case "addTraySession":
+      return {
+        ...state,
+        traySessions: [action.session, ...state.traySessions].slice(0, 200),
+      };
+    case "updateTraySession":
+      return {
+        ...state,
+        traySessions: state.traySessions.map((s) =>
+          s.id === action.session.id ? action.session : s,
+        ),
+      };
+    case "removeTraySession":
+      return {
+        ...state,
+        traySessions: state.traySessions.filter((s) => s.id !== action.id),
+      };
+    case "addQueuedSale":
+      return {
+        ...state,
+        queuedSales: [action.sale, ...state.queuedSales],
+      };
+    case "updateQueuedSale":
+      return {
+        ...state,
+        queuedSales: state.queuedSales.map((s) =>
+          s.id === action.sale.id ? action.sale : s,
+        ),
+      };
+    case "removeQueuedSale":
+      return {
+        ...state,
+        queuedSales: state.queuedSales.filter((s) => s.id !== action.id),
+      };
+    case "clearQueuedSales":
+      return { ...state, queuedSales: [] };
     default:
       return state;
   }
@@ -557,6 +604,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           sampleStorageLocationId: pick("sampleStorageLocationId"),
           // ---- T014 ----
           dgeStandard: pick("dgeStandard"),
+          // ---- T021 ----
+          traySessions: pick("traySessions"),
+          queuedSales: pick("queuedSales"),
         };
         dispatch({ type: "hydrate", state: merged });
       } else {

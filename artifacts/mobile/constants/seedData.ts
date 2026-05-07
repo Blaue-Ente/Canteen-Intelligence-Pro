@@ -376,4 +376,7 @@ export const seedState: AppState = {
     addons: { bleThermometers: false, multiSite: false, advancedAi: false },
   },
   sampleStorageLocationId: "sl-fridge-proben",
+  // ---- T021: AI Tray Scanner + Time Machine ----
+  traySessions: [],
+  queuedSales: [],
 };
