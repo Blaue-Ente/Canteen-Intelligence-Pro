@@ -114,11 +114,26 @@ export function clerkProxyMiddleware(): RequestHandler {
     return (_req, _res, next) => next();
   }
 
-  // CLERK_PROXY_HOST_OVERRIDE pins the Clerk-Proxy-Url to the canonical domain
-  // that Clerk knows about (app.kitchenos.de). Without this override, requests
-  // arriving from *.replit.app or kitchenos.de would build a Clerk-Proxy-Url
-  // using the wrong host and Clerk's FAPI would return 401.
-  const proxyHostOverride = process.env.CLERK_PROXY_HOST_OVERRIDE;
+  // Determine the canonical proxy host: prefer the explicit override env var,
+  // then fall back to deriving it from the publishable key (pk_live_<b64> encodes
+  // "clerk.<domain>$" — stripping the prefix gives the app domain).
+  // This ensures production deployments work even when CLERK_PROXY_HOST_OVERRIDE
+  // is not set as an env var.
+  const proxyHostOverride = (() => {
+    const explicit = process.env.CLERK_PROXY_HOST_OVERRIDE;
+    if (explicit) return explicit;
+    const pk =
+      process.env.CLERK_PUBLISHABLE_KEY_PROD ?? process.env.CLERK_PUBLISHABLE_KEY ?? "";
+    if (!pk.startsWith("pk_live_")) return undefined;
+    try {
+      const b64 = pk.slice("pk_live_".length).replace(/\$/g, "=");
+      const decoded = Buffer.from(b64, "base64").toString("utf-8").replace(/\$$/, "");
+      // decoded = "clerk.app.kitchenos.de" → strip "clerk." prefix
+      return decoded.startsWith("clerk.") ? decoded.slice("clerk.".length) : decoded;
+    } catch {
+      return undefined;
+    }
+  })();
 
   return createProxyMiddleware({
     target: CLERK_FAPI,
