@@ -16,6 +16,8 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { registerServiceWorker } from "@/lib/webPush";
+import { pushAlertBus } from "@/lib/pushAlertBus";
+import { PushAlertOverlay } from "@/components/PushAlertOverlay";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppProvider, useApp } from "@/contexts/AppContext";
@@ -165,9 +167,18 @@ export default function RootLayout() {
 
   // Register the service worker once on web so push notifications can work
   useEffect(() => {
-    if (Platform.OS === "web") {
-      registerServiceWorker().catch(() => {});
-    }
+    if (Platform.OS !== "web" || !("serviceWorker" in navigator)) return;
+    registerServiceWorker().catch(() => {});
+
+    // Listen for KIOS_PUSH_ALERT messages posted by the service worker
+    // when a push notification arrives while the app is open
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === "KIOS_PUSH_ALERT") {
+        pushAlertBus.emit({ title: event.data.title ?? "", body: event.data.body ?? "" });
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", handler);
+    return () => navigator.serviceWorker.removeEventListener("message", handler);
   }, []);
 
   useEffect(() => {
@@ -189,6 +200,7 @@ export default function RootLayout() {
                   <AppProvider>
                     <StatusBar style="auto" />
                     <RootLayoutNav />
+                    <PushAlertOverlay />
                   </AppProvider>
                 </AuthProvider>
               </KeyboardProvider>
