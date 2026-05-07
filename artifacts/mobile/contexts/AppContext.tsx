@@ -110,6 +110,12 @@ type Action =
   | { type: "setPriceServerConfig"; config: PriceServerConfig }
   // ---- TSE / KassenSichV (T011) ----
   | { type: "setTseConfig"; config: import("@/types").TseConfig }
+  /**
+   * Per-location TSE config update. Use this instead of setTseConfig whenever
+   * a locationId is known — ensures each Kasse keeps an isolated config and
+   * gap-free Belegnummer series per KassenSichV §146a AO.
+   */
+  | { type: "setTseConfigForLocation"; locationId: string; config: import("@/types").TseConfig }
   | { type: "addSignedSale"; sale: import("@/types").SignedSale }
   // ---- T013: HACCP automation + Rückstellproben + Subscription ----
   | { type: "setSubscription"; subscription: import("@/types").Subscription }
@@ -352,6 +358,14 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, priceServerConfig: action.config };
     case "setTseConfig":
       return { ...state, tseConfig: action.config };
+    case "setTseConfigForLocation":
+      return {
+        ...state,
+        tseConfigs: {
+          ...(state.tseConfigs ?? {}),
+          [action.locationId]: action.config,
+        },
+      };
     case "addSignedSale": {
       // Mirror addSale's 1-year retention — also push the SaleEntry slice.
       // The mirrored row carries `tseTxNumber` so reports that aggregate the
@@ -527,6 +541,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           kiosVoice: pick("kiosVoice"),
           appMode: pick("appMode"),
           tseConfig: pick("tseConfig"),
+          tseConfigs: pick("tseConfigs"),
           signedSales: pick("signedSales"),
           // ---- T013 ----
           foodSamples: pick("foodSamples"),

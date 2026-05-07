@@ -557,7 +557,18 @@ export interface AppState {
   // ---- Kios voice ----
   kiosVoice: KiosVoice;
   // ---- TSE / cash register (T011, Voll-Modus only) ----
+  /**
+   * Legacy single-register config. Kept for migration — new code should
+   * use `tseConfigs[locationId]` instead.
+   */
   tseConfig?: TseConfig;
+  /**
+   * Per-location TSE configurations. Key = Location.id (or "primary" when
+   * no locations are configured). Each physical Kasse must have its own entry —
+   * KassenSichV §146a AO requires a separate TSE and gap-free Belegnummer
+   * series per cash register.
+   */
+  tseConfigs?: Record<string, TseConfig>;
   signedSales: SignedSale[];
   // ---- Operating mode ----
   /**
