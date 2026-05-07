@@ -5,6 +5,7 @@ import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Badge, Button, Card, Chip, EmptyState, Field, SectionHeader } from "@/components/ui";
+import { EcoHint } from "@/components/EcoHint";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useAuthor } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
@@ -150,6 +151,13 @@ export default function Procurement() {
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: insets.bottom + 60 }}>
+        {/* Öko-Tipp: Regional bestellen */}
+        <EcoHint
+          challengeId="regionalOrder"
+          contextDe="Beim Einkauf: Regionale Erzeuger bevorzugen"
+          contextEn="When ordering: prefer regional producers"
+        />
+
         <Card>
           <View style={{ flexDirection: "row", alignItems: "center", marginBottom: pasteOpen ? 12 : 0 }}>
             <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: c.accent, alignItems: "center", justifyContent: "center" }}>

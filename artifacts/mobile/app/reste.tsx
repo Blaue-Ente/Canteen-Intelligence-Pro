@@ -4,6 +4,7 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "rea
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Badge, Button, Card, EmptyState, SectionHeader } from "@/components/ui";
+import { EcoHint } from "@/components/EcoHint";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { aiResteRezepte, type ResteSuggestion } from "@/lib/ai";
@@ -52,6 +53,13 @@ export default function Reste() {
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: insets.bottom + 60 }}>
+        {/* Öko-Tipp: Resteverwertung */}
+        <EcoHint
+          challengeId="useReste"
+          contextDe="Reste verwerten = 15 Öko-Punkte sichern"
+          contextEn="Use leftovers = earn 15 eco points"
+        />
+
         <Card>
           <SectionHeader title={t("resteRezepte")} />
           <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 13 }}>

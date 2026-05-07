@@ -6,9 +6,24 @@ import { Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Badge, Card, EmptyState, SectionHeader, Stat } from "@/components/ui";
+import { EcoHint } from "@/components/EcoHint";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { recipeMargin } from "@/lib/computations";
+
+// ── Eco medal tiers (mirrors okowizard.tsx) ──────────────────────────────────
+const ECO_MEDALS = [
+  { min: 0,    icon: "🌱", de: "Einsteiger",    en: "Starter"   },
+  { min: 100,  icon: "🥉", de: "Lehrling",      en: "Apprentice" },
+  { min: 300,  icon: "🥈", de: "Praktiker",     en: "Practitioner" },
+  { min: 600,  icon: "🥇", de: "Klimaschützer", en: "Guardian"  },
+  { min: 1000, icon: "💎", de: "Champion",      en: "Champion"  },
+];
+function ecoMedal(score: number) {
+  let m = ECO_MEDALS[0]!;
+  for (const t of ECO_MEDALS) { if (score >= t.min) m = t; }
+  return m;
+}
 
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
@@ -244,6 +259,9 @@ export default function Home() {
           />
         </View>
 
+        {/* Öko-Score mini-widget (only when okoEnabled) */}
+        {state.okoEnabled && <EcoScoreWidget />}
+
         {/* Quick actions */}
         <View style={{ flexDirection: "row", gap: 10 }}>
           <QuickAction icon="camera" label={t("scan")} onPress={() => router.push("/scan")} />
@@ -454,6 +472,80 @@ export default function Home() {
   );
 }
 
+// ── Öko-Score widget ──────────────────────────────────────────────────────────
+function EcoScoreWidget() {
+  const { state } = useApp();
+  const c = useColors();
+  const router = useRouter();
+  const isDe = state.locale === "de";
+
+  const { score, completions } = state.okoProgress;
+  const medal = ecoMedal(score);
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const doneToday = completions.filter((cp) => cp.completedAt.startsWith(todayStr)).length;
+
+  // Determine the next target
+  const nextMedal = ECO_MEDALS.find((m) => score < m.min);
+  const progressPct = nextMedal ? Math.min(1, score / nextMedal.min) * 100 : 100;
+
+  return (
+    <Pressable
+      onPress={() => router.push("/okowizard")}
+      style={({ pressed }) => ({
+        backgroundColor: "#f0fdf4",
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: "#bbf7d0",
+        paddingHorizontal: 14,
+        paddingVertical: 11,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+        opacity: pressed ? 0.85 : 1,
+      })}
+    >
+      {/* Medal emoji */}
+      <Text style={{ fontSize: 26 }}>{medal.icon}</Text>
+
+      {/* Score + progress */}
+      <View style={{ flex: 1, gap: 4 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <Text style={{ color: "#166534", fontFamily: "Inter_700Bold", fontSize: 13 }}>
+            {isDe ? medal.de : medal.en} · {score} Öko-Pkt.
+          </Text>
+          {doneToday > 0 && (
+            <View style={{ backgroundColor: "#dcfce7", paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999 }}>
+              <Text style={{ color: "#166534", fontFamily: "Inter_600SemiBold", fontSize: 11 }}>
+                {doneToday}× {isDe ? "heute" : "today"} ✓
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Progress bar */}
+        <View style={{ height: 4, backgroundColor: "#bbf7d0", borderRadius: 999, overflow: "hidden" }}>
+          <View
+            style={{
+              height: 4,
+              width: `${progressPct}%`,
+              backgroundColor: "#16a34a",
+              borderRadius: 999,
+            }}
+          />
+        </View>
+
+        <Text style={{ color: "#4ade80", fontFamily: "Inter_400Regular", fontSize: 11 }}>
+          {isDe ? "Öko-Wizard öffnen →" : "Open Eco Wizard →"}
+        </Text>
+      </View>
+
+      <Feather name="chevron-right" size={16} color="#86efac" />
+    </Pressable>
+  );
+}
+
+// ── QuickAction ───────────────────────────────────────────────────────────────
 function QuickAction({
   icon,
   label,

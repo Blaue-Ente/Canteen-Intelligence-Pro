@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 
 import { Badge, Button, Card, Chip, EmptyState, Field, SectionHeader, Stat } from "@/components/ui";
+import { EcoHint } from "@/components/EcoHint";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useAuthor } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
@@ -32,6 +33,13 @@ export default function Waste() {
           <Stat label="Gesamt" value={`${(totalGrams / 1000).toFixed(1)} kg`} icon="trash-2" tone="warning" />
           <Stat label="Verlust" value={`€${total.toFixed(0)}`} icon="trending-down" tone="destructive" />
         </View>
+
+        {/* Öko-Tipp: Portionsgenauigkeit */}
+        <EcoHint
+          challengeId="wasteUnder10"
+          contextDe="Abfälle minimieren = Öko-Punkte verdienen"
+          contextEn="Minimise waste = earn eco points"
+        />
 
         <Card>
           <SectionHeader title={isDe ? "KI-Tablett-Analyse" : "AI tray analysis"} />
