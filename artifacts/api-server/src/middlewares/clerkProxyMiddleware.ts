@@ -11,24 +11,21 @@
  * dashboard — all auth configuration is done through the Auth pane.
  *
  * IMPORTANT:
- * - Active whenever CLERK_SECRET_KEY is set. The proxy works for any Clerk
- *   *production* instance (pk_live), regardless of NODE_ENV. The original
- *   prod-only gate dated from when this project also used a pk_test dev
- *   instance (where Clerk does not allow proxying). Now that we use pk_live
- *   globally, the proxy MUST also work in dev — otherwise the dev preview
- *   (served on a *.replit.dev origin) cannot talk to Clerk at all because
- *   pk_live origin-locks all direct calls to the configured Clerk domain
- *   (app.kitchenos.de). Routing through this proxy bypasses the origin
- *   check by setting Clerk-Proxy-Url to the request's actual public host.
+ * - Active whenever CLERK_SECRET_KEY is set.
  * - Must be mounted BEFORE express.json() middleware
+ * - Two separate middlewares are exported:
+ *   1. clerkNpmMiddleware()  — handles /npm/... paths by fetching server-side
+ *      (follows Clerk's 307 redirects internally, never exposes them to the
+ *      browser, breaking the infinite-redirect loop that occurs in production)
+ *   2. clerkProxyMiddleware() — handles all other FAPI calls (/v1/..., etc.)
  *
  * Usage in app.ts:
- *   import { CLERK_PROXY_PATH, clerkProxyMiddleware } from "./middlewares/clerkProxyMiddleware";
+ *   app.use(`${CLERK_PROXY_PATH}/npm`, clerkNpmMiddleware());
  *   app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
  */
 
 import { createProxyMiddleware } from "http-proxy-middleware";
-import type { RequestHandler } from "express";
+import type { RequestHandler, Request, Response } from "express";
 import type { IncomingHttpHeaders } from "http";
 
 const CLERK_FAPI = "https://frontend-api.clerk.dev";
@@ -38,18 +35,6 @@ export const CLERK_PROXY_PATH = "/api/__clerk";
  * Returns the first effective public hostname for the given request,
  * preferring x-forwarded-host over the Host header so callers behind a
  * proxy see the original client-facing host.
- *
- * x-forwarded-host can take three shapes:
- *   - undefined (no proxy involved)
- *   - a single string (one proxy hop)
- *   - a comma-delimited string when an upstream appended rather than
- *     replaced the header (Node folds duplicate headers this way), or a
- *     string[] in some Express typings
- * In the multi-value case, the leftmost value is the original client-
- * facing host. Take that one in all forms. Exported so that app.ts
- * (clerkMiddleware callback) and this proxy middleware agree on which
- * hostname is canonical — otherwise multi-domain/custom-domain flows
- * break.
  */
 export function getClerkProxyHost(req: {
   headers: IncomingHttpHeaders;
@@ -60,11 +45,71 @@ export function getClerkProxyHost(req: {
   return firstHop || req.headers.host?.trim() || undefined;
 }
 
+/**
+ * Handles /api/__clerk/npm/... requests by fetching the Clerk JS bundles
+ * server-side, following all redirects internally.
+ *
+ * WHY: Clerk's FAPI returns a 307 redirect for npm bundle requests, pointing
+ * back to the proxy URL (e.g. app.kitchenos.de/api/__clerk/npm/...). If the
+ * browser follows this redirect it ends up in an infinite loop. By fetching
+ * server-side (redirect:"follow") we resolve the final CDN URL and stream the
+ * content directly to the client — no redirect ever reaches the browser.
+ */
+export function clerkNpmMiddleware(): RequestHandler {
+  const secretKey =
+    process.env.CLERK_SECRET_KEY_PROD ?? process.env.CLERK_SECRET_KEY;
+  if (!secretKey) {
+    return (_req, _res, next) => next();
+  }
+
+  return async (req: Request, res: Response) => {
+    // req.path is relative to the mount point (/npm), e.g. "/@clerk/clerk-js@6/dist/clerk.browser.js"
+    const targetUrl = `${CLERK_FAPI}/npm${req.path}${req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : ""}`;
+
+    try {
+      const upstream = await fetch(targetUrl, {
+        redirect: "follow",
+        headers: {
+          "User-Agent": "KitchenOS-Clerk-Proxy/1.0",
+        },
+      });
+
+      // Forward safe response headers
+      const skip = new Set([
+        "transfer-encoding",
+        "connection",
+        "keep-alive",
+        "content-encoding",
+      ]);
+      upstream.headers.forEach((value, key) => {
+        if (!skip.has(key.toLowerCase())) {
+          res.setHeader(key, value);
+        }
+      });
+
+      // Add CORS so any origin can load the script
+      const origin = req.headers["origin"];
+      if (origin) {
+        res.setHeader("Access-Control-Allow-Origin", origin);
+        res.setHeader("Access-Control-Allow-Credentials", "true");
+        res.setHeader("Vary", "Origin");
+      }
+
+      // Long cache for versioned bundles
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+
+      res.status(upstream.status);
+      const body = Buffer.from(await upstream.arrayBuffer());
+      res.send(body);
+    } catch (err) {
+      res.status(502).json({ error: "Failed to fetch Clerk bundle" });
+    }
+  };
+}
+
 export function clerkProxyMiddleware(): RequestHandler {
-  // Gate on CLERK_SECRET_KEY only. We deliberately do NOT gate on NODE_ENV:
-  // pk_live works through this proxy in any env, and dev preview origins
-  // (*.replit.dev) MUST proxy or Clerk's origin lock blocks every request.
-  const secretKey = process.env.CLERK_SECRET_KEY_PROD ?? process.env.CLERK_SECRET_KEY;
+  const secretKey =
+    process.env.CLERK_SECRET_KEY_PROD ?? process.env.CLERK_SECRET_KEY;
   if (!secretKey) {
     return (_req, _res, next) => next();
   }
@@ -83,10 +128,6 @@ export function clerkProxyMiddleware(): RequestHandler {
     on: {
       proxyReq: (proxyReq, req) => {
         const protocol = req.headers["x-forwarded-proto"] || "https";
-        // Always use the override (app.kitchenos.de) so Clerk's FAPI can
-        // attribute the request to our instance. The FAPI redirect that results
-        // (e.g. for the Clerk JS bundle) is rewritten in proxyRes below so the
-        // browser never sees a cross-origin redirect.
         const host = proxyHostOverride || getClerkProxyHost(req) || "";
         const proxyUrl = `${protocol}://${host}${CLERK_PROXY_PATH}`;
 
@@ -103,32 +144,10 @@ export function clerkProxyMiddleware(): RequestHandler {
         }
       },
       proxyRes: (proxyRes, req) => {
-        // FAPI sometimes redirects (307) the Clerk JS bundle to the canonical
-        // proxy URL, e.g. https://app.kitchenos.de/api/__clerk/npm/...
-        // When the request came from a dev/preview origin the browser cannot
-        // follow that cross-origin redirect (CORS). Rewrite the Location header
-        // to use the actual request host so the redirect stays same-origin.
-        const location = proxyRes.headers["location"];
-        if (location && typeof location === "string" && proxyHostOverride) {
-          const actualHost = getClerkProxyHost(req as { headers: IncomingHttpHeaders });
-          if (
-            actualHost &&
-            actualHost !== proxyHostOverride &&
-            location.includes(proxyHostOverride)
-          ) {
-            const protocol =
-              (req as { headers: IncomingHttpHeaders }).headers[
-                "x-forwarded-proto"
-              ] || "https";
-            proxyRes.headers["location"] = location.replace(
-              `https://${proxyHostOverride}`,
-              `${protocol}://${actualHost}`,
-            );
-          }
-        }
-        // Ensure CORS headers survive the proxy hop so browsers on any origin
-        // (dev or production) can consume the response.
-        const origin = (req as { headers: IncomingHttpHeaders }).headers["origin"];
+        // Ensure CORS headers so browsers on any origin can consume the response.
+        const origin = (req as { headers: IncomingHttpHeaders }).headers[
+          "origin"
+        ];
         if (origin) {
           proxyRes.headers["access-control-allow-origin"] = origin;
           proxyRes.headers["access-control-allow-credentials"] = "true";

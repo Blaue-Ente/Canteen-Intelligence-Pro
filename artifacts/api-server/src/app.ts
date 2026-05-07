@@ -4,6 +4,7 @@ import pinoHttp from "pino-http";
 import { clerkMiddleware } from "@clerk/express";
 import {
   CLERK_PROXY_PATH,
+  clerkNpmMiddleware,
   clerkProxyMiddleware,
 } from "./middlewares/clerkProxyMiddleware";
 import router from "./routes";
@@ -31,7 +32,12 @@ app.use(
   }),
 );
 
-// Clerk proxy must come before body parsers (it streams raw bytes)
+// Clerk proxy must come before body parsers (it streams raw bytes).
+// npm bundle requests are handled separately — FAPI 307-redirects them back to
+// the proxy URL which causes an infinite loop if passed to the browser.
+// clerkNpmMiddleware fetches the bundle server-side (redirect:follow) so the
+// final CDN content is returned directly with no redirect visible to the client.
+app.use(`${CLERK_PROXY_PATH}/npm`, clerkNpmMiddleware());
 app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 
 app.use(cors({ credentials: true, origin: true }));
