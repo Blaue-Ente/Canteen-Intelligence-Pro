@@ -465,7 +465,15 @@ const de: Dict = {
   imprintBody:
     "KItchenOS GmbH, Beispielstraße 1, 10115 Berlin · HRB 000000 B · Geschäftsführer: Beispiel · USt-IdNr: DE000000000 · Verantwortlich i.S.d. § 18 Abs. 2 MStV: Beispiel.",
 
-  // Demo
+  // Demo launcher page
+  demoPageTitle: "Demo starten",
+  demoPageSub:
+    "Einfach eine Demo öffnen — oder persönliche Demo-Führung anfragen.",
+  demoInstantTitle: "Drei Betriebe, sofort live",
+  demoInstantSub:
+    "Wähle einen Demo-Betrieb und tauche direkt ein. Echter Datensatz, echte App — keine Registrierung nötig.",
+
+  // Demo request form (kept below instant section)
   demoTitle: "Kostenlose Demo anfragen",
   demoSub:
     "30 Minuten. Kein Verkaufsgespräch. Sie sagen uns, was Sie brauchen — wir zeigen, ob es passt.",
@@ -639,6 +647,14 @@ const en: Dict = {
   demoSchuleDesc: "Vegan/vegetarian, DGE standard",
   demoCateringTitle: "Event catering",
   demoCateringDesc: "Events business with forecasting",
+
+  // Demo launcher page (EN)
+  demoPageTitle: "Try the demo",
+  demoPageSub:
+    "Jump straight in — or request a guided walkthrough with our team.",
+  demoInstantTitle: "Three operations, live right now",
+  demoInstantSub:
+    "Pick a demo operation and dive in. Real dataset, real app — no registration needed.",
   ctaStart: "Get started",
   ctaTalk: "Talk to us",
   langSwitch: "DE",

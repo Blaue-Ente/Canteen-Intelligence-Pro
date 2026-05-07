@@ -207,18 +207,8 @@ export default function Settings() {
         {/* T013a: Subscription tier + paid add-ons */}
         <SubscriptionCard />
 
-        {/* T011: TSE / KassenSichV configuration — Voll-Modus only */}
-        {state.appMode === "full" && (
-          <Card>
-            <SectionHeader title="TSE / KassenSichV" />
-            <Text style={[subStyle, { marginBottom: 8 }]}>
-              {state.locale === "de"
-                ? "Kassen-Identifikationsnummer und Steuernummer für rechtsverbindliche Belege (§146a AO)."
-                : "Cash register ID and tax number for legally binding receipts (§146a AO)."}
-            </Text>
-            <TseConfigEditor />
-          </Card>
-        )}
+        {/* T011: TSE / KassenSichV — per-location cash register configuration */}
+        {state.appMode === "full" && <TseKassenSection />}
 
         {/* Kios voice picker (web only — Kios is web-only) */}
         {Platform.OS === "web" && (
@@ -730,73 +720,429 @@ function SubscriptionCard() {
   );
 }
 
-function TseConfigEditor() {
-  const { state, dispatch } = useApp();
+// ─── T011 (updated): Per-location TSE / KassenSichV configuration ────────────
+//
+// KassenSichV §146a AO: each physical cash register must have its own TSE
+// module, its own Kassennummer, and an independent gap-free Belegnummer series.
+// This section renders one collapsible editor per Location. When no Locations
+// are configured it falls back to a "Primär-Kasse" editor (legacy migration).
+
+type TseProvider = import("@/types").TseProvider;
+
+const PROVIDER_OPTIONS: { id: TseProvider; label: string; desc: string }[] = [
+  { id: "stub",            label: "Stub (Entwicklung)",    desc: "Lokale HMAC-Signatur — NICHT KassenSichV-konform. Nur zum Testen." },
+  { id: "fiskaly_sandbox", label: "fiskaly Sandbox",       desc: "fiskaly-Testumgebung — Belege sind nicht rechtsverbindlich." },
+  { id: "fiskaly_prod",    label: "fiskaly Produktion",    desc: "Rechtsverbindliche TSE nach KassenSichV §146a AO." },
+];
+
+function TseKassenSection() {
+  const { state } = useApp();
   const c = useColors();
-  const cfg = state.tseConfig;
-  const [kassennummer, setKassennummer] = useState(cfg?.kassennummer ?? "K-001");
-  const [taxId, setTaxId] = useState(cfg?.taxId ?? state.companyProfile?.taxId ?? "");
   const isDe = state.locale === "de";
 
+  // Determine the list of Kassen to show.
+  // If Locations are configured → one Kasse per Location.
+  // Otherwise → single "Primär-Kasse" (legacy path, key = "primary").
+  const kassenList =
+    state.locations.length > 0
+      ? state.locations.map((l) => ({ id: l.id, name: l.name, address: l.address }))
+      : [{ id: "primary", name: isDe ? "Primär-Kasse" : "Primary register", address: undefined }];
+
+  return (
+    <Card>
+      <SectionHeader title="TSE / KassenSichV" />
+
+      {/* Intro */}
+      <View
+        style={{
+          flexDirection: "row",
+          gap: 10,
+          alignItems: "flex-start",
+          marginBottom: 14,
+          padding: 12,
+          borderRadius: 10,
+          backgroundColor: c.accent,
+        }}
+      >
+        <Feather name="shield" size={16} color={c.accentForeground} style={{ marginTop: 1 }} />
+        <Text style={{ color: c.accentForeground, fontSize: 12, fontFamily: "Inter_400Regular", flex: 1, lineHeight: 17 }}>
+          {isDe
+            ? "Jede Kasse benötigt eine eigene Kassennummer und TSE-Konfiguration (§146a AO). Belegnummern werden pro Kasse lückenlos gezählt."
+            : "Each register needs its own cash register number and TSE configuration (§146a AO). Receipt numbers are counted gap-free per register."}
+        </Text>
+      </View>
+
+      {/* One card per Kasse */}
+      <View style={{ gap: 12 }}>
+        {kassenList.map((kasse, idx) => (
+          <TseLocationEditor
+            key={kasse.id}
+            locationId={kasse.id}
+            locationName={kasse.name}
+            locationAddress={kasse.address}
+            index={idx + 1}
+          />
+        ))}
+      </View>
+
+      {/* Hint about adding more locations */}
+      {state.locations.length === 0 && (
+        <Text style={{ color: c.mutedForeground, fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 12 }}>
+          {isDe
+            ? "Weitere Standorte anlegen → automatisch eigene Kasse pro Standort."
+            : "Add more locations → each gets its own cash register automatically."}
+        </Text>
+      )}
+    </Card>
+  );
+}
+
+interface TseLocationEditorProps {
+  locationId: string;
+  locationName: string;
+  locationAddress?: string;
+  index: number;
+}
+
+function TseLocationEditor({ locationId, locationName, locationAddress, index }: TseLocationEditorProps) {
+  const { state, dispatch } = useApp();
+  const c = useColors();
+  const isDe = state.locale === "de";
+
+  // Read config: prefer tseConfigs[locationId], fall back to legacy tseConfig for "primary"
+  const existingCfg =
+    state.tseConfigs?.[locationId] ??
+    (locationId === "primary" ? state.tseConfig : undefined);
+
+  const [expanded, setExpanded] = useState(!(existingCfg?.kassennummer));
+  const [kassennummer, setKassennummer] = useState(existingCfg?.kassennummer ?? `K-00${index}`);
+  const [taxId, setTaxId] = useState(existingCfg?.taxId ?? state.companyProfile?.taxId ?? "");
+  const [provider, setProvider] = useState<TseProvider>(existingCfg?.provider ?? "stub");
+  const [fiskalyClientId, setFiskalyClientId] = useState(existingCfg?.fiskalyClientId ?? "");
+  const [fiskalyTssId, setFiskalyTssId] = useState(existingCfg?.fiskalyTssId ?? "");
+
+  const isConfigured = !!(existingCfg?.kassennummer && existingCfg?.taxId);
+  const isLive = existingCfg?.provider === "fiskaly_prod";
+
+  const inputStyle = {
+    borderWidth: 1,
+    borderColor: c.border,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    color: c.foreground,
+    fontFamily: "Inter_400Regular" as const,
+    fontSize: 14,
+    backgroundColor: c.background,
+  };
+
+  const labelMuted = {
+    color: c.mutedForeground,
+    fontSize: 11,
+    marginBottom: 4,
+    fontFamily: "Inter_500Medium" as const,
+  };
+
   const save = () => {
-    dispatch({
-      type: "setTseConfig",
-      config: {
-        kassennummer: kassennummer.trim() || "K-001",
-        taxId: taxId.trim(),
-        provider: cfg?.provider ?? "stub",
-        serialNumber: cfg?.serialNumber,
-        lastSignedAt: cfg?.lastSignedAt,
-        fiskalyClientId: cfg?.fiskalyClientId,
-        fiskalyTssId: cfg?.fiskalyTssId,
-      },
-    });
-    Alert.alert("TSE", isDe ? "Gespeichert." : "Saved.");
+    const trimmed = kassennummer.trim();
+    const trimmedTax = taxId.trim();
+    if (!trimmed) {
+      Alert.alert(isDe ? "Kassennummer fehlt" : "Missing register number", "");
+      return;
+    }
+    if (!trimmedTax) {
+      Alert.alert(isDe ? "Steuernummer fehlt" : "Missing tax ID", "");
+      return;
+    }
+    const cfg: import("@/types").TseConfig = {
+      kassennummer: trimmed,
+      taxId: trimmedTax,
+      provider,
+      serialNumber: existingCfg?.serialNumber,
+      lastSignedAt: existingCfg?.lastSignedAt,
+      fiskalyClientId: fiskalyClientId.trim() || undefined,
+      fiskalyTssId: fiskalyTssId.trim() || undefined,
+    };
+
+    // Always save to per-location map
+    dispatch({ type: "setTseConfigForLocation", locationId, config: cfg });
+
+    // Also update legacy tseConfig when editing the primary register so
+    // old code paths that still read state.tseConfig keep working.
+    if (locationId === "primary") {
+      dispatch({ type: "setTseConfig", config: cfg });
+    }
+
+    Alert.alert(
+      "TSE",
+      isDe
+        ? `Kasse "${locationName}" gespeichert.`
+        : `Register "${locationName}" saved.`,
+    );
+    setExpanded(false);
   };
 
   return (
-    <View style={{ gap: 8 }}>
-      <View style={{ flexDirection: "row", gap: 8 }}>
+    <View
+      style={{
+        borderWidth: 1.5,
+        borderColor: isConfigured ? (isLive ? c.success : c.border) : c.destructive + "66",
+        borderRadius: 12,
+        overflow: "hidden",
+      }}
+    >
+      {/* Header row — tap to expand/collapse */}
+      <Pressable
+        onPress={() => setExpanded((v) => !v)}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 10,
+          padding: 14,
+          backgroundColor: c.card,
+        }}
+      >
+        {/* Status dot */}
+        <View
+          style={{
+            width: 10,
+            height: 10,
+            borderRadius: 5,
+            backgroundColor: isConfigured
+              ? isLive ? c.success : c.warning
+              : c.destructive,
+          }}
+        />
+
         <View style={{ flex: 1 }}>
-          <Text style={{ color: c.mutedForeground, fontSize: 11, marginBottom: 4, fontFamily: "Inter_500Medium" }}>
-            Kassennummer
+          <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 14 }}>
+            {locationName}
           </Text>
-          <TextInput
-            value={kassennummer}
-            onChangeText={setKassennummer}
-            placeholder="K-001"
-            placeholderTextColor={c.mutedForeground}
-            style={{
-              borderWidth: 1, borderColor: c.border, borderRadius: 8,
-              paddingHorizontal: 10, paddingVertical: 8, color: c.foreground,
-              fontFamily: "Inter_400Regular", fontSize: 14,
-            }}
-          />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: c.mutedForeground, fontSize: 11, marginBottom: 4, fontFamily: "Inter_500Medium" }}>
-            {isDe ? "Steuernummer" : "Tax ID"}
+          {locationAddress ? (
+            <Text style={{ color: c.mutedForeground, fontSize: 11, marginTop: 1 }}>
+              {locationAddress}
+            </Text>
+          ) : null}
+          <Text style={{ color: c.mutedForeground, fontSize: 11, marginTop: 2 }}>
+            {isConfigured
+              ? `${isDe ? "Kasse" : "Register"} ${existingCfg!.kassennummer}  ·  ${existingCfg!.provider}${existingCfg!.serialNumber ? `  ·  TSE ${existingCfg!.serialNumber.slice(0, 8)}…` : ""}`
+              : (isDe ? "Noch nicht konfiguriert" : "Not yet configured")}
           </Text>
-          <TextInput
-            value={taxId}
-            onChangeText={setTaxId}
-            placeholder="DE123456789"
-            placeholderTextColor={c.mutedForeground}
-            style={{
-              borderWidth: 1, borderColor: c.border, borderRadius: 8,
-              paddingHorizontal: 10, paddingVertical: 8, color: c.foreground,
-              fontFamily: "Inter_400Regular", fontSize: 14,
-            }}
-          />
         </View>
-      </View>
-      <Text style={{ color: c.mutedForeground, fontSize: 11, fontFamily: "Inter_400Regular" }}>
-        {isDe
-          ? `Provider: ${cfg?.provider ?? "stub"}  ·  TSE-Serial: ${cfg?.serialNumber ?? "—"}`
-          : `Provider: ${cfg?.provider ?? "stub"}  ·  TSE serial: ${cfg?.serialNumber ?? "—"}`}
-      </Text>
-      <Button label={isDe ? "Speichern" : "Save"} icon="save" variant="secondary" onPress={save} />
-      <Button label={isDe ? "Kasse öffnen" : "Open cash register"} icon="credit-card" onPress={() => {/* router.push happens via QuickAction */}} />
+
+        {/* Compliance badge */}
+        <View
+          style={{
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            borderRadius: 8,
+            backgroundColor: isLive
+              ? c.success + "22"
+              : isConfigured
+                ? c.warning + "22"
+                : c.destructive + "22",
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 10,
+              fontFamily: "Inter_600SemiBold",
+              color: isLive ? c.success : isConfigured ? c.warning : c.destructive,
+            }}
+          >
+            {isLive
+              ? (isDe ? "KassenSichV-konform" : "Compliant")
+              : isConfigured
+                ? "Stub"
+                : (isDe ? "Nicht konfiguriert" : "Not configured")}
+          </Text>
+        </View>
+
+        <Feather
+          name={expanded ? "chevron-up" : "chevron-down"}
+          size={16}
+          color={c.mutedForeground}
+        />
+      </Pressable>
+
+      {/* Expanded editor */}
+      {expanded && (
+        <View style={{ padding: 14, gap: 12, backgroundColor: c.background, borderTopWidth: 1, borderColor: c.border }}>
+
+          {/* Kassennummer + Steuernummer */}
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={labelMuted}>Kassennummer</Text>
+              <TextInput
+                value={kassennummer}
+                onChangeText={setKassennummer}
+                placeholder={`K-00${index}`}
+                placeholderTextColor={c.mutedForeground}
+                autoCapitalize="characters"
+                style={inputStyle}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={labelMuted}>{isDe ? "Steuernummer / USt-IdNr." : "Tax ID"}</Text>
+              <TextInput
+                value={taxId}
+                onChangeText={setTaxId}
+                placeholder="27/445/05200"
+                placeholderTextColor={c.mutedForeground}
+                autoCapitalize="none"
+                style={inputStyle}
+              />
+            </View>
+          </View>
+
+          {/* TSE Provider picker */}
+          <View>
+            <Text style={labelMuted}>TSE Provider</Text>
+            <View style={{ gap: 6 }}>
+              {PROVIDER_OPTIONS.map((opt) => {
+                const active = provider === opt.id;
+                return (
+                  <Pressable
+                    key={opt.id}
+                    onPress={() => setProvider(opt.id)}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "flex-start",
+                      gap: 10,
+                      padding: 10,
+                      borderRadius: 10,
+                      borderWidth: 1.5,
+                      borderColor: active ? c.primary : c.border,
+                      backgroundColor: active ? c.accent : "transparent",
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 16,
+                        height: 16,
+                        borderRadius: 8,
+                        borderWidth: 2,
+                        borderColor: active ? c.primary : c.border,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginTop: 1,
+                      }}
+                    >
+                      {active && (
+                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.primary }} />
+                      )}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: c.foreground, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
+                        {opt.label}
+                      </Text>
+                      <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 11, marginTop: 2 }}>
+                        {opt.desc}
+                      </Text>
+                    </View>
+                    {opt.id === "fiskaly_prod" && (
+                      <Feather name="shield" size={14} color={active ? c.primary : c.mutedForeground} />
+                    )}
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Fiskaly credentials (only when a fiskaly provider is selected) */}
+          {(provider === "fiskaly_sandbox" || provider === "fiskaly_prod") && (
+            <View style={{ gap: 8 }}>
+              <Text style={[labelMuted, { marginBottom: 0 }]}>
+                {isDe ? "fiskaly-Zugangsdaten" : "fiskaly credentials"}
+              </Text>
+              <View>
+                <Text style={labelMuted}>Client ID</Text>
+                <TextInput
+                  value={fiskalyClientId}
+                  onChangeText={setFiskalyClientId}
+                  placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                  placeholderTextColor={c.mutedForeground}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  style={inputStyle}
+                />
+              </View>
+              <View>
+                <Text style={labelMuted}>TSS ID</Text>
+                <TextInput
+                  value={fiskalyTssId}
+                  onChangeText={setFiskalyTssId}
+                  placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                  placeholderTextColor={c.mutedForeground}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  style={inputStyle}
+                />
+              </View>
+              <View
+                style={{
+                  flexDirection: "row",
+                  gap: 8,
+                  alignItems: "flex-start",
+                  padding: 10,
+                  borderRadius: 8,
+                  backgroundColor: c.accent,
+                }}
+              >
+                <Feather name="info" size={13} color={c.accentForeground} style={{ marginTop: 1 }} />
+                <Text style={{ color: c.accentForeground, fontSize: 11, fontFamily: "Inter_400Regular", flex: 1 }}>
+                  {isDe
+                    ? "Client ID und TSS ID aus dem fiskaly Dashboard kopieren. Der API-Key wird als Server-Secret FISKALY_API_KEY hinterlegt — nie im App-Code speichern."
+                    : "Copy Client ID and TSS ID from the fiskaly dashboard. The API key is stored as the server secret FISKALY_API_KEY — never in app code."}
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* TSE status info (read-only) */}
+          {existingCfg?.serialNumber && (
+            <View
+              style={{
+                padding: 10,
+                borderRadius: 8,
+                backgroundColor: c.muted,
+                gap: 3,
+              }}
+            >
+              <Text style={{ color: c.mutedForeground, fontSize: 11, fontFamily: "Inter_500Medium" }}>
+                {isDe ? "TSE-Status (schreibgeschützt)" : "TSE status (read-only)"}
+              </Text>
+              <Text style={{ color: c.foreground, fontFamily: "Inter_400Regular", fontSize: 12 }}>
+                Serial: {existingCfg.serialNumber}
+              </Text>
+              {existingCfg.lastSignedAt && (
+                <Text style={{ color: c.foreground, fontFamily: "Inter_400Regular", fontSize: 12 }}>
+                  {isDe ? "Letzte Signatur" : "Last signed"}: {existingCfg.lastSignedAt}
+                </Text>
+              )}
+            </View>
+          )}
+
+          {/* Save button */}
+          <Pressable
+            onPress={save}
+            style={({ pressed }) => ({
+              backgroundColor: pressed ? c.primary + "cc" : c.primary,
+              borderRadius: 10,
+              padding: 13,
+              alignItems: "center",
+              flexDirection: "row",
+              justifyContent: "center",
+              gap: 8,
+            })}
+          >
+            <Feather name="save" size={16} color={c.primaryForeground} />
+            <Text style={{ color: c.primaryForeground, fontFamily: "Inter_700Bold", fontSize: 15 }}>
+              {isDe ? "Kasse speichern" : "Save register"}
+            </Text>
+          </Pressable>
+        </View>
+      )}
     </View>
   );
 }
