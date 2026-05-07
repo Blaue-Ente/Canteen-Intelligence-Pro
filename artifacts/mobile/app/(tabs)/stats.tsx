@@ -4,7 +4,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 
 import { BarChart, HBar, PieLegend } from "@/components/Chart";
-import { Card, Chip, SectionHeader, Stat } from "@/components/ui";
+import { Button, Card, Chip, SectionHeader, Stat } from "@/components/ui";
+import { sharePdf } from "@/lib/pdf";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 
@@ -50,6 +51,8 @@ export default function Stats() {
   const [pickedDay, setPickedDay] = useState<string>(dateKey(new Date()));
   // dayWindowStart = how many days ago the 14-day window starts (0 = most recent)
   const [dayWindowStart, setDayWindowStart] = useState(0);
+  const [exporting, setExporting] = useState(false);
+  const isDe = state.locale === "de";
 
   // Reset window when entering day mode
   useEffect(() => {
@@ -209,6 +212,46 @@ export default function Stats() {
     };
     return `${fmtShort(from)} – ${fmtShort(to)}`;
   }, [dayOptions, range]);
+
+  const exportPdf = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const fmt = isDe ? "de-DE" : "en-GB";
+      const today = new Date().toLocaleDateString(fmt);
+      const rangeLabel = ({ today: isDe ? "Heute" : "Today", day: isDe ? "Tag" : "Day", week: isDe ? "Woche" : "Week", month: isDe ? "Monat" : "Month", year: isDe ? "Jahr" : "Year" } as Record<Range, string>)[range];
+      const esc = (s: string) => s.replace(/[&<>]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[m]!);
+      const bestRows = bySold.slice(0, 12).map((b) => {
+        const r = state.recipes.find((x) => x.id === b.id);
+        return `<tr><td>${esc(r ? (isDe ? r.nameDe : r.name) : b.id)}</td><td style="text-align:right">${b.v}</td></tr>`;
+      }).join("");
+      const html = `<!DOCTYPE html><html lang="${isDe ? "de" : "en"}"><head><meta charset="utf-8"/><title>${isDe ? "Statistik" : "Statistics"}</title>
+<style>body{font-family:system-ui,sans-serif;color:#1c1917;padding:36px;max-width:720px;margin:auto}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#78716c;margin:28px 0 8px}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #e7e5e4;font-size:13px}
+th{color:#78716c;font-weight:600;font-size:11px;text-transform:uppercase}
+.header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #f59e0b;padding-bottom:8px}
+.brand{color:#f59e0b;font-weight:700;font-size:13px;letter-spacing:.12em}
+.footer{margin-top:36px;font-size:11px;color:#78716c;border-top:1px solid #e7e5e4;padding-top:12px;text-align:center}
+</style></head><body>
+<div class="header"><div><div class="brand">KITCHENOS</div><h1>${isDe ? "Statistik" : "Statistics"}</h1></div>
+<div style="font-size:12px;color:#78716c">${esc(rangeLabel)} · ${today}</div></div>
+<h2>${isDe ? "Übersicht" : "Overview"}</h2>
+<table><thead><tr><th>${isDe ? "Kennzahl" : "Metric"}</th><th style="text-align:right">${isDe ? "Wert" : "Value"}</th></tr></thead><tbody>
+<tr><td>${isDe ? "Portionen gekocht" : "Portions cooked"}</td><td style="text-align:right">${cooked}</td></tr>
+<tr><td>${isDe ? "Portionen verkauft" : "Portions sold"}</td><td style="text-align:right">${sold}</td></tr>
+<tr><td>${isDe ? "Verlust" : "Waste"}</td><td style="text-align:right">${wasteRatio}%</td></tr>
+<tr><td>${isDe ? "Umsatz" : "Revenue"}</td><td style="text-align:right">€${revenue.toFixed(2)}</td></tr>
+</tbody></table>
+${bySold.length > 0 ? `<h2>${isDe ? "Bestseller" : "Best sellers"}</h2><table><thead><tr><th>${isDe ? "Gericht" : "Dish"}</th><th style="text-align:right">${isDe ? "Portionen" : "Portions"}</th></tr></thead><tbody>${bestRows}</tbody></table>` : ""}
+<div class="footer">KItchenOS · ${isDe ? "Statistik" : "Statistics"}</div></body></html>`;
+      await sharePdf(html, `statistik_${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch {
+      // ignore
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
@@ -477,6 +520,13 @@ export default function Stats() {
             <BarChart data={byMeat} height={150} />
           )}
         </Card>
+
+        <Button
+          label={exporting ? (isDe ? "PDF wird erstellt…" : "Generating PDF…") : (isDe ? "PDF exportieren" : "Export PDF")}
+          icon="download"
+          variant="secondary"
+          onPress={exportPdf}
+        />
       </ScrollView>
     </View>
   );

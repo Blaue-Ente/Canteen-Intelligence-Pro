@@ -1,7 +1,8 @@
 import { Feather } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import * as ImagePicker from "expo-image-picker";
 import React, { useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Alert, Image, Pressable, ScrollView, Text, View } from "react-native";
 
 import { Badge, Button, Card, Chip, EmptyState, Field, SectionHeader, Stat } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
@@ -79,10 +80,68 @@ export default function RecipeDetail() {
   const fullCo2 = recipeFullCo2(recipe, state.inventory);
   const isDe = state.locale === "de";
 
+  const pickPhoto = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      const cam = await ImagePicker.requestCameraPermissionsAsync();
+      if (cam.status !== "granted") {
+        Alert.alert(isDe ? "Zugriff verweigert" : "Permission denied");
+        return;
+      }
+    }
+    Alert.alert(
+      isDe ? "Referenzfoto" : "Reference photo",
+      isDe ? "Quelle wählen" : "Choose source",
+      [
+        {
+          text: isDe ? "Kamera" : "Camera",
+          onPress: async () => {
+            const res = await ImagePicker.launchCameraAsync({ base64: true, quality: 0.5 });
+            if (!res.canceled && res.assets[0]) {
+              const uri = res.assets[0].base64
+                ? `data:image/jpeg;base64,${res.assets[0].base64}`
+                : res.assets[0].uri;
+              dispatch({ type: "updateRecipe", recipe: { ...recipe, photoUri: uri } });
+            }
+          },
+        },
+        {
+          text: isDe ? "Galerie" : "Gallery",
+          onPress: async () => {
+            const res = await ImagePicker.launchImageLibraryAsync({ base64: true, quality: 0.5 });
+            if (!res.canceled && res.assets[0]) {
+              const uri = res.assets[0].base64
+                ? `data:image/jpeg;base64,${res.assets[0].base64}`
+                : res.assets[0].uri;
+              dispatch({ type: "updateRecipe", recipe: { ...recipe, photoUri: uri } });
+            }
+          },
+        },
+        {
+          text: isDe ? "Foto entfernen" : "Remove photo",
+          style: "destructive",
+          onPress: () => dispatch({ type: "updateRecipe", recipe: { ...recipe, photoUri: undefined } }),
+        },
+        { text: isDe ? "Abbrechen" : "Cancel", style: "cancel" },
+      ],
+    );
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
       <Stack.Screen options={{ title: state.locale === "de" ? recipe.nameDe : recipe.name }} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 60 }}>
+
+        {recipe.photoUri ? (
+          <Pressable onPress={pickPhoto}>
+            <Image
+              source={{ uri: recipe.photoUri }}
+              style={{ width: "100%", height: 200, borderRadius: c.radius, backgroundColor: c.muted }}
+              resizeMode="cover"
+            />
+          </Pressable>
+        ) : null}
+
         <Card>
           <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 22 }}>
             {state.locale === "de" ? recipe.nameDe : recipe.name}
@@ -94,6 +153,13 @@ export default function RecipeDetail() {
             <Badge label={`${recipe.cookTimeMin} min`} />
             {recipe.kcalPerPortion ? <Badge label={`${recipe.kcalPerPortion} kcal`} /> : null}
           </View>
+          <Button
+            label={recipe.photoUri ? (isDe ? "Referenzfoto ändern" : "Change photo") : (isDe ? "Referenzfoto hinzufügen" : "Add reference photo")}
+            icon="camera"
+            variant="ghost"
+            style={{ marginTop: 10 }}
+            onPress={pickPhoto}
+          />
         </Card>
 
         <View style={{ flexDirection: "row", gap: 10 }}>

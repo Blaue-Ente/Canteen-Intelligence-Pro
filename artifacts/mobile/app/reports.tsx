@@ -3,7 +3,8 @@ import { Platform, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BarChart, HBar, PieLegend } from "@/components/Chart";
-import { Badge, Card, Chip, SectionHeader, Stat } from "@/components/ui";
+import { Badge, Button, Card, Chip, SectionHeader, Stat } from "@/components/ui";
+import { sharePdf } from "@/lib/pdf";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { recipeCost } from "@/lib/computations";
@@ -51,6 +52,8 @@ export default function Reports() {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const [kpiPeriod, setKpiPeriod] = useState<"week" | "month">("week");
+  const [exporting, setExporting] = useState(false);
+  const isDe = state.locale === "de";
 
   // ── 1. Wochenbericht / KPI Vergleich ──────────────────────────────────────
   const kpi = useMemo(() => {
@@ -308,6 +311,45 @@ export default function Reports() {
     const tone = d === 0 ? "default" : positive ? "success" : "destructive";
     return <Badge label={`${d > 0 ? "+" : ""}${d}%`} tone={tone} />;
   }
+
+  const exportPdf = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const fmt = isDe ? "de-DE" : "en-GB";
+      const today = new Date().toLocaleDateString(fmt);
+      const esc = (s: string) => s.replace(/[&<>]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[m]!);
+      const periodLabel = kpiPeriod === "week" ? (isDe ? "Woche" : "Week") : (isDe ? "Monat" : "Month");
+      const wasteRows = wasteAnalysis.totals.map((w) =>
+        `<tr><td>${esc(w.label)}</td><td style="text-align:right">€${w.cost.toFixed(2)}</td><td style="text-align:right">${w.grams}g</td></tr>`,
+      ).join("");
+      const html = `<!DOCTYPE html><html lang="${isDe ? "de" : "en"}"><head><meta charset="utf-8"/><title>${isDe ? "Berichte" : "Reports"}</title>
+<style>body{font-family:system-ui,sans-serif;color:#1c1917;padding:36px;max-width:720px;margin:auto}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#78716c;margin:28px 0 8px}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #e7e5e4;font-size:13px}
+th{color:#78716c;font-weight:600;font-size:11px;text-transform:uppercase}
+.header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #f59e0b;padding-bottom:8px}
+.brand{color:#f59e0b;font-weight:700;font-size:13px;letter-spacing:.12em}
+.footer{margin-top:36px;font-size:11px;color:#78716c;border-top:1px solid #e7e5e4;padding-top:12px;text-align:center}
+</style></head><body>
+<div class="header"><div><div class="brand">KITCHENOS</div><h1>${isDe ? "Berichte" : "Reports"}</h1></div>
+<div style="font-size:12px;color:#78716c">${esc(periodLabel)} · ${today}</div></div>
+<h2>${isDe ? "KPI Vergleich" : "KPI Comparison"}</h2>
+<table><thead><tr><th>${isDe ? "Kennzahl" : "Metric"}</th><th style="text-align:right">${isDe ? "Aktuell" : "Current"}</th><th style="text-align:right">${isDe ? "Vorperiode" : "Previous"}</th></tr></thead><tbody>
+<tr><td>${isDe ? "Umsatz" : "Revenue"}</td><td style="text-align:right">€${kpi.curr.revenue.toFixed(2)}</td><td style="text-align:right">€${kpi.prev.revenue.toFixed(2)}</td></tr>
+<tr><td>${isDe ? "Portionen verkauft" : "Portions sold"}</td><td style="text-align:right">${kpi.curr.sold}</td><td style="text-align:right">${kpi.prev.sold}</td></tr>
+<tr><td>${isDe ? "Verlust" : "Waste"}</td><td style="text-align:right">${wastePct}%</td><td style="text-align:right">${prevWastePct}%</td></tr>
+</tbody></table>
+<h2>${isDe ? "Abfall-Analyse" : "Waste Analysis"}</h2>
+<table><thead><tr><th>${isDe ? "Kategorie" : "Category"}</th><th style="text-align:right">${isDe ? "Kosten" : "Cost"}</th><th style="text-align:right">Gramm</th></tr></thead><tbody>${wasteRows}</tbody></table>
+<div class="footer">KItchenOS · ${isDe ? "Berichte" : "Reports"}</div></body></html>`;
+      await sharePdf(html, `berichte_${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch {
+      // ignore
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
@@ -595,6 +637,13 @@ export default function Reports() {
             </>
           )}
         </Card>
+
+        <Button
+          label={exporting ? (isDe ? "PDF wird erstellt…" : "Generating PDF…") : (isDe ? "PDF exportieren" : "Export PDF")}
+          icon="download"
+          variant="secondary"
+          onPress={exportPdf}
+        />
       </ScrollView>
     </View>
   );

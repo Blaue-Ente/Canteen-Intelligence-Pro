@@ -14,7 +14,7 @@ import { Badge, Button, Card, Chip, EmptyState, Field, SectionHeader } from "@/c
 import { useApp, useT } from "@/contexts/AppContext";
 import { useAuthor } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
-import type { Employee, ShiftEntry } from "@/types";
+import type { Employee, ShiftEntry, TimeOffRequest } from "@/types";
 
 const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
 
@@ -56,6 +56,8 @@ export default function Dienstplan() {
   const [weekStart, setWeekStart] = useState<Date>(startOfWeek(new Date()));
   const [shiftModal, setShiftModal] = useState<{ employeeId: string; date: string } | null>(null);
   const [empModal, setEmpModal] = useState<Employee | null>(null);
+  const [timeOffOpen, setTimeOffOpen] = useState(false);
+  const isDe = state.locale === "de";
 
   const week = useMemo(
     () => DAYS.map((_, i) => addDays(weekStart, i)),
@@ -78,6 +80,15 @@ export default function Dienstplan() {
     });
     return m;
   }, [state.shifts, weekKeys]);
+
+  // Map empId_date → TimeOffRequest for quick lookup in the calendar cells.
+  const timeOffByKey = useMemo(() => {
+    const map = new Map<string, TimeOffRequest>();
+    (state.timeOffRequests ?? []).forEach((r) => {
+      if (weekKeys.has(r.date)) map.set(`${r.employeeId}_${r.date}`, r);
+    });
+    return map;
+  }, [state.timeOffRequests, weekKeys]);
 
   const removeEmployee = (id: string) => {
     Alert.alert(t("delete"), "", [
@@ -189,10 +200,31 @@ export default function Dienstplan() {
                   {week.map((d, i) => {
                     const k = dateKey(d);
                     const dayShifts = state.shifts.filter((sh) => sh.employeeId === emp.id && sh.date === k);
+                    const tor = timeOffByKey.get(`${emp.id}_${k}`);
+                    const cellBg = tor
+                      ? tor.type === "sick" ? "#fee2e240" : tor.type === "vacation" ? "#dbeafe40" : c.accent + "33"
+                      : dayShifts.length > 0 ? c.warning + "1a" : "transparent";
                     return (
                       <Pressable
                         key={k}
-                        onPress={() => setShiftModal({ employeeId: emp.id, date: k })}
+                        onPress={() => {
+                          if (tor) {
+                            Alert.alert(
+                              tor.type === "sick"
+                                ? (isDe ? "Krankmeldung" : "Sick leave")
+                                : tor.type === "vacation"
+                                  ? (isDe ? "Urlaub" : "Vacation")
+                                  : (isDe ? "Abwesenheit" : "Absence"),
+                              `${emp.name} · ${k}`,
+                              [
+                                { text: isDe ? "Schließen" : "Close", style: "cancel" },
+                                { text: isDe ? "Entfernen" : "Remove", style: "destructive", onPress: () => dispatch({ type: "removeTimeOffRequest", id: tor.id }) },
+                              ],
+                            );
+                          } else {
+                            setShiftModal({ employeeId: emp.id, date: k });
+                          }
+                        }}
                         style={({ pressed }) => [
                           {
                             flex: 1,
@@ -200,7 +232,7 @@ export default function Dienstplan() {
                             alignItems: "center",
                             borderRightWidth: i < 6 ? 1 : 0,
                             borderColor: c.border,
-                            backgroundColor: dayShifts.length > 0 ? c.warning + "1a" : "transparent",
+                            backgroundColor: cellBg,
                           },
                           pressed && { opacity: 0.6 },
                         ]}
@@ -208,7 +240,11 @@ export default function Dienstplan() {
                         <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 9, textTransform: "uppercase" }}>
                           {t(DAYS[i]!)}
                         </Text>
-                        {dayShifts.length === 0 ? (
+                        {tor ? (
+                          <Text style={{ color: tor.type === "sick" ? "#dc2626" : "#1d4ed8", fontFamily: "Inter_700Bold", fontSize: 8, marginTop: 3 }}>
+                            {tor.type === "sick" ? "🤒" : tor.type === "vacation" ? "🏖" : "Abw"}
+                          </Text>
+                        ) : dayShifts.length === 0 ? (
                           <Feather name="plus" size={12} color={c.mutedForeground} style={{ marginTop: 4 }} />
                         ) : (
                           dayShifts.slice(0, 2).map((sh) => (
@@ -240,6 +276,12 @@ export default function Dienstplan() {
           variant="ghost"
           onPress={() => setEmpModal({ id: newId(), name: "", role: "cook", weeklyHours: 30 })}
         />
+        <Button
+          label={isDe ? "Abwesenheit melden" : "Log absence"}
+          icon="calendar"
+          variant="ghost"
+          onPress={() => setTimeOffOpen(true)}
+        />
       </ScrollView>
 
       {shiftModal ? (
@@ -250,6 +292,7 @@ export default function Dienstplan() {
         />
       ) : null}
       {empModal ? <EmployeeModal employee={empModal} onClose={() => setEmpModal(null)} /> : null}
+      {timeOffOpen ? <TimeOffAddModal onClose={() => setTimeOffOpen(false)} /> : null}
     </View>
   );
 }
@@ -296,6 +339,75 @@ function ShiftModal({ employeeId, date, onClose }: { employeeId: string; date: s
           <View style={{ flexDirection: "row", gap: 10 }}>
             <Button label={t("save")} icon="check" onPress={add} style={{ flex: 1 }} />
             <Button label={t("close")} variant="ghost" onPress={onClose} />
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function TimeOffAddModal({ onClose }: { onClose: () => void }) {
+  const { state, dispatch, newId } = useApp();
+  const c = useColors();
+  const author = useAuthor();
+  const [empId, setEmpId] = useState<string>(state.employees[0]?.id ?? "");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [type, setType] = useState<TimeOffRequest["type"]>("vacation");
+  const [note, setNote] = useState("");
+  const isDe = state.locale === "de";
+
+  const save = () => {
+    if (!empId || !date) return;
+    dispatch({
+      type: "addTimeOffRequest",
+      request: { id: newId(), employeeId: empId, date, type, note: note.trim() || undefined, ...author },
+    });
+    onClose();
+  };
+
+  return (
+    <Modal transparent animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,.45)", justifyContent: "flex-end" }}>
+        <View style={{ backgroundColor: c.background, padding: 20, paddingBottom: Platform.OS === "ios" ? 36 : 24, borderTopLeftRadius: 24, borderTopRightRadius: 24, gap: 12 }}>
+          <SectionHeader title={isDe ? "Abwesenheit melden" : "Log absence"} />
+
+          <View>
+            <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 12, marginBottom: 6 }}>
+              {isDe ? "Mitarbeiter" : "Employee"}
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
+              <View style={{ flexDirection: "row", gap: 6 }}>
+                {state.employees.map((emp) => (
+                  <Chip key={emp.id} label={emp.name} active={empId === emp.id} onPress={() => setEmpId(emp.id)} />
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+
+          <Field
+            label={isDe ? "Datum (YYYY-MM-DD)" : "Date (YYYY-MM-DD)"}
+            value={date}
+            onChangeText={setDate}
+            placeholder="2026-05-07"
+            webType="date"
+          />
+
+          <View>
+            <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 12, marginBottom: 6 }}>
+              {isDe ? "Typ" : "Type"}
+            </Text>
+            <View style={{ flexDirection: "row", gap: 6 }}>
+              <Chip label={isDe ? "Urlaub" : "Vacation"} active={type === "vacation"} onPress={() => setType("vacation")} />
+              <Chip label={isDe ? "Krank" : "Sick"} active={type === "sick"} onPress={() => setType("sick")} />
+              <Chip label={isDe ? "Sonstiges" : "Other"} active={type === "other"} onPress={() => setType("other")} />
+            </View>
+          </View>
+
+          <Field label={isDe ? "Notiz (optional)" : "Note (optional)"} value={note} onChangeText={setNote} placeholder="" />
+
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <Button label={isDe ? "Speichern" : "Save"} icon="check" onPress={save} style={{ flex: 1 }} />
+            <Button label={isDe ? "Schließen" : "Close"} variant="ghost" onPress={onClose} />
           </View>
         </View>
       </View>

@@ -43,6 +43,7 @@ import type {
   StorageLocation,
   Supplier,
   SupplierDelivery,
+  TimeOffRequest,
   TraySession,
   WasteEntry,
 } from "@/types";
@@ -90,6 +91,8 @@ type Action =
   | { type: "addShift"; shift: ShiftEntry }
   | { type: "updateShift"; shift: ShiftEntry }
   | { type: "removeShift"; id: string }
+  | { type: "addTimeOffRequest"; request: TimeOffRequest }
+  | { type: "removeTimeOffRequest"; id: string }
   | { type: "setNotificationPrefs"; prefs: NotificationPrefs }
   // ---- Phase 6A ----
   | { type: "addLocation"; location: Location }
@@ -307,6 +310,10 @@ function reducer(state: AppState, action: Action): AppState {
       };
     case "removeShift":
       return { ...state, shifts: state.shifts.filter((sh) => sh.id !== action.id) };
+    case "addTimeOffRequest":
+      return { ...state, timeOffRequests: [action.request, ...(state.timeOffRequests ?? [])] };
+    case "removeTimeOffRequest":
+      return { ...state, timeOffRequests: (state.timeOffRequests ?? []).filter((r) => r.id !== action.id) };
     case "setNotificationPrefs":
       return { ...state, notificationPrefs: action.prefs };
     case "addLocation":
@@ -584,6 +591,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           inventurs: pick("inventurs"),
           employees: pick("employees"),
           shifts: pick("shifts"),
+          timeOffRequests: pick("timeOffRequests") ?? [],
           notificationPrefs: pick("notificationPrefs"),
           locations: pick("locations"),
           currentLocationId: pick("currentLocationId"),
