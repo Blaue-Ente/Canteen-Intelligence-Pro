@@ -52,7 +52,6 @@ externalPort = 3001
 
 [userenv.shared]
 VITE_CLERK_PUBLISHABLE_KEY = "pk_test_c2FmZS10ZXJyaWVyLTE5LmNsZXJrLmFjY291bnRzLmRldiQ"
-CLERK_PROXY_HOST_OVERRIDE = "app.kitchenos.de"
 
 [userenv.production]
 CLERK_PUBLISHABLE_KEY_PROD = "pk_live_Y2xlcmsuYXBwLmtpdGNoZW5vcy5kZSQ"
