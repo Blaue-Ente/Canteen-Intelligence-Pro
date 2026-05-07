@@ -67,6 +67,10 @@ export interface Recipe {
   basePrice: number;
   sellPrice: number;
   imageUrl?: string;
+  /** Locally picked POS tile photo (device URI or data-URI). */
+  kasseImageUri?: string;
+  /** Per-item default MwSt override for the POS (overrides the global default). */
+  kasseVat?: 0 | 7 | 19;
   source?: "internal" | "ai";
   cookTimeMin: number;
   kcalPerPortion?: number;
