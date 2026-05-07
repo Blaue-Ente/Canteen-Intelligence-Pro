@@ -240,6 +240,16 @@ export interface CleaningTask {
   nameEn?: string;
   area: CleaningArea;
   frequency: CleaningFrequency;
+  /**
+   * For daily tasks: how many completions are required per calendar day.
+   * Defaults to 1 when absent.
+   */
+  timesPerDay?: number;
+  /**
+   * Optional time-of-day slots, e.g. ["08:00", "14:00", "20:00"].
+   * Purely informational — shown as a reminder; does not enforce execution time.
+   */
+  scheduledTimes?: string[];
   /** Optional explicit storage / room target (cross-reference to StorageLocation.id). */
   storageLocationId?: string;
   /** Step-by-step instructions shown when staff opens the task. */
@@ -261,6 +271,12 @@ export interface CleaningCompletion {
   note?: string;
   /** base64 / file URI of optional photo proof. */
   photoUri?: string;
+  /** If this entry was corrected after the fact, the reason for the change. */
+  correctionNote?: string;
+  /** ISO timestamp of the correction. */
+  correctedAt?: string;
+  /** Who made the correction. */
+  correctedBy?: string;
 }
 
 export interface WasteEntry extends AuditFields {

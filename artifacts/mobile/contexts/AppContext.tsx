@@ -68,6 +68,7 @@ type Action =
   | { type: "updateCleaningTask"; task: CleaningTask }
   | { type: "removeCleaningTask"; id: string }
   | { type: "addCleaningCompletion"; completion: CleaningCompletion }
+  | { type: "updateCleaningCompletion"; completion: CleaningCompletion }
   | { type: "removeCleaningCompletion"; id: string }
   | { type: "addWaste"; entry: WasteEntry }
   | { type: "addCatering"; request: CateringRequest }
@@ -221,6 +222,13 @@ function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         cleaningLog: [action.completion, ...state.cleaningLog].slice(0, 2000),
+      };
+    case "updateCleaningCompletion":
+      return {
+        ...state,
+        cleaningLog: state.cleaningLog.map((c) =>
+          c.id === action.completion.id ? action.completion : c,
+        ),
       };
     case "removeCleaningCompletion":
       return {
