@@ -14,6 +14,15 @@ import { apiFetch } from "@/lib/api";
 import { useSubscription } from "@/hooks/useSubscription";
 import { dgeStandardLabel } from "@/lib/dge";
 import { ensurePermissions, rescheduleAll } from "@/lib/notifications";
+import {
+  webPushSupported,
+  requestWebPushPermission,
+  subscribeWebPush,
+  unsubscribeWebPush,
+  updateWebPushPrefs,
+  getExistingSubscription,
+  sendTestWebPush,
+} from "@/lib/webPush";
 import { resetState } from "@/lib/storage";
 import { speakHQ, prewarmTtsCache, primeAudio } from "@/lib/voice";
 import type { DgeStandard, KiosVoice, SubscriptionAddons, SubscriptionTier } from "@/types";
@@ -129,7 +138,42 @@ export default function Settings() {
 
   const update = async (next: typeof prefs) => {
     dispatch({ type: "setNotificationPrefs", prefs: next });
-    if (Platform.OS === "web") return;
+
+    if (Platform.OS === "web") {
+      if (!webPushSupported()) return;
+      setBusy(true);
+      try {
+        if (next.enabled) {
+          // Check if there's already a subscription; if not, request permission first
+          const existing = await getExistingSubscription();
+          if (!existing) {
+            const granted = await requestWebPushPermission();
+            if (!granted) {
+              dispatch({ type: "setNotificationPrefs", prefs: { ...next, enabled: false } });
+              Alert.alert(
+                state.locale === "de" ? "Berechtigung fehlt" : "Permission missing",
+                state.locale === "de"
+                  ? "Bitte Benachrichtigungen im Browser erlauben und erneut versuchen."
+                  : "Please allow notifications in your browser and try again.",
+              );
+              return;
+            }
+            await subscribeWebPush(next, state.locale);
+            // Send a test notification to confirm it works
+            await sendTestWebPush(state.locale).catch(() => {});
+          } else {
+            await updateWebPushPrefs(next, state.locale);
+          }
+        } else {
+          await unsubscribeWebPush();
+        }
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    // Native: iOS / Android
     if (next.enabled) {
       setBusy(true);
       try {
@@ -353,13 +397,17 @@ export default function Settings() {
               <Text style={labelStyle}>{t("enableNotifications")}</Text>
               <Text style={subStyle}>
                 {Platform.OS === "web"
-                  ? state.locale === "de" ? "Nur in der Mobile-App verfügbar." : "Mobile app only."
-                  : state.locale === "de" ? "Tägliche Erinnerungen aktivieren." : "Schedule daily reminders."}
+                  ? state.locale === "de"
+                    ? "Push-Benachrichtigungen im Browser (PWA)."
+                    : "Push notifications in browser (PWA)."
+                  : state.locale === "de"
+                    ? "Tägliche Erinnerungen aktivieren."
+                    : "Schedule daily reminders."}
               </Text>
             </View>
             <Switch
               value={prefs.enabled}
-              disabled={busy || Platform.OS === "web"}
+              disabled={busy}
               onValueChange={(v) => update({ ...prefs, enabled: v })}
               trackColor={{ true: c.primary, false: c.border }}
             />

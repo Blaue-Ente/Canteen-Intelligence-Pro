@@ -10,6 +10,7 @@ import mailRouter from "./mail";
 import tseRouter from "./tse";
 import demoAuthRouter from "./demoAuth";
 import trayScanRouter from "./trayScan";
+import { pushRouter } from "./push";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,6 @@ router.use(rollupRouter);
 router.use(mailRouter);
 router.use(tseRouter);
 router.use(demoAuthRouter);
+router.use(pushRouter);
 
 export default router;

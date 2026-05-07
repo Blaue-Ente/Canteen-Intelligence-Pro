@@ -15,6 +15,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
+import { registerServiceWorker } from "@/lib/webPush";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppProvider, useApp } from "@/contexts/AppContext";
@@ -161,6 +162,13 @@ export default function RootLayout() {
     Inter_600SemiBold,
     Inter_700Bold,
   });
+
+  // Register the service worker once on web so push notifications can work
+  useEffect(() => {
+    if (Platform.OS === "web") {
+      registerServiceWorker().catch(() => {});
+    }
+  }, []);
 
   useEffect(() => {
     if (fontsLoaded || fontError) {

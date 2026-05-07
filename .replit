@@ -52,6 +52,8 @@ externalPort = 3001
 
 [userenv.shared]
 CLERK_SECRET_KEY_PROD = "sk_live_FgNsp1cwxcEyFeDdN0AAJGRdqcMvTu7FcenErALhR6"
+VAPID_PUBLIC_KEY = "BDJeuv1MThPZN5-wjsrixUV7Re_icAouVM2ot82hqZ91o4oHruhY0LdtsEW6yFOGjJ7EpmoIezLUoeEmL6ANduU"
+VAPID_PRIVATE_KEY = "Cbpq00HevAvk8qlowSEPE7z9wvSlT0nqVSGlcEg7XGI"
 
 [userenv.production]
 CLERK_PUBLISHABLE_KEY_PROD = "pk_live_Y2xlcmsuYXBwLmtpdGNoZW5vcy5kZSQ"
