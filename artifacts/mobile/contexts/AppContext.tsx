@@ -147,7 +147,9 @@ type Action =
   | { type: "addQueuedSale"; sale: QueuedSale }
   | { type: "updateQueuedSale"; sale: QueuedSale }
   | { type: "removeQueuedSale"; id: string }
-  | { type: "clearQueuedSales" };
+  | { type: "clearQueuedSales" }
+  // ---- T023: POS Terminal ----
+  | { type: "setTerminalConfig"; config: import("@/types").PosTerminalConfig };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -499,6 +501,9 @@ function reducer(state: AppState, action: Action): AppState {
       };
     case "clearQueuedSales":
       return { ...state, queuedSales: [] };
+    // ---- T023 ----
+    case "setTerminalConfig":
+      return { ...state, terminalConfig: action.config };
     default:
       return state;
   }
@@ -607,6 +612,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           // ---- T021 ----
           traySessions: pick("traySessions"),
           queuedSales: pick("queuedSales"),
+          // ---- T023 ----
+          terminalConfig: pick("terminalConfig"),
         };
         dispatch({ type: "hydrate", state: merged });
       } else {

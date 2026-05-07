@@ -102,8 +102,29 @@ export interface SaleEntry extends AuditFields {
   /** Actual portion size served (grams). Defaults to recipe.portionGrams when absent. */
   portionGrams?: number;
   source?: "manual" | "zettle" | "ai";
+  /** Payment method used at checkout. */
+  paymentMethod?: "cash" | "card" | "other";
   /** When mirrored from a SignedSale: the TSE Belegnummer, for audit reconciliation. */
   tseTxNumber?: number;
+}
+
+// ─── T023: POS Terminal ───────────────────────────────────────────────────────
+
+/**
+ * Configuration for an external card payment terminal.
+ *
+ *  - "none"   — no terminal, cash-only register.
+ *  - "sumup"  — SumUp Solo / Air / Air Pro via deep-link SDK.
+ *               Opens sumupmerchant://pay and waits for cashier confirmation.
+ *  - "manual" — generic terminal (Adyen, Verifone, Ingenico …).
+ *               Cashier confirms on-screen that the card payment succeeded.
+ */
+export interface PosTerminalConfig {
+  type: "none" | "sumup" | "manual";
+  /** SumUp affiliate key from the SumUp Partner dashboard. */
+  sumupAffiliateKey?: string;
+  /** Human-readable label shown to the cashier (e.g. "Kasse 1 Terminal"). */
+  label?: string;
 }
 
 export interface Supplier {
@@ -622,6 +643,9 @@ export interface AppState {
   traySessions: TraySession[];
   /** Offline sale queue — sales waiting to be synced when connectivity returns. */
   queuedSales: QueuedSale[];
+  // ---- T023: POS Terminal ----
+  /** External card payment terminal configuration (SumUp / manual / none). */
+  terminalConfig?: PosTerminalConfig;
 }
 
 // ─── T021: AI Tray Scanner + Time Machine ───────────────────────────────────

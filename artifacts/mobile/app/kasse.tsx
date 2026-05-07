@@ -30,6 +30,7 @@
 
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import * as Print from "expo-print";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as FileSystem from "expo-file-system/legacy";
@@ -39,6 +40,7 @@ import {
   Alert,
   Animated,
   Image,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -61,8 +63,9 @@ import type { DishCategory, Recipe, TseConfig } from "@/types";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type VatPct = 0 | 7 | 19;
-type ActiveView = "pos" | "receipts" | "closing" | "reports";
+type ActiveView = "pos" | "receipts" | "closing" | "reports" | "terminal";
 type ReportTab = "day" | "article" | "group" | "search";
+type PayMethod = "cash" | "card";
 
 interface CartLine {
   recipeId: string;
@@ -110,6 +113,177 @@ const CATEGORIES: Array<DishCategory | "all"> = [
 
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
+}
+
+// ─── T023: Kassenbon HTML builder ────────────────────────────────────────────
+
+interface KassenbonParams {
+  company: import("@/types").CompanyProfile | undefined;
+  kassennummer: string;
+  belegnummer: number;
+  cartLines: CartLine[];
+  recipes: import("@/types").Recipe[];
+  total: number;
+  date: Date;
+  paymentMethod: PayMethod;
+  isStub: boolean;
+  isDe: boolean;
+}
+
+function buildKassenbonHtml(p: KassenbonParams): string {
+  const fmt = (v: number) =>
+    v.toLocaleString("de-DE", { style: "currency", currency: "EUR" });
+
+  const pad = (n: number, len = 2) => String(n).padStart(len, "0");
+  const dateStr = `${pad(p.date.getDate())}.${pad(p.date.getMonth() + 1)}.${p.date.getFullYear()}`;
+  const timeStr = `${pad(p.date.getHours())}:${pad(p.date.getMinutes())} Uhr`;
+
+  // Line items
+  const itemRows = p.cartLines
+    .map((line) => {
+      const r = p.recipes.find((x) => x.id === line.recipeId);
+      if (!r) return "";
+      const unit = r.sellPrice ?? r.basePrice ?? 0;
+      const lineTotal = unit * line.qty;
+      return `
+        <tr>
+          <td class="name">${escapeHtml(r.name)}</td>
+          <td class="num">${line.qty}&times;</td>
+          <td class="num">${fmt(unit)}</td>
+          <td class="num bold">${fmt(lineTotal)}</td>
+          <td class="vat">${line.vat}%</td>
+        </tr>`;
+    })
+    .join("");
+
+  // VAT breakdown
+  const vatMap = new Map<number, { net: number; tax: number; gross: number }>();
+  for (const line of p.cartLines) {
+    const r = p.recipes.find((x) => x.id === line.recipeId);
+    if (!r) continue;
+    const unit = r.sellPrice ?? r.basePrice ?? 0;
+    const gross = unit * line.qty;
+    const net = gross / (1 + line.vat / 100);
+    const tax = gross - net;
+    const cur = vatMap.get(line.vat) ?? { net: 0, tax: 0, gross: 0 };
+    vatMap.set(line.vat, { net: cur.net + net, tax: cur.tax + tax, gross: cur.gross + gross });
+  }
+  const vatRows = [...vatMap.entries()]
+    .map(
+      ([pct, v]) =>
+        `<tr>
+          <td>MwSt ${pct}%</td>
+          <td class="num">${fmt(v.net)}</td>
+          <td class="num">${fmt(v.tax)}</td>
+          <td class="num bold">${fmt(v.gross)}</td>
+        </tr>`,
+    )
+    .join("");
+
+  const payLabel = p.paymentMethod === "card"
+    ? (p.isDe ? "EC-/Kreditkarte" : "Card")
+    : (p.isDe ? "Bargeld" : "Cash");
+
+  const companyName = p.company?.name ?? "KItchenOS Kasse";
+  const companyAddr = p.company?.address ?? "";
+  const taxId = p.company?.taxId ? `St.-Nr.: ${p.company.taxId}` : "";
+
+  const stubBanner = p.isStub
+    ? `<div class="stub">${p.isDe ? "DEMO – kein steuerlicher Beleg" : "DEMO — not a valid tax receipt"}</div>`
+    : "";
+
+  return `<!doctype html>
+<html lang="${p.isDe ? "de" : "en"}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${p.isDe ? "Kassenbeleg" : "Receipt"} #${p.belegnummer}</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:"Courier New",Courier,monospace;font-size:13px;color:#111;
+         max-width:320px;margin:0 auto;padding:16px 12px;line-height:1.5}
+    h1{font-size:16px;text-align:center;margin-bottom:2px}
+    .center{text-align:center}
+    .muted{color:#555;font-size:11px}
+    .divider{border:none;border-top:1px dashed #555;margin:10px 0}
+    table{width:100%;border-collapse:collapse}
+    .num{text-align:right}
+    .vat{text-align:right;color:#777;font-size:11px}
+    .name{max-width:120px;word-break:break-word}
+    .bold{font-weight:bold}
+    .total-row{font-size:18px;font-weight:bold;margin:8px 0}
+    .vat-label{font-size:11px;color:#555;margin-bottom:4px}
+    .stub{border:1px dashed #c00;color:#c00;padding:6px 10px;text-align:center;
+          font-size:11px;margin-top:12px;border-radius:4px}
+    .footer{text-align:center;margin-top:14px;font-size:12px}
+    @media print{body{max-width:100%}}
+  </style>
+</head>
+<body>
+  <h1>${escapeHtml(companyName)}</h1>
+  ${companyAddr ? `<p class="center muted">${escapeHtml(companyAddr)}</p>` : ""}
+  ${taxId ? `<p class="center muted">${escapeHtml(taxId)}</p>` : ""}
+
+  <hr class="divider">
+
+  <table>
+    <tr><td>${p.isDe ? "Datum" : "Date"}</td><td class="num">${dateStr}</td></tr>
+    <tr><td>${p.isDe ? "Uhrzeit" : "Time"}</td><td class="num">${timeStr}</td></tr>
+    <tr><td>${p.isDe ? "Kasse" : "Register"}</td><td class="num">${escapeHtml(p.kassennummer)}</td></tr>
+    <tr><td>${p.isDe ? "Beleg-Nr." : "Receipt No."}</td><td class="num">${p.belegnummer}</td></tr>
+  </table>
+
+  <hr class="divider">
+
+  <table>
+    <thead>
+      <tr>
+        <th class="name" style="text-align:left">${p.isDe ? "Artikel" : "Item"}</th>
+        <th class="num">${p.isDe ? "Mge" : "Qty"}</th>
+        <th class="num">${p.isDe ? "EP" : "Unit"}</th>
+        <th class="num">${p.isDe ? "Gesamt" : "Total"}</th>
+        <th class="vat">%</th>
+      </tr>
+    </thead>
+    <tbody>${itemRows}</tbody>
+  </table>
+
+  <hr class="divider">
+
+  <table class="total-row">
+    <tr>
+      <td>${p.isDe ? "GESAMT" : "TOTAL"}</td>
+      <td class="num">${fmt(p.total)}</td>
+    </tr>
+  </table>
+  <table>
+    <tr>
+      <td class="muted">${p.isDe ? "Zahlungsart" : "Payment"}</td>
+      <td class="num">${payLabel}</td>
+    </tr>
+  </table>
+
+  <hr class="divider">
+
+  <p class="vat-label">${p.isDe ? "MwSt-Aufschlüsselung" : "VAT breakdown"}</p>
+  <table>
+    <thead>
+      <tr>
+        <th style="text-align:left">MwSt</th>
+        <th class="num">${p.isDe ? "Netto" : "Net"}</th>
+        <th class="num">${p.isDe ? "Steuer" : "Tax"}</th>
+        <th class="num">${p.isDe ? "Brutto" : "Gross"}</th>
+      </tr>
+    </thead>
+    <tbody>${vatRows}</tbody>
+  </table>
+
+  ${stubBanner}
+
+  <hr class="divider">
+  <p class="footer">${p.isDe ? "Vielen Dank für Ihren Besuch!" : "Thank you for your visit!"}</p>
+</body>
+</html>`;
 }
 
 /**
@@ -203,6 +377,10 @@ function KassePos() {
   const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
   const [reportTab, setReportTab] = useState<ReportTab>("day");
   const [reportSearch, setReportSearch] = useState("");
+
+  // ── T023: AirPrint + POS Terminal
+  const terminalCfg = state.terminalConfig;
+  const hasTerminal = !!(terminalCfg?.type && terminalCfg.type !== "none");
 
   // Phone cart drawer animation
   const cartOpen = useRef(false);
@@ -324,8 +502,64 @@ function KassePos() {
     }).start();
   };
 
+  // ── T023: AirPrint — print Kassenbon for the given cart snapshot
+  const printKassenbon = useCallback(
+    async (cartSnapshot: CartLine[], total: number, method: PayMethod, belegnummer: number) => {
+      const html = buildKassenbonHtml({
+        company: state.companyProfile,
+        kassennummer: activeTseConfig?.kassennummer ?? "K-001",
+        belegnummer,
+        cartLines: cartSnapshot,
+        recipes: state.recipes,
+        total,
+        date: new Date(),
+        paymentMethod: method,
+        isStub: stubProvider,
+        isDe,
+      });
+      try {
+        await Print.printAsync({ html });
+      } catch (err) {
+        Alert.alert(
+          isDe ? "Druckfehler" : "Print error",
+          err instanceof Error ? err.message : "unknown",
+        );
+      }
+    },
+    [state.companyProfile, state.recipes, activeTseConfig, stubProvider, isDe],
+  );
+
+  // ── T023: Print a single already-booked receipt
+  const printSingleReceipt = useCallback(
+    async (s: import("@/types").SignedSale) => {
+      const r = state.recipes.find((x) => x.id === s.recipeId);
+      const fakeLine: CartLine = { recipeId: s.recipeId, qty: s.sold ?? 1, vat: (s.vatPct ?? 7) as VatPct };
+      const html = buildKassenbonHtml({
+        company: state.companyProfile,
+        kassennummer: activeTseConfig?.kassennummer ?? "K-001",
+        belegnummer: s.tseTxNumber ?? 0,
+        cartLines: [fakeLine],
+        recipes: r ? [r] : [],
+        total: s.revenue,
+        date: new Date(s.tseTime ?? s.date),
+        paymentMethod: (s.paymentMethod as PayMethod | undefined) ?? "cash",
+        isStub: stubProvider,
+        isDe,
+      });
+      try {
+        await Print.printAsync({ html });
+      } catch (err) {
+        Alert.alert(
+          isDe ? "Druckfehler" : "Print error",
+          err instanceof Error ? err.message : "unknown",
+        );
+      }
+    },
+    [state.companyProfile, state.recipes, activeTseConfig, stubProvider, isDe],
+  );
+
   // ── Sign all cart lines sequentially (per-location prior list → gap-free Belegnummern)
-  const pay = async () => {
+  const pay = async (method: PayMethod = "cash") => {
     if (cart.length === 0) return;
     if (!cfgValid) {
       Alert.alert(
@@ -337,10 +571,62 @@ function KassePos() {
       return;
     }
 
+    // ── T023: Terminal handling BEFORE signing
+    if (method === "card") {
+      if (terminalCfg?.type === "sumup") {
+        const key = terminalCfg.sumupAffiliateKey ?? "";
+        const amountStr = cartTotal.toFixed(2);
+        const sumupUrl =
+          `sumupmerchant://pay/1.0?affiliate-key=${encodeURIComponent(key)}` +
+          `&amount=${amountStr}&currency=EUR&title=KItchenOS`;
+        const canOpen = await Linking.canOpenURL(sumupUrl).catch(() => false);
+        if (!canOpen) {
+          Alert.alert(
+            isDe ? "SumUp nicht gefunden" : "SumUp not found",
+            isDe
+              ? "Bitte die SumUp-App installieren und konfigurieren."
+              : "Please install and configure the SumUp app.",
+          );
+          return;
+        }
+        await Linking.openURL(sumupUrl);
+        const confirmed = await new Promise<boolean>((resolve) => {
+          Alert.alert(
+            isDe ? "Kartenzahlung abgeschlossen?" : "Card payment complete?",
+            isDe
+              ? "Hat die Zahlung auf dem SumUp-Terminal funktioniert?"
+              : "Did the payment succeed on the SumUp terminal?",
+            [
+              { text: isDe ? "Ja, buchen" : "Yes, book it", onPress: () => resolve(true) },
+              { text: isDe ? "Abbrechen" : "Cancel", style: "cancel", onPress: () => resolve(false) },
+            ],
+          );
+        });
+        if (!confirmed) return;
+      } else if (terminalCfg?.type === "manual") {
+        const confirmed = await new Promise<boolean>((resolve) => {
+          Alert.alert(
+            isDe ? "Terminal-Zahlung" : "Card terminal",
+            isDe
+              ? `${formatEUR(cartTotal)} — Karte bitte am Terminal einlesen, dann bestätigen.`
+              : `${formatEUR(cartTotal)} — Please process the card on the terminal, then confirm.`,
+            [
+              { text: isDe ? "Zahlung bestätigt" : "Payment confirmed", onPress: () => resolve(true) },
+              { text: isDe ? "Abbrechen" : "Cancel", style: "cancel", onPress: () => resolve(false) },
+            ],
+          );
+        });
+        if (!confirmed) return;
+      }
+    }
+
     setSigning(true);
     // Use ONLY this location's prior sales to ensure a gap-free per-register sequence.
     const priorForLocation = [...locationAllSales];
     let lastConfig = { ...activeTseConfig! };
+    // Snapshot cart + total before clearing
+    const cartSnapshot = [...cart];
+    const totalSnapshot = cartTotal;
 
     try {
       for (const line of cart) {
@@ -358,6 +644,7 @@ function KassePos() {
             sold: line.qty,
             revenue,
             source: "manual",
+            paymentMethod: method,
             locationId: activeLocationId === "primary" ? undefined : activeLocationId,
             ...author,
           },
@@ -382,26 +669,36 @@ function KassePos() {
         config: lastConfig,
       });
 
-      const count = cart.length;
-      Alert.alert(
-        isDe ? "Zahlung erfasst" : "Payment recorded",
-        [
-          `${count} ${isDe ? (count === 1 ? "Position" : "Positionen") : (count === 1 ? "item" : "items")}`,
-          formatEUR(cartTotal),
-          activeLocation ? `Kasse: ${activeLocation.name}` : "",
-          stubProvider
-            ? (isDe ? "\nStub-Modus — keine Rechtsverbindlichkeit." : "\nStub mode — not legally binding.")
-            : "",
-        ]
-          .filter(Boolean)
-          .join("  ·  "),
-      );
+      const count = cartSnapshot.length;
+      const nextBelegnummer = priorForLocation.length;
 
       clearCart();
       if (!isTablet) {
         cartOpen.current = false;
         Animated.spring(cartAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 12 }).start();
       }
+
+      // ── T023: Offer AirPrint after payment
+      Alert.alert(
+        isDe ? "Zahlung erfasst" : "Payment recorded",
+        [
+          `${count} ${isDe ? (count === 1 ? "Position" : "Positionen") : (count === 1 ? "item" : "items")}`,
+          formatEUR(totalSnapshot),
+          method === "card" ? (isDe ? "💳 Karte" : "💳 Card") : (isDe ? "💵 Bargeld" : "💵 Cash"),
+          stubProvider
+            ? (isDe ? "Stub-Modus." : "Stub mode.")
+            : "",
+        ]
+          .filter(Boolean)
+          .join("  ·  "),
+        [
+          {
+            text: isDe ? "🖨 Beleg drucken" : "🖨 Print receipt",
+            onPress: () => printKassenbon(cartSnapshot, totalSnapshot, method, nextBelegnummer),
+          },
+          { text: isDe ? "Fertig" : "Done", style: "cancel" },
+        ],
+      );
     } catch (e) {
       Alert.alert(
         isDe ? "TSE-Fehler" : "TSE error",
@@ -654,38 +951,70 @@ function KassePos() {
           </Text>
         </View>
 
-        <Pressable
-          onPress={pay}
-          disabled={cart.length === 0 || signing}
-          style={({ pressed }) => ({
-            backgroundColor: cart.length === 0 || signing ? P.surfaceHigh : P.primary,
-            borderRadius: 14,
-            paddingVertical: 18,
-            alignItems: "center",
-            opacity: pressed ? 0.85 : 1,
-          })}
-        >
-          <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
-            <Feather
-              name="credit-card"
-              size={20}
-              color={cart.length === 0 || signing ? P.fgMuted : P.primaryFg}
-            />
-            <Text
-              style={{
-                color: cart.length === 0 || signing ? P.fgMuted : P.primaryFg,
-                fontFamily: "Inter_700Bold",
-                fontSize: 17,
-              }}
+        {/* ── T023: Cash + Card payment buttons ── */}
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          {/* Bargeld button */}
+          <Pressable
+            onPress={() => pay("cash")}
+            disabled={cart.length === 0 || signing}
+            style={({ pressed }) => ({
+              flex: hasTerminal ? 1 : undefined,
+              flexGrow: hasTerminal ? 1 : undefined,
+              width: hasTerminal ? undefined : "100%",
+              backgroundColor: cart.length === 0 || signing ? P.surfaceHigh : P.primary,
+              borderRadius: 14,
+              paddingVertical: 18,
+              alignItems: "center",
+              opacity: pressed ? 0.85 : 1,
+            })}
+          >
+            <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+              <Text style={{ fontSize: 16 }}>💵</Text>
+              <Text
+                style={{
+                  color: cart.length === 0 || signing ? P.fgMuted : P.primaryFg,
+                  fontFamily: "Inter_700Bold",
+                  fontSize: hasTerminal ? 15 : 17,
+                }}
+              >
+                {signing
+                  ? (isDe ? "Signiere…" : "Signing…")
+                  : cart.length > 0
+                    ? `${isDe ? "Bar" : "Cash"}  ${formatEUR(cartTotal)}`
+                    : (isDe ? "Bargeld" : "Cash")}
+              </Text>
+            </View>
+          </Pressable>
+
+          {/* Karte button — shown only when a terminal is configured */}
+          {hasTerminal && (
+            <Pressable
+              onPress={() => pay("card")}
+              disabled={cart.length === 0 || signing}
+              style={({ pressed }) => ({
+                flex: 1,
+                backgroundColor: cart.length === 0 || signing ? P.surfaceHigh : "#1e40af",
+                borderRadius: 14,
+                paddingVertical: 18,
+                alignItems: "center",
+                opacity: pressed ? 0.85 : 1,
+              })}
             >
-              {signing
-                ? (isDe ? "Signiere…" : "Signing…")
-                : cart.length > 0
-                  ? `${isDe ? "Zahlen" : "Pay"}  ${formatEUR(cartTotal)}`
-                  : (isDe ? "Zahlen" : "Pay")}
-            </Text>
-          </View>
-        </Pressable>
+              <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+                <Text style={{ fontSize: 16 }}>💳</Text>
+                <Text
+                  style={{
+                    color: cart.length === 0 || signing ? P.fgMuted : "#fff",
+                    fontFamily: "Inter_700Bold",
+                    fontSize: 15,
+                  }}
+                >
+                  {isDe ? "Karte" : "Card"}
+                </Text>
+              </View>
+            </Pressable>
+          )}
+        </View>
 
         {!cfgValid && (
           <Text style={{ color: P.fgMuted, fontSize: 11, textAlign: "center" }}>
@@ -992,6 +1321,7 @@ function KassePos() {
         locationSales.map((s) => {
           const r = state.recipes.find((x) => x.id === s.recipeId);
           const accent = P.catColor[r?.category ?? "all"] ?? P.primary;
+          const isCard = s.paymentMethod === "card";
           return (
             <View
               key={s.id}
@@ -1024,18 +1354,211 @@ function KassePos() {
                   {r?.name ?? s.recipeId}
                 </Text>
                 <Text style={{ color: P.fgMuted, fontSize: 11, marginTop: 2 }}>
-                  {s.sold} × {formatEUR(r?.sellPrice ?? r?.basePrice ?? 0)}  ·  MwSt {s.vatPct ?? 7}%
+                  {s.sold} × {formatEUR(r?.sellPrice ?? r?.basePrice ?? 0)}
+                  {"  ·  MwSt "}{s.vatPct ?? 7}%
+                  {isCard ? "  ·  💳" : "  ·  💵"}
                 </Text>
               </View>
               <Text style={{ color: P.primary, fontFamily: "Inter_700Bold", fontSize: 15 }}>
                 {formatEUR(s.revenue)}
               </Text>
+              {/* T023: Per-receipt AirPrint button */}
+              <Pressable
+                onPress={() => printSingleReceipt(s)}
+                style={({ pressed }) => ({
+                  padding: 8,
+                  borderRadius: 8,
+                  backgroundColor: pressed ? P.surfaceHigh : "transparent",
+                })}
+                hitSlop={8}
+              >
+                <Feather name="printer" size={16} color={P.fgMuted} />
+              </Pressable>
             </View>
           );
         })
       )}
     </ScrollView>
   );
+
+  // ─── Render: terminal config (T023) ──────────────────────────────────────
+
+  const renderTerminal = () => {
+    const cfg = state.terminalConfig ?? { type: "none" as const };
+    const TYPES = [
+      { id: "none" as const, label: isDe ? "Kein Terminal (nur Bar)" : "No terminal (cash only)", icon: "x-circle" },
+      { id: "sumup" as const, label: "SumUp (Solo / Air / Air Pro)", icon: "wifi" },
+      { id: "manual" as const, label: isDe ? "Manuelles Terminal" : "Manual terminal", icon: "credit-card" },
+    ] as const;
+
+    return (
+      <ScrollView
+        style={{ flex: 1, backgroundColor: P.bg }}
+        contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: insets.bottom + 60 }}
+      >
+        <Text style={{ color: P.fg, fontFamily: "Inter_700Bold", fontSize: 16 }}>
+          {isDe ? "POS-Terminal konfigurieren" : "Configure POS Terminal"}
+        </Text>
+        <Text style={{ color: P.fgMuted, fontSize: 12, marginTop: -8 }}>
+          {isDe
+            ? "Wähle ein Terminal für Kartenzahlungen. Der 💳-Knopf erscheint im Warenkorb, sobald ein Terminal aktiviert ist."
+            : "Choose a terminal for card payments. The 💳 button appears in the cart once a terminal is enabled."}
+        </Text>
+
+        {/* Type selector */}
+        {TYPES.map((opt) => {
+          const active = cfg.type === opt.id;
+          return (
+            <Pressable
+              key={opt.id}
+              onPress={() =>
+                dispatch({
+                  type: "setTerminalConfig",
+                  config: { ...cfg, type: opt.id },
+                })
+              }
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 14,
+                backgroundColor: active ? P.primary + "22" : P.surface,
+                borderRadius: 14,
+                padding: 16,
+                borderWidth: 1.5,
+                borderColor: active ? P.primary : P.border,
+                opacity: pressed ? 0.8 : 1,
+              })}
+            >
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  backgroundColor: active ? P.primary : P.surfaceHigh,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Feather name={opt.icon as any} size={18} color={active ? P.primaryFg : P.fgMuted} />
+              </View>
+              <Text
+                style={{
+                  flex: 1,
+                  color: active ? P.primary : P.fg,
+                  fontFamily: active ? "Inter_700Bold" : "Inter_500Medium",
+                  fontSize: 14,
+                }}
+              >
+                {opt.label}
+              </Text>
+              {active && <Feather name="check-circle" size={18} color={P.primary} />}
+            </Pressable>
+          );
+        })}
+
+        {/* SumUp affiliate key input */}
+        {cfg.type === "sumup" && (
+          <View style={{ backgroundColor: P.surface, borderRadius: 14, padding: 16, gap: 10 }}>
+            <Text style={{ color: P.fg, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
+              SumUp Affiliate-Key
+            </Text>
+            <Text style={{ color: P.fgMuted, fontSize: 11 }}>
+              {isDe
+                ? "Aus dem SumUp-Dashboard unter Entwickler → Affiliate-Key."
+                : "From the SumUp Dashboard under Developers → Affiliate Key."}
+            </Text>
+            <TextInput
+              value={cfg.sumupAffiliateKey ?? ""}
+              onChangeText={(v) =>
+                dispatch({
+                  type: "setTerminalConfig",
+                  config: { ...cfg, sumupAffiliateKey: v },
+                })
+              }
+              placeholder="sup_afk_…"
+              placeholderTextColor={P.fgMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={{
+                backgroundColor: P.surfaceHigh,
+                color: P.fg,
+                fontFamily: "Inter_400Regular",
+                fontSize: 13,
+                borderRadius: 10,
+                padding: 12,
+                borderWidth: 1,
+                borderColor: P.border,
+              }}
+            />
+          </View>
+        )}
+
+        {/* Optional label for any terminal */}
+        {cfg.type !== "none" && (
+          <View style={{ backgroundColor: P.surface, borderRadius: 14, padding: 16, gap: 10 }}>
+            <Text style={{ color: P.fg, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
+              {isDe ? "Bezeichnung (optional)" : "Label (optional)"}
+            </Text>
+            <TextInput
+              value={cfg.label ?? ""}
+              onChangeText={(v) =>
+                dispatch({
+                  type: "setTerminalConfig",
+                  config: { ...cfg, label: v },
+                })
+              }
+              placeholder={isDe ? "z. B. Kasse 1 Terminal" : "e.g. Register 1 Terminal"}
+              placeholderTextColor={P.fgMuted}
+              style={{
+                backgroundColor: P.surfaceHigh,
+                color: P.fg,
+                fontFamily: "Inter_400Regular",
+                fontSize: 13,
+                borderRadius: 10,
+                padding: 12,
+                borderWidth: 1,
+                borderColor: P.border,
+              }}
+            />
+          </View>
+        )}
+
+        {/* AirPrint test button */}
+        <ActionButton
+          icon="printer"
+          label={isDe ? "Testbeleg drucken (AirPrint)" : "Print test receipt (AirPrint)"}
+          onPress={() =>
+            printKassenbon(
+              cart.length > 0 ? cart : [],
+              cart.length > 0 ? cartTotal : 0,
+              "cash",
+              locationSales.length + 1,
+            )
+          }
+        />
+
+        {cfg.type === "sumup" && (
+          <View
+            style={{
+              backgroundColor: P.surface,
+              borderRadius: 14,
+              padding: 16,
+              gap: 8,
+            }}
+          >
+            <Text style={{ color: P.fg, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
+              {isDe ? "SumUp-Integration" : "SumUp Integration"}
+            </Text>
+            <Text style={{ color: P.fgMuted, fontSize: 12, lineHeight: 18 }}>
+              {isDe
+                ? "Beim Tippen auf 💳 öffnet KItchenOS automatisch die SumUp-App mit dem Rechnungsbetrag. Nach der Zahlung bestätigst du im Dialog, damit der Beleg gebucht wird."
+                : "When you tap 💳, KItchenOS opens the SumUp app with the exact amount. After payment, confirm in the dialog to book the receipt."}
+            </Text>
+          </View>
+        )}
+      </ScrollView>
+    );
+  };
 
   // ─── Render: closing / Z-Bon ──────────────────────────────────────────────
 
@@ -1503,18 +2026,20 @@ function KassePos() {
                 gap: 2,
               }}
             >
-              {(["pos", "receipts", "closing", "reports"] as ActiveView[]).map((v) => {
+              {(["pos", "receipts", "closing", "reports", "terminal"] as ActiveView[]).map((v) => {
                 const label: Record<ActiveView, string> = {
                   pos: "POS",
                   receipts: isDe ? "Belege" : "Receipts",
                   closing: isDe ? "Abschluss" : "Closing",
                   reports: isDe ? "Berichte" : "Reports",
+                  terminal: isDe ? "Terminal" : "Terminal",
                 };
                 const icon: Record<ActiveView, string> = {
                   pos: "grid",
                   receipts: "list",
                   closing: "printer",
                   reports: "bar-chart-2",
+                  terminal: "credit-card",
                 };
                 const active = activeView === v;
                 return (
@@ -1723,6 +2248,8 @@ function KassePos() {
           renderReceipts()
         ) : activeView === "reports" ? (
           renderReports()
+        ) : activeView === "terminal" ? (
+          renderTerminal()
         ) : (
           renderClosing()
         )}
