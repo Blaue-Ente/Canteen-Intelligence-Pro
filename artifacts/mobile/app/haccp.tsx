@@ -6,7 +6,7 @@ import { Alert, Linking, Platform, Pressable, ScrollView, Text, View } from "rea
 import { RequiresAddon } from "@/components/RequiresAddon";
 import { Badge, Button, Card, Chip, EmptyState, Field, SectionHeader } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
-import { useAuthor } from "@/contexts/AuthContext";
+import { useAuthCtx, useAuthor } from "@/contexts/AuthContext";
 import { useBleThermometer } from "@/hooks/useBleThermometer";
 import { useColors } from "@/hooks/useColors";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -77,6 +77,7 @@ const LEGAL_DOCS = [
 
 export default function Haccp() {
   const { state, dispatch, newId } = useApp();
+  const { currentMembership } = useAuthCtx();
   const t = useT();
   const c = useColors();
   const router = useRouter();
@@ -338,6 +339,42 @@ export default function Haccp() {
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 60 }}>
+        {/* Account indicator — always shown so staff can verify which tenant is active */}
+        {currentMembership && (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              backgroundColor: c.card,
+              borderWidth: 1,
+              borderColor: c.border,
+              borderRadius: c.radius,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+            }}
+          >
+            <View
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 4,
+                backgroundColor: "#22c55e",
+              }}
+            />
+            <Text style={{ color: c.foreground, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
+              {currentMembership.orgName}
+            </Text>
+            <Text style={{ color: c.mutedForeground, fontSize: 12 }}>
+              · {currentMembership.displayName}
+            </Text>
+            <View style={{ flex: 1 }} />
+            <Text style={{ color: c.mutedForeground, fontSize: 10 }}>
+              {isDe ? "Angemeldet" : "Signed in"}
+            </Text>
+          </View>
+        )}
+
         {/* PWA install shortcut — web only */}
         {Platform.OS === "web" && (
           <Pressable

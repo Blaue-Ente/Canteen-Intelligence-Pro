@@ -54,7 +54,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { FullModeOnly } from "@/components/FullModeOnly";
 import { useApp } from "@/contexts/AppContext";
-import { useAuthor } from "@/contexts/AuthContext";
+import { useAuthCtx, useAuthor } from "@/contexts/AuthContext";
 import { formatEUR, mulMoney, sumMoney } from "@/lib/money";
 import { sharePdf } from "@/lib/pdf";
 import { buildZBon, exportDsfinvk, signSale } from "@/lib/tse";
@@ -334,6 +334,7 @@ export default function Kasse() {
 function KassePos() {
   const { state, dispatch, newId } = useApp();
   const author = useAuthor();
+  const { currentMembership } = useAuthCtx();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
@@ -2295,6 +2296,25 @@ function KassePos() {
                 {isDe ? "Heute" : "Today"}:{" "}
                 {locationSales.length} {isDe ? "Belege" : "receipts"}  ·  {formatEUR(todayTotal)}
               </Text>
+              {/* Account indicator — always visible so staff knows which tenant is active */}
+              {currentMembership && (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 3 }}>
+                  <View
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: 3,
+                      backgroundColor: P.success ?? "#22c55e",
+                    }}
+                  />
+                  <Text style={{ color: P.primary, fontSize: 10, fontFamily: "Inter_600SemiBold" }}>
+                    {currentMembership.orgName}
+                  </Text>
+                  <Text style={{ color: P.fgMuted, fontSize: 10 }}>
+                    · {currentMembership.displayName}
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* View switcher */}
