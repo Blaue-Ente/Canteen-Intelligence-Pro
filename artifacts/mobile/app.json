@@ -23,7 +23,12 @@
     },
     "web": {
       "bundler": "metro",
-      "output": "single"
+      "output": "single",
+      "favicon": "./assets/images/kitchenos-logo.png",
+      "name": "KitchenOS",
+      "shortName": "KitchenOS",
+      "themeColor": "#f59e0b",
+      "backgroundColor": "#0a0a0b"
     },
     "plugins": [
       "expo-router",

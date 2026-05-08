@@ -3,7 +3,7 @@ self.addEventListener("push", (event) => {
   const data = event.data?.json() ?? {};
   const title = data.title || "KItchenOS";
   const body  = data.body  || "";
-  const icon  = data.icon  || "/app/assets/images/icon.png";
+  const icon  = data.icon  || "/app/kitchenos-logo.png";
   const url   = data.url   || "/app/";
 
   // Notify any open app window so Kios can speak the alert
@@ -19,7 +19,7 @@ self.addEventListener("push", (event) => {
   const showBanner = self.registration.showNotification(title, {
     body,
     icon,
-    badge: "/app/assets/images/icon.png",
+    badge: "/app/kitchenos-logo.png",
     data: { url },
     vibrate: [200, 100, 200],
   });

@@ -1301,6 +1301,23 @@ function KassePos() {
           <Feather name={gridCompact ? "grid" : "menu"} size={15} color={gridCompact ? P.primary : P.fgMuted} />
         </Pressable>
 
+        {/* PWA install shortcut — web only */}
+        {Platform.OS === "web" && (
+          <Pressable
+            onPress={() => Linking.openURL("/app/kasse-pwa.html")}
+            style={{
+              padding: 9,
+              borderRadius: 10,
+              backgroundColor: P.surfaceHigh,
+              borderWidth: 1,
+              borderColor: P.border,
+            }}
+            hitSlop={6}
+          >
+            <Feather name="share" size={15} color={P.fgMuted} />
+          </Pressable>
+        )}
+
         {/* Artikel verwalten (+) button — opens persistent article management */}
         <Pressable
           onPress={() => setShowArtikelVerwaltung(true)}

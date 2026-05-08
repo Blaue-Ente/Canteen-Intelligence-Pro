@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { Alert, Linking, Platform, Pressable, ScrollView, Text, View } from "react-native";
 
 import { RequiresAddon } from "@/components/RequiresAddon";
 import { Badge, Button, Card, Chip, EmptyState, Field, SectionHeader } from "@/components/ui";
@@ -338,6 +338,29 @@ export default function Haccp() {
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 60 }}>
+        {/* PWA install shortcut — web only */}
+        {Platform.OS === "web" && (
+          <Pressable
+            onPress={() => Linking.openURL("/app/haccp-pwa.html")}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 10,
+              backgroundColor: c.card,
+              borderWidth: 1,
+              borderColor: c.border,
+              borderRadius: c.radius,
+              padding: 12,
+            }}
+          >
+            <Feather name="share" size={16} color={c.mutedForeground} />
+            <Text style={{ flex: 1, color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12 }}>
+              {isDe ? "Als App zum Startbildschirm hinzufügen" : "Add as app to home screen"}
+            </Text>
+            <Feather name="chevron-right" size={14} color={c.mutedForeground} />
+          </Pressable>
+        )}
+
         <Pressable
           onPress={() => router.push("/cleaning")}
           style={({ pressed }) => [
