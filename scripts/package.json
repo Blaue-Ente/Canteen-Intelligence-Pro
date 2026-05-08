@@ -8,16 +8,20 @@
     "gen:marketing": "tsx ./src/generate-marketing-pdfs.ts",
     "seed:demo": "tsx ./src/seed-demo-users.ts",
     "seed:recipes": "tsx ./src/seed-recipe-library.ts",
+    "extract:koechenord": "tsx ./src/extract-koechenord-recipes.ts",
     "gen:secretary-kit": "tsx ./src/generate-secretary-kit.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@clerk/backend": "^2.16.4",
     "@workspace/db": "workspace:*",
-    "drizzle-orm": "catalog:"
+    "@workspace/integrations-openai-ai-server": "workspace:*",
+    "drizzle-orm": "catalog:",
+    "pdf-parse": "1.1.1"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@types/pdf-parse": "1.1.5",
     "@types/pdfkit": "^0.17.6",
     "pdfkit": "^0.18.0",
     "tsx": "catalog:"
