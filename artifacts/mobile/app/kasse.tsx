@@ -58,7 +58,7 @@ import { useAuthor } from "@/contexts/AuthContext";
 import { formatEUR, mulMoney, sumMoney } from "@/lib/money";
 import { sharePdf } from "@/lib/pdf";
 import { buildZBon, exportDsfinvk, signSale } from "@/lib/tse";
-import type { DishCategory, Recipe, TseConfig } from "@/types";
+import type { DishCategory, KasseArtikel, KasseArtikelCategory, Recipe, TseConfig } from "@/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -76,6 +76,11 @@ interface CartLine {
   /** T024: Quick-add custom unit price in EUR */
   customPrice?: number;
 }
+
+/** Extended category type for the POS grid — includes recipe categories + POS-artikel categories. */
+type PosCategory = DishCategory | "all" | KasseArtikelCategory;
+/** Unified grid item — either a Recipe or a persistent KasseArtikel. */
+type PosItem = { kind: "recipe"; data: Recipe } | { kind: "artikel"; data: KasseArtikel };
 
 // ─── Design tokens (always-dark POS palette) ─────────────────────────────────
 
@@ -99,6 +104,11 @@ const P = {
     vegan: "#4ade80",
     vegetarian: "#facc15",
     kids: "#e879f9",
+    // POS-Artikel categories
+    hauptgericht: "#f59e0b",
+    getraenk: "#22d3ee",
+    dessert: "#c084fc",
+    sonstiges: "#94a3b8",
   } as Record<string, string>,
   catEmoji: {
     all: "🍽️",
@@ -107,12 +117,18 @@ const P = {
     vegan: "🌿",
     vegetarian: "🧀",
     kids: "⭐",
+    // POS-Artikel categories
+    hauptgericht: "🍲",
+    getraenk: "🥤",
+    dessert: "🍰",
+    sonstiges: "📦",
   } as Record<string, string>,
 };
 
 const VAT_OPTIONS: VatPct[] = [7, 19, 0];
-const CATEGORIES: Array<DishCategory | "all"> = [
+const CATEGORIES: PosCategory[] = [
   "all", "meat", "fish", "vegetarian", "vegan", "kids",
+  "hauptgericht", "getraenk", "dessert", "sonstiges",
 ];
 
 function todayKey() {
@@ -370,7 +386,7 @@ function KassePos() {
   // ── POS state
   const [cart, setCart] = useState<CartLine[]>([]);
   const [activeView, setActiveView] = useState<ActiveView>("pos");
-  const [activeCat, setActiveCat] = useState<DishCategory | "all">("all");
+  const [activeCat, setActiveCat] = useState<PosCategory>("all");
   const [defaultVat, setDefaultVat] = useState<VatPct>(7);
   const [signing, setSigning] = useState(false);
   const [zDate, setZDate] = useState(todayKey());
@@ -391,6 +407,9 @@ function KassePos() {
   const [gridCompact, setGridCompact] = useState(false);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [quickAddVat, setQuickAddVat] = useState<VatPct>(7);
+  // ── Kassenartikel management modal
+  const [showArtikelVerwaltung, setShowArtikelVerwaltung] = useState(false);
+  const [editingArtikel, setEditingArtikel] = useState<KasseArtikel | null>(null);
 
   // Phone cart drawer animation
   const cartOpen = useRef(false);
@@ -406,7 +425,8 @@ function KassePos() {
       sumMoney(
         cart.map((line) => {
           const r = state.recipes.find((x) => x.id === line.recipeId);
-          return mulMoney(r?.sellPrice ?? r?.basePrice ?? 0, line.qty);
+          const price = line.customPrice ?? r?.sellPrice ?? r?.basePrice ?? 0;
+          return mulMoney(price, line.qty);
         }),
       ),
     [cart, state.recipes],
@@ -423,24 +443,48 @@ function KassePos() {
   }, [state.menu, activeLocationId]);
   const hasTodayMenu = todayMenuIds.length > 0;
 
-  const filteredRecipes = useMemo(() => {
-    let base =
-      activeCat === "all"
-        ? [...state.recipes]
-        : state.recipes.filter((r) => r.category === activeCat);
-    if (showTodayMenuOnly && hasTodayMenu) {
-      base = base.filter((r) => todayMenuIds.includes(r.id));
-    }
+  const ARTIKEL_CATS: KasseArtikelCategory[] = ["hauptgericht", "getraenk", "dessert", "sonstiges"];
+  const isArtikelCat = ARTIKEL_CATS.includes(activeCat as KasseArtikelCategory);
+
+  const filteredItems = useMemo((): PosItem[] => {
+    const isAC = ARTIKEL_CATS.includes(activeCat as KasseArtikelCategory);
     const q = searchQuery.trim().toLowerCase();
-    if (q) {
-      base = base.filter(
-        (r) =>
-          r.name.toLowerCase().includes(q) ||
-          r.nameDe.toLowerCase().includes(q),
-      );
+
+    // Recipes: show when "all" or a DishCategory tab is active
+    let recipes: Recipe[] = [];
+    if (activeCat === "all" || !isAC) {
+      recipes =
+        activeCat === "all"
+          ? [...state.recipes]
+          : state.recipes.filter((r) => r.category === (activeCat as DishCategory));
+      if (showTodayMenuOnly && hasTodayMenu) {
+        recipes = recipes.filter((r) => todayMenuIds.includes(r.id));
+      }
+      if (q) {
+        recipes = recipes.filter(
+          (r) => r.name.toLowerCase().includes(q) || r.nameDe.toLowerCase().includes(q),
+        );
+      }
     }
-    return base;
-  }, [state.recipes, activeCat, showTodayMenuOnly, hasTodayMenu, todayMenuIds, searchQuery]);
+
+    // KasseArtikel: show when "all" or an artikel-category tab is active
+    let artikels: KasseArtikel[] = [];
+    if (activeCat === "all" || isAC) {
+      artikels =
+        activeCat === "all"
+          ? (state.kasseArtikel ?? [])
+          : (state.kasseArtikel ?? []).filter((a) => a.category === activeCat);
+      if (q) {
+        artikels = artikels.filter((a) => a.name.toLowerCase().includes(q));
+      }
+    }
+
+    return [
+      ...recipes.map((r): PosItem => ({ kind: "recipe", data: r })),
+      ...artikels.map((a): PosItem => ({ kind: "artikel", data: a })),
+    ];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.recipes, state.kasseArtikel, activeCat, showTodayMenuOnly, hasTodayMenu, todayMenuIds, searchQuery]);
 
   // ── T022 / T024: pagination — cols adapt to screen width + compact mode
   const productAreaWidth = isTablet ? width - 340 : width;
@@ -450,8 +494,8 @@ function KassePos() {
   const tileSize = Math.floor((productAreaWidth - 12 * (cols + 1)) / cols);
   const ROWS_PER_PAGE = gridCompact ? 6 : 4;
   const tilesPerPage = cols * ROWS_PER_PAGE;
-  const totalPages = Math.max(1, Math.ceil(filteredRecipes.length / tilesPerPage));
-  const pagedRecipes = filteredRecipes.slice(
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / tilesPerPage));
+  const pagedItems = filteredItems.slice(
     currentPage * tilesPerPage,
     (currentPage + 1) * tilesPerPage,
   );
@@ -1257,9 +1301,9 @@ function KassePos() {
           <Feather name={gridCompact ? "grid" : "menu"} size={15} color={gridCompact ? P.primary : P.fgMuted} />
         </Pressable>
 
-        {/* T024: Quick-add (+) button */}
+        {/* Artikel verwalten (+) button — opens persistent article management */}
         <Pressable
-          onPress={() => { setQuickAddVat(defaultVat); setShowQuickAdd(true); }}
+          onPress={() => setShowArtikelVerwaltung(true)}
           style={{
             paddingHorizontal: 12,
             paddingVertical: 9,
@@ -1283,10 +1327,13 @@ function KassePos() {
         contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 8, gap: 8 }}
       >
         {CATEGORIES.map((cat) => {
+          const isAC = ARTIKEL_CATS.includes(cat as KasseArtikelCategory);
           const count =
             cat === "all"
-              ? state.recipes.length
-              : state.recipes.filter((r) => r.category === cat).length;
+              ? state.recipes.length + (state.kasseArtikel?.length ?? 0)
+              : isAC
+                ? (state.kasseArtikel ?? []).filter((a) => a.category === cat).length
+                : state.recipes.filter((r) => r.category === cat).length;
           if (cat !== "all" && count === 0) return null;
           const active = activeCat === cat;
           const accent = P.catColor[cat] ?? P.primary;
@@ -1315,7 +1362,13 @@ function KassePos() {
                   textTransform: "capitalize",
                 }}
               >
-                {cat === "all" ? (isDe ? "Alle" : "All") : cat}
+                {cat === "all"
+                ? (isDe ? "Alle" : "All")
+                : cat === "hauptgericht" ? (isDe ? "Hauptgerichte" : "Mains")
+                : cat === "getraenk" ? (isDe ? "Getränke" : "Drinks")
+                : cat === "dessert" ? "Desserts"
+                : cat === "sonstiges" ? (isDe ? "Sonstiges" : "Other")
+                : cat}
               </Text>
               <View
                 style={{
@@ -1342,7 +1395,7 @@ function KassePos() {
 
       {/* Paginated tile grid */}
       <View style={{ flex: 1 }}>
-        {filteredRecipes.length === 0 ? (
+        {filteredItems.length === 0 ? (
           <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 10 }}>
             <Feather name="search" size={36} color={P.border} />
             <Text style={{ color: P.fgMuted, fontSize: 14 }}>
@@ -1359,16 +1412,41 @@ function KassePos() {
               alignContent: "flex-start",
             }}
           >
-            {pagedRecipes.map((recipe) => (
-              <ProductTile
-                key={recipe.id}
-                recipe={recipe}
-                cartQty={cart.find((l) => l.recipeId === recipe.id)?.qty ?? 0}
-                tileSize={tileSize}
-                onPress={() => addToCart(recipe)}
-                onLongPress={() => setEditingRecipe(recipe)}
-              />
-            ))}
+            {pagedItems.map((item) =>
+              item.kind === "recipe" ? (
+                <ProductTile
+                  key={item.data.id}
+                  recipe={item.data}
+                  cartQty={cart.find((l) => l.recipeId === item.data.id)?.qty ?? 0}
+                  tileSize={tileSize}
+                  onPress={() => addToCart(item.data)}
+                  onLongPress={() => setEditingRecipe(item.data)}
+                />
+              ) : (
+                <ArtikelTile
+                  key={item.data.id}
+                  artikel={item.data}
+                  cartQty={cart.find((l) => l.recipeId === item.data.id)?.qty ?? 0}
+                  tileSize={tileSize}
+                  onPress={() => {
+                    setCart((prev) => {
+                      const idx = prev.findIndex((l) => l.recipeId === item.data.id);
+                      if (idx >= 0) {
+                        const next = [...prev];
+                        next[idx] = { ...next[idx]!, qty: next[idx]!.qty + 1 };
+                        return next;
+                      }
+                      return [...prev, { recipeId: item.data.id, qty: 1, vat: item.data.vat as VatPct, customName: item.data.name, customPrice: item.data.price }];
+                    });
+                    if (!isTablet && !cartOpen.current) {
+                      cartOpen.current = true;
+                      Animated.spring(cartAnim, { toValue: 1, useNativeDriver: true, tension: 80, friction: 12 }).start();
+                    }
+                  }}
+                  onLongPress={() => { setEditingArtikel(item.data); setShowArtikelVerwaltung(true); }}
+                />
+              )
+            )}
           </View>
         )}
       </View>
@@ -1443,7 +1521,7 @@ function KassePos() {
           <Text style={{ color: P.fgMuted, fontSize: 11, marginLeft: 4 }}>
             {isDe ? "Seite" : "Page"} {currentPage + 1}/{totalPages}
             {"  ·  "}
-            {filteredRecipes.length} {isDe ? "Artikel" : "items"}
+            {filteredItems.length} {isDe ? "Artikel" : "items"}
           </Text>
         </View>
       )}
@@ -2463,6 +2541,21 @@ function KassePos() {
             onClose={() => setShowQuickAdd(false)}
           />
         )}
+
+        {/* ── Kassenartikel management modal ── */}
+        {showArtikelVerwaltung && (
+          <ArtikelVerwaltungModal
+            isDe={isDe}
+            kasseArtikel={state.kasseArtikel ?? []}
+            editingArtikel={editingArtikel}
+            defaultVat={defaultVat}
+            onAdd={(a) => dispatch({ type: "addKasseArtikel", artikel: a })}
+            onUpdate={(a) => dispatch({ type: "updateKasseArtikel", artikel: a })}
+            onRemove={(id) => dispatch({ type: "removeKasseArtikel", id })}
+            onQuickAdd={() => { setQuickAddVat(defaultVat); setShowQuickAdd(true); }}
+            onClose={() => { setShowArtikelVerwaltung(false); setEditingArtikel(null); }}
+          />
+        )}
       </View>
     </>
   );
@@ -3145,6 +3238,563 @@ function QuickAddModal({ isDe, defaultVat, onVatChange, onConfirm, onClose }: Qu
             </Text>
           </Pressable>
         </View>
+      </View>
+    </View>
+  );
+}
+
+// ─── ArtikelTile ──────────────────────────────────────────────────────────────
+
+interface ArtikelTileProps {
+  artikel: KasseArtikel;
+  cartQty: number;
+  tileSize: number;
+  onPress: () => void;
+  onLongPress: () => void;
+}
+
+function ArtikelTile({ artikel, cartQty, tileSize, onPress, onLongPress }: ArtikelTileProps) {
+  const inCart = cartQty > 0;
+  const accent = P.catColor[artikel.category] ?? P.primary;
+  const nameFontSize = tileSize > 130 ? 13 : 11;
+  const priceFontSize = tileSize > 130 ? 15 : 12;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={600}
+      style={({ pressed }) => ({
+        width: tileSize,
+        height: tileSize + 20,
+        backgroundColor: P.surface,
+        borderRadius: 14,
+        borderWidth: 2,
+        borderColor: inCart ? accent : P.border,
+        overflow: "hidden",
+        opacity: pressed ? 0.75 : 1,
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 8,
+        gap: 4,
+      })}
+    >
+      {/* Category emoji badge */}
+      <View
+        style={{
+          position: "absolute",
+          top: 6,
+          left: 6,
+          backgroundColor: accent + "33",
+          borderRadius: 8,
+          paddingHorizontal: 5,
+          paddingVertical: 2,
+        }}
+      >
+        <Text style={{ fontSize: 10 }}>{P.catEmoji[artikel.category]}</Text>
+      </View>
+
+      {/* Cart qty badge */}
+      {inCart && (
+        <View
+          style={{
+            position: "absolute",
+            top: 6,
+            right: 6,
+            backgroundColor: accent,
+            borderRadius: 10,
+            minWidth: 20,
+            height: 20,
+            alignItems: "center",
+            justifyContent: "center",
+            paddingHorizontal: 4,
+          }}
+        >
+          <Text style={{ color: P.primaryFg, fontFamily: "Inter_700Bold", fontSize: 11 }}>
+            {cartQty}
+          </Text>
+        </View>
+      )}
+
+      {/* Name */}
+      <Text
+        numberOfLines={2}
+        style={{
+          color: P.fg,
+          fontFamily: "Inter_600SemiBold",
+          fontSize: nameFontSize,
+          textAlign: "center",
+          marginTop: 18,
+        }}
+      >
+        {artikel.name}
+      </Text>
+
+      {/* Price */}
+      <Text
+        style={{
+          color: inCart ? accent : P.primary,
+          fontFamily: "Inter_700Bold",
+          fontSize: priceFontSize,
+        }}
+      >
+        {artikel.price.toFixed(2).replace(".", ",")} €
+      </Text>
+
+      {/* VAT label */}
+      <Text style={{ color: P.fgMuted, fontSize: 9 }}>
+        {artikel.vat}% MwSt.
+      </Text>
+    </Pressable>
+  );
+}
+
+// ─── ArtikelVerwaltungModal ───────────────────────────────────────────────────
+
+const ARTIKEL_CAT_LIST: KasseArtikelCategory[] = ["hauptgericht", "getraenk", "dessert", "sonstiges"];
+
+interface ArtikelVerwaltungModalProps {
+  isDe: boolean;
+  kasseArtikel: KasseArtikel[];
+  editingArtikel: KasseArtikel | null;
+  defaultVat: VatPct;
+  onAdd: (a: KasseArtikel) => void;
+  onUpdate: (a: KasseArtikel) => void;
+  onRemove: (id: string) => void;
+  onQuickAdd: () => void;
+  onClose: () => void;
+}
+
+function ArtikelVerwaltungModal({
+  isDe,
+  kasseArtikel,
+  editingArtikel,
+  defaultVat,
+  onAdd,
+  onUpdate,
+  onRemove,
+  onQuickAdd,
+  onClose,
+}: ArtikelVerwaltungModalProps) {
+  const [filterCat, setFilterCat] = useState<KasseArtikelCategory | "all">("all");
+  const [showForm, setShowForm] = useState(editingArtikel !== null);
+  const [formId, setFormId] = useState(editingArtikel?.id ?? "");
+  const [formName, setFormName] = useState(editingArtikel?.name ?? "");
+  const [formPrice, setFormPrice] = useState(editingArtikel ? String(editingArtikel.price.toFixed(2)) : "");
+  const [formVat, setFormVat] = useState<VatPct>(editingArtikel?.vat ?? defaultVat);
+  const [formCat, setFormCat] = useState<KasseArtikelCategory>(editingArtikel?.category ?? "sonstiges");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const isEditing = formId !== "";
+
+  function openNew() {
+    setFormId("");
+    setFormName("");
+    setFormPrice("");
+    setFormVat(defaultVat);
+    setFormCat("sonstiges");
+    setShowForm(true);
+  }
+
+  function openEdit(a: KasseArtikel) {
+    setFormId(a.id);
+    setFormName(a.name);
+    setFormPrice(a.price.toFixed(2).replace(",", "."));
+    setFormVat(a.vat);
+    setFormCat(a.category);
+    setShowForm(true);
+  }
+
+  function handleSave() {
+    const price = parseFloat(formPrice.replace(",", "."));
+    if (!formName.trim() || isNaN(price) || price <= 0) return;
+    if (isEditing) {
+      onUpdate({ id: formId, name: formName.trim(), price, vat: formVat, category: formCat });
+    } else {
+      onAdd({ id: `_a_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, name: formName.trim(), price, vat: formVat, category: formCat });
+    }
+    setShowForm(false);
+  }
+
+  const priceNum = parseFloat(formPrice.replace(",", "."));
+  const formValid = formName.trim().length > 0 && !isNaN(priceNum) && priceNum > 0;
+
+  const visibleArtikel = filterCat === "all"
+    ? kasseArtikel
+    : kasseArtikel.filter((a) => a.category === filterCat);
+
+  const catLabel = (c: KasseArtikelCategory | "all") => {
+    if (c === "all") return isDe ? "Alle" : "All";
+    if (c === "hauptgericht") return isDe ? "Hauptgerichte" : "Mains";
+    if (c === "getraenk") return isDe ? "Getränke" : "Drinks";
+    if (c === "dessert") return "Desserts";
+    return isDe ? "Sonstiges" : "Other";
+  };
+
+  return (
+    <View
+      style={{
+        position: "absolute",
+        inset: 0,
+        backgroundColor: "#000000cc",
+        justifyContent: "center",
+        alignItems: "center",
+        zIndex: 200,
+      }}
+    >
+      <View
+        style={{
+          width: "92%",
+          maxWidth: 520,
+          maxHeight: "88%",
+          backgroundColor: P.surface,
+          borderRadius: 20,
+          overflow: "hidden",
+        }}
+      >
+        {/* Header */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 20,
+            paddingVertical: 16,
+            borderBottomWidth: 1,
+            borderColor: P.border,
+          }}
+        >
+          <Text style={{ flex: 1, color: P.fg, fontFamily: "Inter_700Bold", fontSize: 17 }}>
+            {isDe ? "Kassenartikel verwalten" : "Manage Articles"}
+          </Text>
+          <Pressable onPress={onClose} hitSlop={10}>
+            <Feather name="x" size={20} color={P.fgMuted} />
+          </Pressable>
+        </View>
+
+        {showForm ? (
+          /* ── Form: add / edit article ── */
+          <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }}>
+            <Text style={{ color: P.fgMuted, fontFamily: "Inter_600SemiBold", fontSize: 12 }}>
+              {isEditing ? (isDe ? "Artikel bearbeiten" : "Edit article") : (isDe ? "Neuer Kassenartikel" : "New POS article")}
+            </Text>
+
+            {/* Name */}
+            <View style={{ gap: 6 }}>
+              <Text style={{ color: P.fgMuted, fontSize: 12 }}>{isDe ? "Bezeichnung" : "Name"}</Text>
+              <TextInput
+                value={formName}
+                onChangeText={setFormName}
+                placeholder={isDe ? "z. B. Schnitzel" : "e.g. Schnitzel"}
+                placeholderTextColor={P.fgMuted}
+                style={{
+                  backgroundColor: P.bg,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: P.border,
+                  color: P.fg,
+                  fontSize: 15,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  fontFamily: "Inter_400Regular",
+                }}
+                autoFocus
+              />
+            </View>
+
+            {/* Price */}
+            <View style={{ gap: 6 }}>
+              <Text style={{ color: P.fgMuted, fontSize: 12 }}>{isDe ? "Preis (€)" : "Price (€)"}</Text>
+              <TextInput
+                value={formPrice}
+                onChangeText={setFormPrice}
+                placeholder="0,00"
+                placeholderTextColor={P.fgMuted}
+                keyboardType="decimal-pad"
+                style={{
+                  backgroundColor: P.bg,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: P.border,
+                  color: P.fg,
+                  fontSize: 15,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  fontFamily: "Inter_400Regular",
+                }}
+              />
+            </View>
+
+            {/* VAT */}
+            <View style={{ gap: 8 }}>
+              <Text style={{ color: P.fgMuted, fontSize: 12 }}>MwSt.</Text>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                {VAT_OPTIONS.map((v) => (
+                  <Pressable
+                    key={v}
+                    onPress={() => setFormVat(v)}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 10,
+                      borderRadius: 10,
+                      backgroundColor: formVat === v ? P.primary : P.bg,
+                      borderWidth: 1,
+                      borderColor: formVat === v ? P.primary : P.border,
+                      alignItems: "center",
+                    }}
+                  >
+                    <Text style={{ color: formVat === v ? P.primaryFg : P.fg, fontFamily: "Inter_700Bold", fontSize: 14 }}>
+                      {v}%
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+
+            {/* Category */}
+            <View style={{ gap: 8 }}>
+              <Text style={{ color: P.fgMuted, fontSize: 12 }}>{isDe ? "Kategorie" : "Category"}</Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                {ARTIKEL_CAT_LIST.map((c) => {
+                  const accent = P.catColor[c] ?? P.primary;
+                  const active = formCat === c;
+                  return (
+                    <Pressable
+                      key={c}
+                      onPress={() => setFormCat(c)}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 6,
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        borderRadius: 20,
+                        backgroundColor: active ? accent + "22" : P.bg,
+                        borderWidth: 1.5,
+                        borderColor: active ? accent : P.border,
+                      }}
+                    >
+                      <Text style={{ fontSize: 14 }}>{P.catEmoji[c]}</Text>
+                      <Text style={{ color: active ? accent : P.fgMuted, fontFamily: "Inter_600SemiBold", fontSize: 12 }}>
+                        {catLabel(c)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Save / Cancel */}
+            <View style={{ flexDirection: "row", gap: 10, paddingTop: 8 }}>
+              <Pressable
+                onPress={() => setShowForm(false)}
+                style={{
+                  flex: 1,
+                  paddingVertical: 13,
+                  borderRadius: 12,
+                  backgroundColor: P.surfaceHigh,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ color: P.fg, fontFamily: "Inter_600SemiBold", fontSize: 14 }}>
+                  {isDe ? "Abbrechen" : "Cancel"}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={handleSave}
+                disabled={!formValid}
+                style={{
+                  flex: 2,
+                  paddingVertical: 13,
+                  borderRadius: 12,
+                  backgroundColor: formValid ? P.primary : P.border,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ color: formValid ? P.primaryFg : P.fgMuted, fontFamily: "Inter_700Bold", fontSize: 14 }}>
+                  {isEditing ? (isDe ? "Speichern" : "Save") : (isDe ? "Artikel anlegen" : "Create article")}
+                </Text>
+              </Pressable>
+            </View>
+          </ScrollView>
+        ) : (
+          /* ── List view ── */
+          <>
+            {/* Category filter tabs */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ flexGrow: 0, borderBottomWidth: 1, borderColor: P.border }}
+              contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10, gap: 8 }}
+            >
+              {(["all", ...ARTIKEL_CAT_LIST] as (KasseArtikelCategory | "all")[]).map((c) => {
+                const active = filterCat === c;
+                const accent = c === "all" ? "#6366f1" : (P.catColor[c] ?? P.primary);
+                return (
+                  <Pressable
+                    key={c}
+                    onPress={() => setFilterCat(c)}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 6,
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: 16,
+                      backgroundColor: active ? accent + "22" : P.bg,
+                      borderWidth: 1.5,
+                      borderColor: active ? accent : P.border,
+                    }}
+                  >
+                    {c !== "all" && <Text style={{ fontSize: 13 }}>{P.catEmoji[c]}</Text>}
+                    <Text style={{ color: active ? accent : P.fgMuted, fontFamily: "Inter_600SemiBold", fontSize: 12 }}>
+                      {catLabel(c)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            {/* Article list */}
+            <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
+              {visibleArtikel.length === 0 ? (
+                <View style={{ alignItems: "center", paddingVertical: 40, gap: 8 }}>
+                  <Feather name="package" size={32} color={P.border} />
+                  <Text style={{ color: P.fgMuted, fontSize: 13 }}>
+                    {isDe ? "Keine Artikel in dieser Kategorie" : "No articles in this category"}
+                  </Text>
+                </View>
+              ) : (
+                visibleArtikel.map((a) => {
+                  const accent = P.catColor[a.category] ?? P.primary;
+                  const isDeleting = confirmDeleteId === a.id;
+                  return (
+                    <View
+                      key={a.id}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        backgroundColor: P.bg,
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: isDeleting ? P.danger : P.border,
+                        padding: 12,
+                        gap: 12,
+                      }}
+                    >
+                      {/* Category dot */}
+                      <View
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 10,
+                          backgroundColor: accent + "22",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Text style={{ fontSize: 18 }}>{P.catEmoji[a.category]}</Text>
+                      </View>
+
+                      {/* Info */}
+                      <View style={{ flex: 1, gap: 2 }}>
+                        <Text style={{ color: P.fg, fontFamily: "Inter_600SemiBold", fontSize: 14 }} numberOfLines={1}>
+                          {a.name}
+                        </Text>
+                        <Text style={{ color: P.fgMuted, fontSize: 12 }}>
+                          {a.price.toFixed(2).replace(".", ",")} € · {a.vat}% MwSt. · {catLabel(a.category)}
+                        </Text>
+                      </View>
+
+                      {isDeleting ? (
+                        /* Confirm delete */
+                        <View style={{ flexDirection: "row", gap: 6 }}>
+                          <Pressable
+                            onPress={() => setConfirmDeleteId(null)}
+                            style={{ padding: 8, borderRadius: 8, backgroundColor: P.surfaceHigh }}
+                          >
+                            <Feather name="x" size={16} color={P.fg} />
+                          </Pressable>
+                          <Pressable
+                            onPress={() => { onRemove(a.id); setConfirmDeleteId(null); }}
+                            style={{ padding: 8, borderRadius: 8, backgroundColor: P.danger }}
+                          >
+                            <Feather name="trash-2" size={16} color="#fff" />
+                          </Pressable>
+                        </View>
+                      ) : (
+                        /* Edit / delete buttons */
+                        <View style={{ flexDirection: "row", gap: 6 }}>
+                          <Pressable
+                            onPress={() => openEdit(a)}
+                            style={{ padding: 8, borderRadius: 8, backgroundColor: P.surfaceHigh }}
+                          >
+                            <Feather name="edit-2" size={16} color={P.fg} />
+                          </Pressable>
+                          <Pressable
+                            onPress={() => setConfirmDeleteId(a.id)}
+                            style={{ padding: 8, borderRadius: 8, backgroundColor: P.surfaceHigh }}
+                          >
+                            <Feather name="trash-2" size={16} color={P.danger} />
+                          </Pressable>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })
+              )}
+            </ScrollView>
+
+            {/* Footer actions */}
+            <View
+              style={{
+                flexDirection: "row",
+                gap: 10,
+                padding: 16,
+                borderTopWidth: 1,
+                borderColor: P.border,
+              }}
+            >
+              <Pressable
+                onPress={() => { onQuickAdd(); onClose(); }}
+                style={{
+                  flex: 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  backgroundColor: P.surfaceHigh,
+                  borderWidth: 1,
+                  borderColor: P.border,
+                }}
+              >
+                <Feather name="zap" size={15} color={P.fgMuted} />
+                <Text style={{ color: P.fgMuted, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
+                  {isDe ? "Einmalig" : "One-time"}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={openNew}
+                style={{
+                  flex: 2,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  backgroundColor: P.primary,
+                }}
+              >
+                <Feather name="plus" size={15} color={P.primaryFg} />
+                <Text style={{ color: P.primaryFg, fontFamily: "Inter_700Bold", fontSize: 13 }}>
+                  {isDe ? "Neuer Artikel" : "New article"}
+                </Text>
+              </Pressable>
+            </View>
+          </>
+        )}
       </View>
     </View>
   );

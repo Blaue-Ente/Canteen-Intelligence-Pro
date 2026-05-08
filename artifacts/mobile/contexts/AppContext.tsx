@@ -155,6 +155,10 @@ type Action =
   | { type: "setTerminalConfig"; config: import("@/types").PosTerminalConfig }
   // ---- Preorder Branding ----
   | { type: "setPreorderBranding"; branding: import("@/types").PreorderBranding }
+  // ---- Kasse Artikel management ----
+  | { type: "addKasseArtikel"; artikel: import("@/types").KasseArtikel }
+  | { type: "updateKasseArtikel"; artikel: import("@/types").KasseArtikel }
+  | { type: "removeKasseArtikel"; id: string }
   // ---- Inventory Transfer ----
   | { type: "transferInventory"; fromItemId: string; toLocationId: string; qty: number };
 
@@ -518,6 +522,13 @@ function reducer(state: AppState, action: Action): AppState {
     // ---- Preorder Branding ----
     case "setPreorderBranding":
       return { ...state, preorderBranding: action.branding };
+    // ---- Kasse Artikel management ----
+    case "addKasseArtikel":
+      return { ...state, kasseArtikel: [action.artikel, ...(state.kasseArtikel ?? [])] };
+    case "updateKasseArtikel":
+      return { ...state, kasseArtikel: (state.kasseArtikel ?? []).map((a) => a.id === action.artikel.id ? action.artikel : a) };
+    case "removeKasseArtikel":
+      return { ...state, kasseArtikel: (state.kasseArtikel ?? []).filter((a) => a.id !== action.id) };
     // ---- Inventory Transfer ----
     case "transferInventory": {
       const item = state.inventory.find((i) => i.id === action.fromItemId);

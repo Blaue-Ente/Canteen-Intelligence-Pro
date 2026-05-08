@@ -2,6 +2,16 @@ export type Locale = "de" | "en";
 
 export type DishType = "soup" | "main" | "salad" | "dessert" | "side" | "drink";
 export type DishCategory = "vegan" | "vegetarian" | "meat" | "fish" | "kids";
+
+export type KasseArtikelCategory = "hauptgericht" | "getraenk" | "dessert" | "sonstiges";
+
+export interface KasseArtikel {
+  id: string;
+  name: string;
+  price: number;
+  vat: 0 | 7 | 19;
+  category: KasseArtikelCategory;
+}
 export type MeatType = "beef" | "pork" | "chicken" | "lamb" | "turkey" | "none";
 export type Allergen =
   | "gluten"
@@ -640,6 +650,8 @@ export interface AppState {
    */
   tseConfigs?: Record<string, TseConfig>;
   signedSales: SignedSale[];
+  /** POS-specific persistent articles with category (Hauptgericht, Getränk, Dessert, Sonstiges). */
+  kasseArtikel?: KasseArtikel[];
   // ---- Operating mode ----
   /**
    * Application operating mode:
