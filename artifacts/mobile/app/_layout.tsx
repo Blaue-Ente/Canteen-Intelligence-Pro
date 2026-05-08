@@ -90,10 +90,16 @@ function useProtectedRoute(): { ready: boolean } {
       router.replace("/(auth)/sign-in");
     } else if (isSignedIn && !currentMembership && !onOnboarding) {
       router.replace("/onboarding");
-    } else if (isSignedIn && currentMembership && !currentMembership.approved && !onPendingApproval) {
-      // Member exists but not yet approved by admin
+    } else if (
+      isSignedIn &&
+      currentMembership &&
+      !currentMembership.approved &&
+      currentMembership.role === "staff" &&
+      !onPendingApproval
+    ) {
+      // Only staff members need admin approval — owners and managers always have access
       router.replace("/pending-approval");
-    } else if (isSignedIn && currentMembership && currentMembership.approved && (inAuthGroup || onOnboarding || onPendingApproval)) {
+    } else if (isSignedIn && currentMembership && (currentMembership.approved || currentMembership.role !== "staff") && (inAuthGroup || onOnboarding || onPendingApproval)) {
       router.replace("/(tabs)");
     }
   }, [ready, isSignedIn, currentMembership, segments, router]);

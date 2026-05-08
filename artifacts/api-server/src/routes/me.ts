@@ -44,7 +44,8 @@ router.get("/me", requireAuth, async (req, res: Response) => {
       role: r.m.role,
       displayName: r.m.displayName,
       employeeRole: r.m.employeeRole,
-      approved: r.m.approvedAt !== null,
+      // Owners and managers always have access regardless of approvedAt value
+      approved: r.m.role !== "staff" ? true : r.m.approvedAt !== null,
     })),
   });
 });
