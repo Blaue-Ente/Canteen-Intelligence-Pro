@@ -719,3 +719,49 @@ export async function parseSupplierPriceList(args: { text: string; locale: "de" 
     '{"supplier":"string","validFrom":"YYYY-MM-DD","validTo":"YYYY-MM-DD","items":[{"name":"string","unit":"kg|g|l|ml|pcs|Kiste|Karton|Bund|Sack","pricePerUnit":number,"code":"string","category":"string"}]}',
   );
 }
+
+// ── Recipe book import ────────────────────────────────────────────────────────
+// Accepts a PDF (base64) or raw text (JSONL / CSV). Returns structured recipes
+// ready to be dispatched into the app's local recipe library.
+
+export interface ImportedRecipe {
+  nameDe: string;
+  name: string;
+  type: "soup" | "main" | "salad" | "dessert" | "side" | "drink";
+  category: "vegan" | "vegetarian" | "meat" | "fish" | "kids";
+  meat: "beef" | "pork" | "chicken" | "lamb" | "turkey" | "none";
+  portionGrams: number;
+  basePrice: number;
+  sellPrice: number;
+  cookTimeMin: number;
+  kcalPerPortion?: number;
+  protein?: number;
+  fat?: number;
+  carbs?: number;
+  allergens: string[];
+  stepsDe: string[];
+  steps: string[];
+  ingredients: [];
+}
+
+export async function importRecipesFromSource(args: {
+  base64?: string;
+  text?: string;
+  locale: "de" | "en";
+}): Promise<ImportedRecipe[]> {
+  const res = await expoFetch(`${API_BASE}/api/ai/import-recipes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ base64: args.base64, text: args.text, locale: args.locale }),
+  });
+  if (!res.ok) {
+    let msg = `Import failed: ${res.status}`;
+    try {
+      const j = (await res.json()) as { error?: string };
+      if (j?.error) msg = j.error;
+    } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  const json = (await res.json()) as { recipes: ImportedRecipe[] };
+  return json.recipes ?? [];
+}

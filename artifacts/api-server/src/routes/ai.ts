@@ -373,4 +373,119 @@ router.post("/ai/tts/prewarm", async (req: Request, res: Response) => {
     .finally(() => { _prewarmRunning = false; });
 });
 
+// ── Recipe book importer ──────────────────────────────────────────────────────
+// Accepts a PDF (base64) OR raw text from JSONL / CSV. Extracts full recipe
+// objects ready to be stored in the app's local Recipe library.
+// PDF → pdf-parse → AI. Text → AI directly.
+// Returns: { recipes: ImportedRecipe[] }
+
+interface ImportRecipesBody {
+  base64?: string;    // PDF
+  text?: string;      // JSONL / CSV / plain text
+  locale?: "de" | "en";
+}
+
+const RECIPE_IMPORT_SCHEMA = `
+{
+  "recipes": [
+    {
+      "nameDe": "string (German name, required)",
+      "name": "string (English name, required)",
+      "type": "soup|main|salad|dessert|side|drink",
+      "category": "vegan|vegetarian|meat|fish|kids",
+      "meat": "beef|pork|chicken|lamb|turkey|none",
+      "portionGrams": 300,
+      "basePrice": 2.50,
+      "sellPrice": 7.90,
+      "cookTimeMin": 30,
+      "kcalPerPortion": 520,
+      "protein": 28,
+      "fat": 12,
+      "carbs": 55,
+      "allergens": ["gluten","milk"],
+      "stepsDe": ["Schritt 1…","Schritt 2…"],
+      "steps": ["Step 1…","Step 2…"],
+      "ingredients": []
+    }
+  ]
+}`;
+
+router.post("/ai/import-recipes", async (req: Request, res: Response) => {
+  const body = req.body as ImportRecipesBody;
+  const lang = body.locale === "en" ? "English" : "Deutsch";
+
+  let sourceText = "";
+
+  // ── PDF path ──────────────────────────────────────────────────────────────
+  if (body.base64) {
+    try {
+      const buf = Buffer.from(body.base64, "base64");
+      if (buf.length > 20 * 1024 * 1024) {
+        res.status(413).json({ error: "PDF too large (max 20 MB)" });
+        return;
+      }
+      const result = await pdfParse(buf);
+      sourceText = (result.text ?? "").trim();
+      if (!sourceText) {
+        res.status(422).json({
+          error: "No selectable text in PDF. Scanned image PDFs are not supported.",
+        });
+        return;
+      }
+    } catch (err) {
+      req.log.error({ err }, "pdf-parse error in import-recipes");
+      res.status(500).json({ error: "Failed to extract text from PDF" });
+      return;
+    }
+  } else if (body.text) {
+    sourceText = body.text;
+  } else {
+    res.status(400).json({ error: "Provide either base64 (PDF) or text (JSONL/CSV)" });
+    return;
+  }
+
+  // Truncate generously — recipe books can be large.
+  const truncated = sourceText.length > 60_000 ? sourceText.slice(0, 60_000) : sourceText;
+
+  const prompt = [
+    `You are KItchenOS recipe extractor. The text below comes from a recipe book, JSONL export, or CSV file. Reply names in ${lang}.`,
+    `Extract EVERY recipe you can identify. For each recipe produce a complete structured object.`,
+    `Guidelines:`,
+    `- nameDe: German name (translate if needed)`,
+    `- name: English name`,
+    `- type: one of soup|main|salad|dessert|side|drink`,
+    `- category: one of vegan|vegetarian|meat|fish|kids`,
+    `- meat: beef|pork|chicken|lamb|turkey|none`,
+    `- portionGrams: estimated serving weight in grams (default 300)`,
+    `- basePrice: estimated ingredient cost in EUR (default 2.5)`,
+    `- sellPrice: suggested sale price in EUR (default 0 if unknown)`,
+    `- cookTimeMin: total preparation + cooking time in minutes`,
+    `- kcalPerPortion, protein (g), fat (g), carbs (g): per portion — estimate if not given`,
+    `- allergens: array using keys: gluten milk egg nuts soy fish shellfish celery mustard sesame sulphite lupin mollusc peanut`,
+    `- stepsDe: cooking steps in German (translate or generate from ingredients/method)`,
+    `- steps: same steps in English`,
+    `- ingredients: leave as empty array []`,
+    `If the source is already structured JSON/JSONL, map fields directly. If CSV, use headers.`,
+    `--- SOURCE TEXT ---\n${truncated}\n--- END ---`,
+    `Return ONLY valid minified JSON matching exactly: ${RECIPE_IMPORT_SCHEMA}`,
+    `Return as many recipes as you find — do not truncate the list.`,
+  ].join("\n\n");
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-5.4",
+      max_completion_tokens: 8192,
+      response_format: { type: "json_object" },
+      messages: [{ role: "user", content: prompt }],
+    });
+    const raw = completion.choices[0]?.message?.content ?? "{}";
+    let parsed: { recipes?: unknown[] } = {};
+    try { parsed = JSON.parse(raw) as { recipes?: unknown[] }; } catch { parsed = { recipes: [] }; }
+    res.json({ recipes: parsed.recipes ?? [] });
+  } catch (err) {
+    req.log.error({ err }, "ai import-recipes error");
+    res.status(500).json({ error: err instanceof Error ? err.message : "unknown" });
+  }
+});
+
 export default router;
