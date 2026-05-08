@@ -31,7 +31,7 @@ const pdfParse = require("pdf-parse/lib/pdf-parse.js");
 const PDF_DIR = "/tmp/kochbuecher";
 const PROGRESS_FILE = "/tmp/koechenord-progress.json";
 const MODEL = "gpt-4o-mini";
-const CHUNK_SIZE = 10_000; // chars per AI call
+const CHUNK_SIZE = 20_000; // chars per AI call
 const CHUNK_OVERLAP = 500;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -271,10 +271,7 @@ async function main() {
         await new Promise((r) => setTimeout(r, 5000)); // backoff
       }
 
-      // Very short pause to avoid rate limits
-      if (i < chunks.length - 1) {
-        await new Promise((r) => setTimeout(r, 200));
-      }
+      // No delay — gpt-4o-mini rate limits are generous
     }
 
     console.log(`  ✅ ${bookName}: ${bookTotal} Rezepte eingefügt`);
