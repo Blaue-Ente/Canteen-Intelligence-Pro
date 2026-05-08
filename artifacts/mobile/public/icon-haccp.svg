@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="112" fill="#0a0a0b"/>
+  <!-- Teal glow circle -->
+  <circle cx="256" cy="256" r="192" fill="#14b8a6" opacity="0.15"/>
+  <!-- Shield -->
+  <path d="M256 128 L360 168 L360 256 C360 312 316 360 256 384 C196 360 152 312 152 256 L152 168 Z" fill="#14b8a6"/>
+  <!-- Shield inner -->
+  <path d="M256 152 L340 184 L340 256 C340 302 304 344 256 364 C208 344 172 302 172 256 L172 184 Z" fill="#0a0a0b" opacity="0.25"/>
+  <!-- Thermometer body -->
+  <rect x="244" y="184" width="24" height="100" rx="12" fill="white"/>
+  <!-- Thermometer bulb -->
+  <circle cx="256" cy="300" r="22" fill="white"/>
+  <!-- Mercury -->
+  <rect x="250" y="220" width="12" height="68" rx="6" fill="#14b8a6"/>
+  <circle cx="256" cy="300" r="14" fill="#14b8a6"/>
+  <!-- Tick marks -->
+  <rect x="272" y="240" width="10" height="3" rx="1.5" fill="white" opacity="0.8"/>
+  <rect x="272" y="260" width="8" height="3" rx="1.5" fill="white" opacity="0.6"/>
+  <rect x="272" y="280" width="10" height="3" rx="1.5" fill="white" opacity="0.8"/>
+  <!-- Check mark -->
+  <path d="M222 196 L238 212 L278 172" stroke="white" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.9"/>
+</svg>

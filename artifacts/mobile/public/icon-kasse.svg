@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="112" fill="#0a0a0b"/>
+  <!-- Amber glow circle -->
+  <circle cx="256" cy="256" r="192" fill="#f59e0b" opacity="0.15"/>
+  <!-- Receipt body -->
+  <rect x="168" y="144" width="176" height="224" rx="16" fill="#f59e0b"/>
+  <!-- Receipt lines -->
+  <rect x="192" y="176" width="128" height="14" rx="7" fill="#0a0a0b" opacity="0.7"/>
+  <rect x="192" y="204" width="96" height="10" rx="5" fill="#0a0a0b" opacity="0.4"/>
+  <rect x="192" y="222" width="112" height="10" rx="5" fill="#0a0a0b" opacity="0.4"/>
+  <rect x="192" y="240" width="80" height="10" rx="5" fill="#0a0a0b" opacity="0.4"/>
+  <!-- Divider -->
+  <rect x="168" y="268" width="176" height="2" fill="#0a0a0b" opacity="0.2"/>
+  <!-- Total -->
+  <rect x="192" y="284" width="60" height="12" rx="6" fill="#0a0a0b" opacity="0.4"/>
+  <rect x="284" y="284" width="60" height="12" rx="6" fill="#0a0a0b" opacity="0.8"/>
+  <!-- Zigzag tear -->
+  <path d="M168 336 L184 320 L200 336 L216 320 L232 336 L248 320 L264 336 L280 320 L296 336 L312 320 L328 336 L344 320 L344 368 L168 368 Z" fill="#0a0a0b" opacity="0.08"/>
+  <!-- TSE badge -->
+  <rect x="192" y="348" width="128" height="10" rx="5" fill="#0a0a0b" opacity="0.3"/>
+</svg>

@@ -1,0 +1,47 @@
+{
+  "name": "KItchenOS Kasse",
+  "short_name": "Kasse",
+  "description": "TSE-konforme Kasse direkt in KItchenOS — Fiskaly-signierte Bons, Z-Bon, Storno.",
+  "start_url": "/app/kasse",
+  "scope": "/app/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0a0b",
+  "theme_color": "#f59e0b",
+  "categories": ["business", "finance"],
+  "icons": [
+    {
+      "src": "/app/icon-kasse.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/app/icon-kasse.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/app/assets/images/icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/app/assets/images/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Tagesabschluss & Z-Bon",
+      "short_name": "Z-Bon",
+      "description": "Schicht abschließen und Z-Bon drucken",
+      "url": "/app/kasse?action=abschluss",
+      "icons": [{ "src": "/app/icon-kasse.svg", "sizes": "any" }]
+    }
+  ]
+}

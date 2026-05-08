@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>KItchenOS HACCP</title>
+  <meta name="description" content="HACCP-Temperaturlogs, Reinigungspläne und Rückstellproben digital verwalten." />
+  <link rel="manifest" href="/app/manifest-haccp.json" />
+  <meta name="theme-color" content="#14b8a6" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="HACCP" />
+  <link rel="apple-touch-icon" href="/app/assets/images/icon.png" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --teal: #14b8a6;
+      --teal-dim: rgba(20,184,166,0.15);
+      --bg: #0a0a0b;
+      --surface: #141416;
+      --border: rgba(255,255,255,0.08);
+      --text: #f5f5f0;
+      --muted: rgba(245,245,240,0.55);
+    }
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100dvh;
+      padding: 24px 20px env(safe-area-inset-bottom, 24px);
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      top: -30%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 500px;
+      height: 500px;
+      background: radial-gradient(ellipse, rgba(20,184,166,0.18) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .card {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 400px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      padding: 36px 28px 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .icon-wrap {
+      width: 96px;
+      height: 96px;
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(20,184,166,0.35), 0 0 0 1px rgba(20,184,166,0.2);
+      flex-shrink: 0;
+    }
+    .icon-wrap img { width: 100%; height: 100%; display: block; }
+
+    .app-name {
+      margin-top: 20px;
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    .app-name span { color: var(--teal); }
+
+    .tagline {
+      margin-top: 8px;
+      font-size: 14px;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    .features {
+      margin-top: 24px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .feature {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .feature-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--teal);
+      flex-shrink: 0;
+    }
+
+    .divider {
+      width: 100%;
+      height: 1px;
+      background: var(--border);
+      margin: 24px 0;
+    }
+
+    .install-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      align-self: flex-start;
+      margin-bottom: 12px;
+    }
+
+    .steps {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .step {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .step-num {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--teal-dim);
+      border: 1px solid rgba(20,184,166,0.3);
+      color: var(--teal);
+      font-size: 12px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .step-text {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+      padding-top: 3px;
+    }
+    .step-text strong { color: var(--text); }
+
+    .btn-open {
+      margin-top: 28px;
+      width: 100%;
+      padding: 15px;
+      background: var(--teal);
+      color: #0a0a0b;
+      font-size: 15px;
+      font-weight: 700;
+      border: none;
+      border-radius: 14px;
+      cursor: pointer;
+      letter-spacing: -0.2px;
+      transition: opacity 0.15s;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn-open:active { opacity: 0.85; }
+
+    .pwa-badge {
+      margin-top: 16px;
+      font-size: 11px;
+      color: rgba(245,245,240,0.3);
+      letter-spacing: 0.03em;
+      text-align: center;
+    }
+
+    @media (display-mode: standalone) {
+      .install-section { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon-wrap">
+      <img src="./icon-haccp.svg" alt="KItchenOS HACCP Icon" />
+    </div>
+
+    <div class="app-name">KItchenOS <span>HACCP</span></div>
+    <div class="tagline">Temperaturlogs, Reinigung & Rückstellproben<br>digital — kein Klemmbrett mehr</div>
+
+    <div class="features">
+      <div class="feature"><div class="feature-dot"></div>8 automatische HACCP-Vorschläge täglich</div>
+      <div class="feature"><div class="feature-dot"></div>Bluetooth-Thermometer-Integration</div>
+      <div class="feature"><div class="feature-dot"></div>Reinigungsplan mit Foto-Beleg</div>
+      <div class="feature"><div class="feature-dot"></div>Rückstellproben-Etiketten mit 7-Tages-Alarm</div>
+      <div class="feature"><div class="feature-dot"></div>DIN-konformes digitales Protokoll</div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="install-section" style="width:100%;display:flex;flex-direction:column;align-items:flex-start;">
+      <div class="install-title">Zum Startbildschirm hinzufügen</div>
+      <div class="steps" id="steps-ios" style="display:none;">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-text">Tippe auf das <strong>Teilen-Symbol</strong> (Pfeil nach oben) unten in Safari</div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-text">Wähle <strong>„Zum Home-Bildschirm"</strong></div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-text">Name lassen oder ändern → <strong>„Hinzufügen"</strong> tippen</div>
+        </div>
+      </div>
+      <div class="steps" id="steps-android" style="display:none;">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-text">Tippe auf das <strong>Menü (⋮)</strong> oben rechts in Chrome</div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-text">Wähle <strong>„Zum Startbildschirm hinzufügen"</strong></div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-text">Im Dialog auf <strong>„Installieren"</strong> tippen</div>
+        </div>
+      </div>
+      <div class="steps" id="steps-generic">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-text">Öffne diese Seite in <strong>Safari (iOS)</strong> oder <strong>Chrome (Android)</strong></div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-text">Nutze <strong>„Zum Startbildschirm"</strong> bzw. <strong>„Installieren"</strong> im Browser-Menü</div>
+        </div>
+      </div>
+    </div>
+
+    <a class="btn-open" href="/app/haccp" id="open-btn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      HACCP jetzt öffnen
+    </a>
+
+    <div class="pwa-badge">KItchenOS · HACCP · DIN-konform</div>
+  </div>
+
+  <script>
+    const ua = navigator.userAgent;
+    const isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+    const isAndroid = /Android/.test(ua);
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+      || window.navigator.standalone === true;
+
+    if (!isStandalone) {
+      document.getElementById('steps-generic').style.display = 'none';
+      if (isIOS) {
+        document.getElementById('steps-ios').style.display = 'flex';
+        document.getElementById('steps-ios').style.flexDirection = 'column';
+      } else if (isAndroid) {
+        document.getElementById('steps-android').style.display = 'flex';
+        document.getElementById('steps-android').style.flexDirection = 'column';
+      } else {
+        document.getElementById('steps-generic').style.display = 'flex';
+        document.getElementById('steps-generic').style.flexDirection = 'column';
+      }
+    }
+
+    if (isStandalone) {
+      window.location.replace('/app/haccp');
+    }
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/app/sw.js', { scope: '/app/' }).catch(() => {});
+    }
+
+    let deferredPrompt;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      const btn = document.getElementById('open-btn');
+      const installBtn = document.createElement('button');
+      installBtn.className = 'btn-open';
+      installBtn.style.marginTop = '10px';
+      installBtn.style.background = 'transparent';
+      installBtn.style.border = '1px solid rgba(20,184,166,0.4)';
+      installBtn.style.color = '#14b8a6';
+      installBtn.innerHTML = '⬇ Installieren (direkt auf Startbildschirm)';
+      installBtn.onclick = async () => {
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') installBtn.remove();
+      };
+      btn.insertAdjacentElement('afterend', installBtn);
+    });
+  </script>
+</body>
+</html>

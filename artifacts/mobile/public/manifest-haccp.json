@@ -1,0 +1,54 @@
+{
+  "name": "KItchenOS HACCP",
+  "short_name": "HACCP",
+  "description": "HACCP-Temperaturlogs, Reinigungspläne und Rückstellproben digital verwalten.",
+  "start_url": "/app/haccp",
+  "scope": "/app/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0a0b",
+  "theme_color": "#14b8a6",
+  "categories": ["business", "health"],
+  "icons": [
+    {
+      "src": "/app/icon-haccp.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/app/icon-haccp.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/app/assets/images/icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/app/assets/images/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Temperaturen jetzt prüfen",
+      "short_name": "Temp-Log",
+      "description": "Temperaturlog für alle Kühleinheiten bestätigen",
+      "url": "/app/haccp?action=temp",
+      "icons": [{ "src": "/app/icon-haccp.svg", "sizes": "any" }]
+    },
+    {
+      "name": "Reinigungsplan",
+      "short_name": "Reinigung",
+      "description": "Heutigen Reinigungsplan öffnen",
+      "url": "/app/cleaning",
+      "icons": [{ "src": "/app/icon-haccp.svg", "sizes": "any" }]
+    }
+  ]
+}
