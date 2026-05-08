@@ -134,6 +134,7 @@ function RootLayoutNav() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="chat" options={{ presentation: "modal", title: "KI" }} />
       <Stack.Screen name="scan" options={{ presentation: "modal", title: "Scannen" }} />
+      <Stack.Screen name="barcode-scanner" options={{ presentation: "modal", title: "Barcode scannen" }} />
       <Stack.Screen name="calculator" options={{ title: "Preiskalkulation" }} />
       <Stack.Screen name="haccp" options={{ title: "HACCP" }} />
       <Stack.Screen name="suppliers" options={{ title: "Lieferanten" }} />

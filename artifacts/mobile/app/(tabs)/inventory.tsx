@@ -212,6 +212,22 @@ export default function Inventory() {
           </View>
           <View style={{ flexDirection: "row", gap: 8 }}>
             <Pressable
+              onPress={() => router.push("/barcode-scanner")}
+              style={({ pressed }) => [
+                {
+                  width: 38,
+                  height: 38,
+                  borderRadius: 12,
+                  backgroundColor: c.muted,
+                  alignItems: "center",
+                  justifyContent: "center",
+                },
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Feather name="box" size={18} color={c.primary} />
+            </Pressable>
+            <Pressable
               onPress={() => router.push("/scan")}
               style={({ pressed }) => [
                 {
