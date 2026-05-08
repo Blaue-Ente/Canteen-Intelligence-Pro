@@ -25,6 +25,9 @@ import type {
   InventoryItem,
   HaccpLog,
   WasteEntry,
+  SaleEntry,
+  FoodSample,
+  MenuDayEntry,
 } from "@/types";
 
 export type KiosStatus = "off" | "idle" | "awake" | "thinking" | "speaking";
@@ -79,6 +82,27 @@ type PendingAction =
   | {
       kind: "addRecipeFromOnline";
       recipe: Recipe;
+    }
+  // Voice-driven menu planning: "Setze Linsensuppe auf Montag".
+  | {
+      kind: "setMenuByVoice";
+      date: string;
+      dateLabel: string;
+      recipeId: string;
+      recipeName: string;
+    }
+  // Voice-driven daily sales entry: "45 Portionen Schnitzel verkauft".
+  | {
+      kind: "addSaleByVoice";
+      sale: SaleEntry;
+      recipeName: string;
+      count: number;
+    }
+  // Voice-driven Rückstellprobe: "Probe von Gulasch nehmen".
+  | {
+      kind: "addFoodSampleByVoice";
+      sample: FoodSample;
+      recipeName: string;
     };
 
 // ── T016a: Conversation memory (anaphora resolution) ─────────────────────────
@@ -690,6 +714,49 @@ const ALLERGEN_DE_TO_KEY: Array<{ token: RegExp; key: Allergen }> = [
   { token: /erdnu/i, key: "peanut" },
 ];
 
+// ── Block 2: Ingredient substitution dictionary ───────────────────────────────
+// Voice: "Womit kann ich Butter ersetzen?" / "Ich habe kein Mehl, was nehme ich?"
+const SUBSTITUTES: Array<{ tokens: RegExp; item: string; subs: string }> = [
+  { tokens: /butter/i,                            item: "Butter",      subs: "Margarine oder Kokosöl" },
+  { tokens: /milch\b/i,                           item: "Milch",       subs: "Hafermilch, Mandelmilch oder Sojamilch" },
+  { tokens: /\bei\b|eier/i,                       item: "Ei",          subs: "Apfelmus (80 g pro Ei) oder Leinsamen mit Wasser" },
+  { tokens: /\bmehl\b/i,                          item: "Mehl",        subs: "Dinkelmehl oder glutenfreiem Reismehl" },
+  { tokens: /zucker/i,                            item: "Zucker",      subs: "Honig, Agavendicksaft oder Erythrit" },
+  { tokens: /sahne/i,                             item: "Sahne",       subs: "Kokosmilch oder Hafercreme" },
+  { tokens: /raps[öo]l|sonnenblumen[öo]l/i,       item: "Pflanzenöl",  subs: "Rapsöl oder Sonnenblumenöl — beide sind austauschbar" },
+  { tokens: /oliven[öo]l/i,                       item: "Olivenöl",    subs: "Rapsöl in gleicher Menge" },
+  { tokens: /zitrone|zitronensaft/i,              item: "Zitronensaft",subs: "Weißweinessig (halb so viel) oder Limettensaft" },
+  { tokens: /tomatenmark|tomatensauce/i,          item: "Tomatenmark", subs: "Passata oder frisch eingekochten Tomaten" },
+  { tokens: /\bjoghurt\b/i,                       item: "Joghurt",     subs: "Saurer Sahne oder Quark" },
+  { tokens: /\bessig\b/i,                         item: "Essig",       subs: "Apfelessig oder Zitronensaft" },
+  { tokens: /\bschinken\b/i,                      item: "Schinken",    subs: "Speck oder Räuchertofu (vegetarisch)" },
+  { tokens: /\bparmesan\b/i,                      item: "Parmesan",    subs: "Grana Padano oder Pecorino" },
+  { tokens: /paniermehl|semmelbr[öo]sel/i,        item: "Paniermehl",  subs: "gemahlenen Haferflocken oder zerkleinerten Crackern" },
+];
+
+// ── Block 1: Nav reply phrase variants (natural language rotation) ────────────
+// Varies the spoken reply for popular nav commands so Kios doesn't always
+// sound the same. Falls back to the QUICK_COMMANDS reply in rush mode.
+const NAV_REPLY_VARIANTS: Partial<Record<string, readonly string[]>> = {
+  inventory:   ["Ich zeige dir den Lagerbestand.", "Hier der aktuelle Bestand.", "Lager wird geöffnet."],
+  menu:        ["Speisekarte wird geöffnet.", "Ich öffne den Wochenplan.", "Hier kommt der Speiseplan."],
+  stats:       ["Statistik wird geöffnet.", "Hier die Verkaufszahlen.", "Auswertungen werden geladen."],
+  haccp:       ["HACCP wird geöffnet.", "Ich öffne das Hygieneprotokoll.", "Temperaturprotokolle werden geladen."],
+  procurement: ["Bestellvorschläge werden geladen.", "Ich öffne die Nachbestellung.", "Bestellung wird vorbereitet."],
+  sales:       ["Tagesabschluss wird geöffnet.", "Hier der Tagesbericht.", "Tagesverkäufe werden geladen."],
+  waste:       ["Abfallprotokoll wird geöffnet.", "Ich zeige die Abfalleinträge.", "Abfall wird geöffnet."],
+  dienstplan:  ["Dienstplan wird geöffnet.", "Ich öffne den Schichtplan.", "Hier die Personalplanung."],
+};
+
+function pickNavReply(navKey: string, fallback: string, rush: boolean): string {
+  if (rush) return fallback;
+  const variants = NAV_REPLY_VARIANTS[navKey];
+  if (variants && variants.length > 0) {
+    return variants[Math.floor(Math.random() * variants.length)]!;
+  }
+  return fallback;
+}
+
 function handleRecipeSearch(lower: string, recipes: readonly Recipe[]): string | null {
   if (!/\b(finde|zeige?|gib mir|welche|liste)\b/.test(lower)) return null;
   let pool = [...recipes];
@@ -771,8 +838,29 @@ function composeMorningBriefing(state: AppState): string | null {
   if (tomEvents.length > 0) {
     parts.push(`Morgen ${tomEvents.length === 1 ? "1 weitere Veranstaltung" : `${tomEvents.length} weitere Veranstaltungen`}.`);
   }
+
+  // ── Block 4: Proactive time-aware reminders ───────────────────────────────
+  const nowHour = new Date().getHours();
+
+  // HACCP reminder: if past 13:00 and no temperature log exists for today.
+  if (nowHour >= 13) {
+    const haccpToday = (state.haccp ?? []).filter((h) => h.date === today).length;
+    if (haccpToday === 0) {
+      parts.push("Achtung: Noch keine Temperaturmessung im HACCP-Protokoll für heute.");
+    }
+  }
+
+  // End-of-day reminder: if past 16:00 and no sales entry for today.
+  if (nowHour >= 16) {
+    const salesToday = (state.sales ?? []).filter((s) => s.date === today).length;
+    if (salesToday === 0) {
+      parts.push("Hinweis: Kein Tagesabschluss für heute erfasst.");
+    }
+  }
+
   if (parts.length === 0) return null;
-  return `Guten Morgen, Chef. ${parts.join(" ")}`;
+  const greeting = nowHour < 11 ? "Guten Morgen" : nowHour < 17 ? "Hallo" : "Guten Abend";
+  return `${greeting}, Chef. ${parts.join(" ")}`;
 }
 
 // ── T015: Smart lookups (recipe info, contacts, order mutations) ─────────────
@@ -1052,6 +1140,156 @@ function handleSmartLookups(
     };
   }
 
+  // ── Block 1: "Was kannst du?" / help command ──────────────────────────────
+  if (/was\s+kannst\s+du|welche\s+(?:befehle|kommandos|funktionen)|hilf\s+mir\b|kios\s+hilfe/i.test(lower)) {
+    return {
+      reply:
+        "Ich kann Timer stellen, Temperaturen protokollieren, Bestand abfragen, " +
+        "Rezepte suchen, den Menüplan per Stimme befüllen, Verkäufe erfassen, " +
+        "Rückstellproben anlegen und durch die App navigieren.",
+    };
+  }
+
+  // ── Block 2: Ingredient substitution ─────────────────────────────────────
+  // "Womit kann ich Butter ersetzen?" / "Kein Mehl vorhanden, Alternative?"
+  const subMatch =
+    lower.match(/(?:womit|wie)\s+kann\s+ich\s+(.+?)\s+(?:ersetzen|erstatten|austauschen)\??$/i) ??
+    lower.match(/(?:kein(?:e)?|nicht\s+mehr)\s+(.+?)\s+(?:da|vorhanden|auf\s+lager)/i) ??
+    lower.match(/(?:ersatz|alternative)\s+(?:f[üu]r)\s+(.+?)\??$/i);
+  if (subMatch) {
+    const query = subMatch[1]!.toLowerCase();
+    const hit = SUBSTITUTES.find((s) => s.tokens.test(query));
+    if (hit) {
+      return { reply: `Für ${hit.item} kannst du ${hit.subs} verwenden.` };
+    }
+    return { reply: `Für ${subMatch[1]} habe ich leider keinen Ersatz gespeichert.` };
+  }
+
+  // ── Block 2: Ingredient availability check ────────────────────────────────
+  // "Habe ich alles für Linsensuppe?" / "Haben wir genug Zutaten für Schnitzel?"
+  const availMatch = lower.match(
+    /(?:hab(?:e|en)?\s+(?:ich|wir)\s+alles\s+f[üu]r|reichen\s+die\s+zutaten\s+f[üu]r|zutaten\s+(?:f[üu]r|von))\s+(.+?)\??$/i,
+  );
+  if (availMatch) {
+    const recipe = findRecipeByName(availMatch[1]!, state.recipes);
+    if (!recipe) {
+      return { reply: `Ich habe ${availMatch[1]} nicht in deinen Rezepten gefunden.` };
+    }
+    const missing: string[] = [];
+    for (const ing of recipe.ingredients) {
+      if (!ing.inventoryId) continue;
+      const inv = state.inventory.find((i) => i.id === ing.inventoryId);
+      if (!inv) { missing.push(ing.inventoryId); continue; }
+      if (inv.quantity <= inv.minQuantity) missing.push(inv.nameDe || inv.name);
+    }
+    if (missing.length === 0) {
+      return {
+        reply: `Alle Zutaten für ${recipe.nameDe || recipe.name} sind ausreichend auf Lager.`,
+        context: { recipe },
+      };
+    }
+    return {
+      reply: `Achtung: ${joinDeList(missing.slice(0, 3))} ${missing.length === 1 ? "ist" : "sind"} unter Mindestbestand für ${recipe.nameDe || recipe.name}.`,
+      context: { recipe },
+    };
+  }
+
+  // ── Block 2: Prep time lookup ─────────────────────────────────────────────
+  // "Wie lange braucht Schnitzel?" / "Wie lange dauert Linsensuppe?"
+  const prepMatch = lower.match(
+    /(?:wie\s+lange?\s+(?:dauert?|braucht?|kocht?)|zubereitungszeit|kochzeit)\s+(?:f[üu]r\s+)?(.+?)\??$/i,
+  );
+  if (prepMatch) {
+    const recipe = findRecipeByName(prepMatch[1]!, state.recipes);
+    if (!recipe) {
+      return { reply: `Ich habe ${prepMatch[1]} nicht in deinen Rezepten gefunden.` };
+    }
+    const t = recipe.cookTimeMin;
+    if (!t) {
+      return { reply: `Für ${recipe.nameDe || recipe.name} ist keine Kochzeit hinterlegt.`, context: { recipe } };
+    }
+    return { reply: `${recipe.nameDe || recipe.name} braucht ca. ${t} Minuten.`, context: { recipe } };
+  }
+
+  // ── Block 3: Voice menu planning ─────────────────────────────────────────
+  // "Setze Linsensuppe auf Montag" / "Plane Schnitzel für Dienstag ein"
+  const menuSetMatch = lower.match(
+    /(?:setze?|trage?\s+ein|plane?(?:\s+ein)?|schreibe?)\s+(.+?)\s+(?:auf|f[üu]r|am)\s+(.+?)(?:\s+ein)?\??$/i,
+  );
+  if (menuSetMatch) {
+    const recipe = findRecipeByName(menuSetMatch[1]!, state.recipes);
+    if (!recipe) {
+      return { reply: `Ich habe ${menuSetMatch[1]} nicht in deinen Rezepten gefunden.` };
+    }
+    const dayResult = parseSingleDay(menuSetMatch[2]!.trim().toLowerCase());
+    if (!dayResult) {
+      return {
+        reply: `Den Tag "${menuSetMatch[2]}" habe ich nicht verstanden. Sage z.B. Montag, morgen oder übermorgen.`,
+      };
+    }
+    const rName = recipe.nameDe || recipe.name;
+    return {
+      reply: `Soll ich ${rName} für ${dayResult.label} in den Speiseplan eintragen? Sage Ja oder Nein.`,
+      pending: { kind: "setMenuByVoice", date: dayResult.iso, dateLabel: dayResult.label, recipeId: recipe.id, recipeName: rName },
+      context: { recipe },
+    };
+  }
+
+  // ── Block 3: Voice daily sales entry ─────────────────────────────────────
+  // "Wir haben 45 Portionen Schnitzel verkauft" / "45 Portionen Linsensuppe heute"
+  const saleVoiceMatch =
+    lower.match(/(\d+)\s+(?:portionen?|st[üu]ck|mal)\s+(.+?)\s+(?:heute\s+)?(?:verkauft|serviert)\b/i) ??
+    lower.match(/(?:wir\s+haben\s+|ich\s+habe\s+)?(\d+)\s+(?:portionen?|st[üu]ck)\s+(.+?)\s+(?:verkauft|serviert)/i);
+  if (saleVoiceMatch) {
+    const count = Number(saleVoiceMatch[1]);
+    const recipe = findRecipeByName(saleVoiceMatch[2]!, state.recipes);
+    if (!recipe) {
+      return { reply: `${saleVoiceMatch[2]} habe ich nicht in deinen Rezepten.` };
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const sale: SaleEntry = {
+      id: `kios-${Date.now().toString(36)}`,
+      date: today,
+      recipeId: recipe.id,
+      sold: count,
+      cooked: count,
+      revenue: count * (recipe.sellPrice ?? 0),
+      source: "manual",
+    };
+    const rName = recipe.nameDe || recipe.name;
+    return {
+      reply: `Soll ich ${count} Portionen ${rName} für heute als verkauft erfassen? Sage Ja oder Nein.`,
+      pending: { kind: "addSaleByVoice", sale, recipeName: rName, count },
+      context: { recipe },
+    };
+  }
+
+  // ── Block 3: Voice Rückstellprobe ─────────────────────────────────────────
+  // "Rückstellprobe von Gulasch nehmen" / "Probe für Linsensuppe erfassen"
+  const sampleMatch =
+    lower.match(/(?:r[üu]ckstell)?probe\s+(?:von|f[üu]r|von\s+dem)\s+(.+?)(?:\s+nehmen|\s+erfassen)?\??$/i) ??
+    lower.match(/(?:nehme?|nimm|erfasse?)\s+(?:r[üu]ckstell)?probe\s+(?:von|f[üu]r)\s+(.+?)\??$/i);
+  if (sampleMatch) {
+    const recipe = findRecipeByName(sampleMatch[1]!, state.recipes);
+    const recipeName = recipe ? (recipe.nameDe || recipe.name) : sampleMatch[1]!;
+    const today = new Date().toISOString().slice(0, 10);
+    const retDate = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+    const sample: FoodSample = {
+      id: `kios-${Date.now().toString(36)}`,
+      date: today,
+      recipeId: recipe?.id ?? "",
+      recipeName,
+      amountGrams: 100,
+      retentionUntil: retDate,
+      taken: true,
+    };
+    return {
+      reply: `Soll ich eine Rückstellprobe von ${recipeName} (100 g, Aufbewahrung bis ${retDate}) erfassen? Sage Ja oder Nein.`,
+      pending: { kind: "addFoodSampleByVoice", sample, recipeName },
+      ...(recipe ? { context: { recipe } } : {}),
+    };
+  }
+
   return null;
 }
 
@@ -1195,6 +1433,8 @@ interface KiosRefs {
   state: AppState;
   /** T016a — last referenced entity for anaphora resolution. */
   lastContext: LastContext | null;
+  /** Block 1 — last spoken text so "Wiederhole" can replay it. */
+  lastSpokenText: string;
 }
 
 // Time windows (T015). Tuned for kitchen-floor reality:
@@ -1236,6 +1476,7 @@ export function useKios() {
     pendingTtl: null,
     state,
     lastContext: null,
+    lastSpokenText: "",
   });
 
   r.current.state = state;
@@ -1343,6 +1584,21 @@ export function useKios() {
     const snap   = r.current.state;
     const locale = snap.locale;
 
+    // Block 1: "Wiederhole" / "Nochmal" — replay the last spoken text without
+    // an AI round-trip. Useful when the cook was distracted or the kitchen
+    // was noisy and they missed the answer.
+    if (/\b(wiederhole?|nochmal|noch\s+einmal|was\s+hast\s+du\s+gesagt|was\s+sagtest\s+du)\b/i.test(question)) {
+      const last = r.current.lastSpokenText;
+      setStatus("speaking");
+      speakHQ(
+        last || "Ich habe noch nichts gesagt.",
+        locale,
+        () => scheduleFollowup(300),
+        snap.kiosVoice,
+      );
+      return;
+    }
+
     // T015: Smart lookups (recipe info, contacts, order mutations) BEFORE
     // hands-free intents — contact names ("ruf X an") and recipe info
     // ("kalorien hat X") deserve dedicated regex without competing with the
@@ -1425,6 +1681,7 @@ export function useKios() {
       if (smart.pending) {
         r.current.pendingAction = smart.pending;
       }
+      r.current.lastSpokenText = smart.reply;
       setStatus("speaking");
       speakHQ(smart.reply, locale, () => {
         if (smart.pending) {
@@ -1457,7 +1714,11 @@ export function useKios() {
     if (quick) {
       if (NAV_MAP[quick.nav]) router.push(NAV_MAP[quick.nav] as never);
       setStatus("speaking");
-      const replyText = isRushMode() ? terseQuickReply(quick.nav, quick.reply) : quick.reply;
+      // Block 1: terse in rush-mode, randomised phrase variant otherwise.
+      const replyText = isRushMode()
+        ? terseQuickReply(quick.nav, quick.reply)
+        : pickNavReply(quick.nav, quick.reply, false);
+      r.current.lastSpokenText = replyText;
       speakHQ(replyText, locale, () => scheduleFollowup(300), snap.kiosVoice);
       return;
     }
@@ -1492,6 +1753,7 @@ export function useKios() {
     const navKey = result.navigate && result.navigate !== "null" ? result.navigate : null;
     if (navKey && NAV_MAP[navKey]) router.push(NAV_MAP[navKey] as never);
 
+    r.current.lastSpokenText = result.answer;
     setStatus("speaking");
     speakHQ(result.answer, locale, () => scheduleFollowup(300), snap.kiosVoice);
   }
@@ -1618,6 +1880,43 @@ export function useKios() {
       dispatch({ type: "addRecipe", recipe: pending.recipe });
       speakHQ(
         `Erledigt: ${pending.recipe.nameDe} zu deinen Rezepten hinzugefügt.`,
+        locale, () => scheduleFollowup(300), voice,
+      );
+      return;
+    }
+
+    // ── Block 3 — Voice menu planning ────────────────────────────────
+    if (pending.kind === "setMenuByVoice") {
+      const existing = r.current.state.menu.find((m) => m.date === pending.date);
+      const entry: MenuDayEntry = {
+        date: pending.date,
+        recipeIds: existing
+          ? [...existing.recipeIds.filter((id) => id !== pending.recipeId), pending.recipeId]
+          : [pending.recipeId],
+      };
+      dispatch({ type: "setMenu", entry });
+      speakHQ(
+        `Erledigt: ${pending.recipeName} für ${pending.dateLabel} in den Speiseplan eingetragen.`,
+        locale, () => scheduleFollowup(300), voice,
+      );
+      return;
+    }
+
+    // ── Block 3 — Voice daily sales entry ────────────────────────────
+    if (pending.kind === "addSaleByVoice") {
+      dispatch({ type: "addSale", sale: pending.sale });
+      speakHQ(
+        `Erledigt: ${pending.count} Portionen ${pending.recipeName} als Tagesverkauf erfasst.`,
+        locale, () => scheduleFollowup(300), voice,
+      );
+      return;
+    }
+
+    // ── Block 3 — Voice Rückstellprobe ───────────────────────────────
+    if (pending.kind === "addFoodSampleByVoice") {
+      dispatch({ type: "addFoodSample", sample: pending.sample });
+      speakHQ(
+        `Erledigt: Rückstellprobe von ${pending.recipeName} erfasst. Aufbewahrung bis ${pending.sample.retentionUntil}.`,
         locale, () => scheduleFollowup(300), voice,
       );
       return;

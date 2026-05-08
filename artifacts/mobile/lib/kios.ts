@@ -317,7 +317,7 @@ Beispiele:
   "Erkläre Reste-Rezepte" → answer: "Hier kannst du aus Übrigem neue Gerichte vorschlagen lassen." navigate: reste
   "Wie ist mein DGE-Score?" → answer: "Aktuell [X]/100 für [Standard], [N] Kriterien noch offen." navigate: dge
   "DGE-Zertifikat erstellen" → answer: "Ich öffne den DGE-Bereich, dort kannst du das Zertifikat als PDF erstellen." navigate: dge
-  "Rückstellprobe nehmen" → answer: "Produktion wird geöffnet, dort kannst du die Probe erfassen." navigate: production
+  "Rückstellprobe von Gulasch nehmen" → answer: "Ich erfasse die Rückstellprobe für Gulasch — bitte bestätige." navigate: null
   "Wie viele Rückstellproben habe ich?" → answer: "Aktuell [N] aktive Proben in der 7-Tage-Frist." navigate: production
   "Reinigung erledigt" → answer: "Reinigungsplan wird geöffnet." navigate: cleaning
   "Rechnung schreiben" → answer: "Kasse wird geöffnet." navigate: kasse
@@ -330,6 +330,12 @@ Beispiele:
   "Branding für Vorbestellung ändern" → answer: "Einstellungen werden geöffnet, dort findest du den Abschnitt Vorbestellung-Branding." navigate: settings
   "Benachrichtigungen einrichten" → answer: "Ich öffne Einstellungen — dort findest du alle Notification-Optionen inkl. Öko-Reminder und Vorbestellungs-Alerts." navigate: settings
   "Abwesenheit melden" → answer: "Dienstplan wird geöffnet, dort kannst du Urlaub oder Krankmeldung eintragen." navigate: dienstplan
+  "Setze Linsensuppe auf Montag" → answer: "Ich trage Linsensuppe für Montag in den Speiseplan ein — bitte bestätige." navigate: null
+  "Wir haben 45 Portionen Schnitzel verkauft" → answer: "Ich erfasse 45 Portionen Schnitzel als Tagesverkauf — bitte bestätige." navigate: null
+  "Womit kann ich Butter ersetzen?" → answer: "Butter kannst du durch Margarine oder Kokosöl ersetzen." navigate: null
+  "Habe ich alles für Linsensuppe?" → answer: "Alle Zutaten für Linsensuppe sind ausreichend auf Lager." navigate: inventory
+  "Wie lange braucht Schnitzel?" → answer: "Schnitzel braucht ca. [X] Minuten Zubereitung." navigate: null
+  "Was kannst du?" → answer: "Ich kann Timer stellen, Temperaturen protokollieren, Bestand abfragen, Rezepte suchen, Menüplanung, Verkäufe erfassen und durch die App navigieren." navigate: null
 
 Frage: "${question}"`.trim();
 
