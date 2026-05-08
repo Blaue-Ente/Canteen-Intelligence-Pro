@@ -47,6 +47,7 @@ export interface MeMembership {
   role: "owner" | "manager" | "staff";
   displayName: string;
   employeeRole?: string | null;
+  approved: boolean;
 }
 
 export interface MeResponse {
@@ -61,6 +62,7 @@ export interface MemberRow {
   displayName: string;
   email?: string | null;
   employeeRole?: string | null;
+  approved: boolean;
 }
 
 export interface InviteRow {

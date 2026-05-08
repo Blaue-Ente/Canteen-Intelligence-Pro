@@ -84,12 +84,16 @@ function useProtectedRoute(): { ready: boolean } {
     if (!ready) return;
     const inAuthGroup = segments[0] === "(auth)";
     const onOnboarding = segments[0] === "onboarding";
+    const onPendingApproval = segments[0] === "pending-approval";
 
     if (!isSignedIn && !inAuthGroup) {
       router.replace("/(auth)/sign-in");
     } else if (isSignedIn && !currentMembership && !onOnboarding) {
       router.replace("/onboarding");
-    } else if (isSignedIn && currentMembership && (inAuthGroup || onOnboarding)) {
+    } else if (isSignedIn && currentMembership && !currentMembership.approved && !onPendingApproval) {
+      // Member exists but not yet approved by admin
+      router.replace("/pending-approval");
+    } else if (isSignedIn && currentMembership && currentMembership.approved && (inAuthGroup || onOnboarding || onPendingApproval)) {
       router.replace("/(tabs)");
     }
   }, [ready, isSignedIn, currentMembership, segments, router]);
@@ -152,6 +156,7 @@ function RootLayoutNav() {
       <Stack.Screen name="kasse" options={{ title: "Kasse" }} />
       <Stack.Screen name="dge" options={{ title: "DGE-Standard" }} />
       <Stack.Screen name="help" options={{ title: "Gebrauchsanleitung" }} />
+      <Stack.Screen name="pending-approval" options={{ headerShown: false }} />
       <Stack.Screen name="+not-found" />
     </Stack>
   );

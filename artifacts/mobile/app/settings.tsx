@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
-import React, { useState } from "react";
-import { Alert, Image, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Alert, Image, Linking, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 
 import { useRouter } from "expo-router";
@@ -800,6 +800,14 @@ export default function Settings() {
           </Pressable>
         </Card>
 
+        {/* PWA Schnellzugang — web only */}
+        {Platform.OS === "web" && <PwaShortcutsCard />}
+
+        {/* Pending approvals — owner/manager only */}
+        {(currentMembership?.role === "owner" || currentMembership?.role === "manager") && (
+          <PendingApprovalsCard />
+        )}
+
         <Button label="Abmelden" icon="log-out" variant="ghost" onPress={() => signOut()} />
 
         <Button
@@ -1371,6 +1379,232 @@ function TseLocationEditor({ locationId, locationName, locationAddress, index }:
         </View>
       )}
     </View>
+  );
+}
+
+// ─── PWA Schnellzugang (web only) ────────────────────────────────────────────
+function PwaShortcutsCard() {
+  const c = useColors();
+  const { state } = useApp();
+  const isDe = state.locale === "de";
+
+  const shortcuts = [
+    {
+      icon: "credit-card" as const,
+      label: isDe ? "Kasse" : "POS Register",
+      desc: isDe ? "TSE-Kasse direkt am Startbildschirm" : "TSE POS on your home screen",
+      color: "#f59e0b",
+      url: "/app/kasse-pwa.html",
+    },
+    {
+      icon: "thermometer" as const,
+      label: "HACCP",
+      desc: isDe ? "Temperaturlogs & Reinigung" : "Temperature logs & cleaning",
+      color: "#14b8a6",
+      url: "/app/haccp-pwa.html",
+    },
+  ];
+
+  return (
+    <Card>
+      <SectionHeader title={isDe ? "PWA-Schnellzugang" : "PWA shortcuts"} />
+      <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, marginBottom: 12 }}>
+        {isDe
+          ? "Füge Kasse oder HACCP als eigene App-Ikone auf dem Startbildschirm hinzu — ohne App-Store."
+          : "Add Kasse or HACCP as dedicated home screen icons — no app store needed."}
+      </Text>
+      <View style={{ gap: 10 }}>
+        {shortcuts.map((s) => (
+          <Pressable
+            key={s.url}
+            onPress={() => Linking.openURL(s.url)}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 12,
+              padding: 12,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: c.border,
+              backgroundColor: pressed ? c.muted : "transparent",
+            })}
+          >
+            <View
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 10,
+                backgroundColor: s.color + "22",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Feather name={s.icon} size={18} color={s.color} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: c.foreground, fontFamily: "Inter_600SemiBold", fontSize: 14 }}>{s.label}</Text>
+              <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 1 }}>{s.desc}</Text>
+            </View>
+            <Feather name="external-link" size={15} color={c.mutedForeground} />
+          </Pressable>
+        ))}
+      </View>
+    </Card>
+  );
+}
+
+// ─── Pending Approvals (owner / manager only) ────────────────────────────────
+function PendingApprovalsCard() {
+  const c = useColors();
+  const { state } = useApp();
+  const { currentMembership, refresh } = useAuthCtx();
+  const isDe = state.locale === "de";
+  const [members, setMembers] = useState<import("@/lib/api").MemberRow[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const orgId = currentMembership?.orgId;
+
+  useEffect(() => {
+    if (!orgId) return;
+    setLoading(true);
+    apiFetch<{ members: import("@/lib/api").MemberRow[]; invites: unknown[] }>(`/api/orgs/${orgId}/members`)
+      .then((data) => setMembers(data.members))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [orgId]);
+
+  const pending = members.filter((m) => !m.approved);
+
+  const approve = async (userId: string) => {
+    if (!orgId) return;
+    setBusy(true);
+    try {
+      await apiFetch(`/api/orgs/${orgId}/members/${userId}/approve`, { method: "PATCH" });
+      setMembers((prev) => prev.map((m) => m.userId === userId ? { ...m, approved: true } : m));
+      await refresh();
+    } catch (err) {
+      Alert.alert(isDe ? "Fehler" : "Error", err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reject = async (userId: string, name: string) => {
+    if (!orgId) return;
+    Alert.alert(
+      isDe ? "Ablehnen?" : "Reject?",
+      isDe ? `${name} wird aus der Organisation entfernt.` : `${name} will be removed from the organisation.`,
+      [
+        { text: isDe ? "Abbrechen" : "Cancel", style: "cancel" },
+        {
+          text: isDe ? "Ablehnen" : "Reject",
+          style: "destructive",
+          onPress: async () => {
+            setBusy(true);
+            try {
+              await apiFetch(`/api/orgs/${orgId}/members/${userId}/reject`, { method: "DELETE" });
+              setMembers((prev) => prev.filter((m) => m.userId !== userId));
+            } catch (err) {
+              Alert.alert(isDe ? "Fehler" : "Error", err instanceof Error ? err.message : String(err));
+            } finally {
+              setBusy(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  return (
+    <Card>
+      <SectionHeader title={isDe ? "Zugangsanfragen" : "Access requests"} />
+      {loading ? (
+        <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 13 }}>
+          {isDe ? "Wird geladen…" : "Loading…"}
+        </Text>
+      ) : pending.length === 0 ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Feather name="check-circle" size={15} color={c.primary} />
+          <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 13 }}>
+            {isDe ? "Keine ausstehenden Anfragen." : "No pending requests."}
+          </Text>
+        </View>
+      ) : (
+        <View style={{ gap: 10 }}>
+          <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, marginBottom: 4 }}>
+            {isDe
+              ? `${pending.length} Mitarbeiter warte${pending.length === 1 ? "t" : "n"} auf Freigabe.`
+              : `${pending.length} member${pending.length === 1 ? "" : "s"} waiting for approval.`}
+          </Text>
+          {pending.map((m) => (
+            <View
+              key={m.userId}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+                padding: 10,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: c.border,
+                backgroundColor: c.muted,
+              }}
+            >
+              <View
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: c.primary + "22",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text style={{ color: c.primary, fontFamily: "Inter_700Bold", fontSize: 14 }}>
+                  {(m.displayName?.[0] ?? "?").toUpperCase()}
+                </Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: c.foreground, fontFamily: "Inter_600SemiBold", fontSize: 14 }}>
+                  {m.displayName}
+                </Text>
+                {m.email && (
+                  <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12 }}>
+                    {m.email}
+                  </Text>
+                )}
+              </View>
+              <Pressable
+                disabled={busy}
+                onPress={() => void approve(m.userId)}
+                style={({ pressed }) => ({
+                  backgroundColor: pressed ? c.primary + "cc" : c.primary,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 8,
+                  opacity: busy ? 0.5 : 1,
+                })}
+              >
+                <Text style={{ color: c.primaryForeground, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
+                  {isDe ? "Freigeben" : "Approve"}
+                </Text>
+              </Pressable>
+              <Pressable
+                disabled={busy}
+                onPress={() => void reject(m.userId, m.displayName)}
+                style={({ pressed }) => ({
+                  opacity: pressed || busy ? 0.5 : 1,
+                  padding: 6,
+                })}
+              >
+                <Feather name="x" size={18} color={c.destructive ?? "#ef4444"} />
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      )}
+    </Card>
   );
 }
 

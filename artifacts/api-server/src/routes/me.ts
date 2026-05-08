@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Response } from "express";
 import { db, memberships, organizations, invites } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
-import { createClerkClient, getAuth } from "@clerk/express";
+import { and, eq, isNull } from "drizzle-orm";
+import { createClerkClient } from "@clerk/express";
 import { requireAuth, type AuthedRequest } from "../lib/auth";
 
 const router: IRouter = Router();
@@ -44,6 +44,7 @@ router.get("/me", requireAuth, async (req, res: Response) => {
       role: r.m.role,
       displayName: r.m.displayName,
       employeeRole: r.m.employeeRole,
+      approved: r.m.approvedAt !== null,
     })),
   });
 });
@@ -71,12 +72,14 @@ router.post("/orgs", requireAuth, async (req, res: Response) => {
 
   const orgId = `org_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   await db.insert(organizations).values({ id: orgId, name: body.name, ownerUserId: userId });
+  // Owner is automatically approved
   await db.insert(memberships).values({
     orgId,
     userId,
     role: "owner",
     displayName,
     employeeRole: "manager",
+    approvedAt: new Date(),
   });
 
   res.json({ orgId, name: body.name });
@@ -107,6 +110,7 @@ router.get("/orgs/:orgId/members", requireAuth, async (req, res: Response) => {
       displayName: m.displayName,
       email: m.email,
       employeeRole: m.employeeRole,
+      approved: m.approvedAt !== null,
     })),
     invites: pending
       .filter((i) => !i.acceptedAt)
@@ -198,6 +202,58 @@ router.delete("/orgs/:orgId/members/:userId", requireAuth, async (req, res: Resp
   res.json({ ok: true });
 });
 
+// Approve a pending member (owner/manager only)
+router.patch("/orgs/:orgId/members/:userId/approve", requireAuth, async (req, res: Response) => {
+  const callerId = (req as AuthedRequest).userId;
+  const orgId = String(req.params.orgId);
+  const targetId = String(req.params.userId);
+
+  const myRow = await db
+    .select()
+    .from(memberships)
+    .where(and(eq(memberships.orgId, orgId), eq(memberships.userId, callerId)))
+    .limit(1);
+  if (myRow.length === 0 || myRow[0]!.role === "staff") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const updated = await db
+    .update(memberships)
+    .set({ approvedAt: new Date() })
+    .where(and(eq(memberships.orgId, orgId), eq(memberships.userId, targetId)))
+    .returning();
+
+  if (updated.length === 0) {
+    res.status(404).json({ error: "Member not found" });
+    return;
+  }
+  res.json({ ok: true });
+});
+
+// Reject / remove a pending member (owner/manager only)
+router.delete("/orgs/:orgId/members/:userId/reject", requireAuth, async (req, res: Response) => {
+  const callerId = (req as AuthedRequest).userId;
+  const orgId = String(req.params.orgId);
+  const targetId = String(req.params.userId);
+
+  const myRow = await db
+    .select()
+    .from(memberships)
+    .where(and(eq(memberships.orgId, orgId), eq(memberships.userId, callerId)))
+    .limit(1);
+  if (myRow.length === 0 || myRow[0]!.role === "staff") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  if (targetId === callerId) {
+    res.status(400).json({ error: "Cannot reject yourself" });
+    return;
+  }
+  await db.delete(memberships).where(and(eq(memberships.orgId, orgId), eq(memberships.userId, targetId)));
+  res.json({ ok: true });
+});
+
 interface AcceptBody {
   code: string;
   displayName?: string;
@@ -242,6 +298,7 @@ router.post("/invites/accept", requireAuth, async (req, res: Response) => {
       displayName: body.displayName ?? inv.displayName ?? fallbackName ?? "Mitarbeiter",
       email: email ?? inv.email,
       employeeRole: inv.employeeRole,
+      approvedAt: null, // Pending — owner must approve
     })
     .onConflictDoNothing();
 
@@ -250,7 +307,7 @@ router.post("/invites/accept", requireAuth, async (req, res: Response) => {
     .set({ acceptedAt: new Date(), acceptedByUserId: userId })
     .where(eq(invites.code, code));
 
-  res.json({ orgId: inv.orgId });
+  res.json({ orgId: inv.orgId, pending: true });
 });
 
 export default router;

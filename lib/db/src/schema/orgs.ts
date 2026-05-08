@@ -19,6 +19,7 @@ export const memberships = pgTable(
     email: text("email"),
     employeeRole: text("employee_role"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.orgId, t.userId] }),
