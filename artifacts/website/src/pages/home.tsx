@@ -119,7 +119,7 @@ export default function Home() {
         <div className="absolute inset-0 -z-10 bg-gradient-to-b from-primary/8 via-background to-background" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-20 grid gap-10 lg:grid-cols-2 lg:items-center">
           <div>
-            <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 text-primary px-3 py-1 text-xs font-medium">
+            <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 text-primary px-3 py-1 text-xs font-medium whitespace-nowrap">
               <Sparkles className="w-3 h-3" /> {t("heroBadge")}
             </span>
             <h1 className="mt-5 text-4xl sm:text-5xl lg:text-6xl font-serif font-bold tracking-tight leading-[1.05]">

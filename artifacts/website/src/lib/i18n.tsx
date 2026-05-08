@@ -142,7 +142,7 @@ const de: Dict = {
   langSwitch: "EN",
 
   // Home
-  heroBadge: "Neu 2026 · DGE-Score, KI-Sprachassistent, TSE-Kasse",
+  heroBadge: "Neu 2026 · DGE · KI-Stimme · TSE-Kasse",
   heroTitle: "Eine Plattform. Ihre ganze Küche. Komplett konform.",
   heroSub:
     "KItchenOS ersetzt Excel, Klemmbrett, Kasse und drei weitere Tools. DGE-konform für Schulen, Kitas, Kliniken und Senioren-Heime. Mit KI-Sprachassistent, Fiskaly-TSE-Kasse, LMIV-Aushang und Echtzeit-Forecast.",
@@ -659,7 +659,7 @@ const en: Dict = {
   ctaTalk: "Talk to us",
   langSwitch: "DE",
 
-  heroBadge: "New 2026 · DGE score, AI voice assistant, fiscal POS",
+  heroBadge: "New 2026 · DGE · AI voice · fiscal POS",
   heroTitle: "One platform. Your whole kitchen. Fully compliant.",
   heroSub:
     "KItchenOS replaces Excel, clipboards, your POS and three other tools. DGE-compliant for schools, kindergartens, hospitals and senior care. With AI voice assistant, fiscal POS, EU-FIC labelling and real-time forecasting.",
