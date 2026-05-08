@@ -1,8 +1,9 @@
 /**
- * Extract recipes from Köche-Nord PDF cookbooks and upsert into recipe_library.
+ * Extract recipes from PDF cookbooks and upsert into recipe_library.
  *
- * PDFs must be pre-downloaded to /tmp/kochbuecher/ (done by the calling workflow).
- * The script is idempotent — re-running updates existing rows.
+ * PDFs must be pre-downloaded to /tmp/kochbuecher/.
+ * The script is idempotent and RESUMABLE — interrupted PDFs continue from the
+ * last saved chunk on re-run. Run repeatedly until all PDFs show ✅.
  *
  * Usage:
  *   pnpm --filter @workspace/scripts run extract:koechenord
@@ -54,8 +55,15 @@ interface ExtractedRecipe {
   tags: string[];
 }
 
+interface InProgressEntry {
+  nextChunk: number;       // next chunk index to process (0-based)
+  upserted: number;        // recipes inserted so far for this PDF
+  seenNames: string[];     // deduplicate within this book
+}
+
 interface Progress {
   done: string[];
+  inProgress: Record<string, InProgressEntry>;
   totalUpserted: number;
 }
 
@@ -63,9 +71,14 @@ interface Progress {
 
 function loadProgress(): Progress {
   if (existsSync(PROGRESS_FILE)) {
-    return JSON.parse(readFileSync(PROGRESS_FILE, "utf-8")) as Progress;
+    const p = JSON.parse(readFileSync(PROGRESS_FILE, "utf-8")) as Partial<Progress>;
+    return {
+      done: p.done ?? [],
+      inProgress: p.inProgress ?? {},
+      totalUpserted: p.totalUpserted ?? 0,
+    };
   }
-  return { done: [], totalUpserted: 0 };
+  return { done: [], inProgress: {}, totalUpserted: 0 };
 }
 
 function saveProgress(p: Progress) {
@@ -107,7 +120,7 @@ Für jedes Rezept liefere ein JSON-Objekt:
   "allergens": ["gluten","milk","egg","nuts","soy","fish","shellfish","celery","mustard","sesame","sulphite","lupin","mollusc","peanut"],
   "stepsDe": ["Schritt 1...", "Schritt 2..."],
   "steps": ["Step 1...", "Step 2..."],
-  "tags": ["klassiker","vegetarisch","schnell","kantine","sommer","herbst","winter","frühling","gesund","günstig","deftig"]
+  "tags": ["klassiker","vegetarisch","schnell","kantine","sommer","herbst","winter","frühling","gesund","günstig","deftig","low-carb"]
 }
 
 Gib ein JSON-Array zurück. Wenn keine vollständigen Rezepte vorhanden sind, gib [] zurück.`;
@@ -130,7 +143,8 @@ Gib ein JSON-Array zurück. Wenn keine vollständigen Rezepte vorhanden sind, gi
   try {
     const parsed = JSON.parse(raw) as { recipes?: ExtractedRecipe[] } | ExtractedRecipe[];
     if (Array.isArray(parsed)) return parsed;
-    if (Array.isArray(parsed.recipes)) return parsed.recipes;
+    if (Array.isArray((parsed as { recipes?: ExtractedRecipe[] }).recipes))
+      return (parsed as { recipes: ExtractedRecipe[] }).recipes;
     // Some models return { "0": {...}, "1": {...} }
     return Object.values(parsed).filter(
       (v): v is ExtractedRecipe => typeof v === "object" && v !== null && "nameDe" in v,
@@ -145,14 +159,13 @@ async function upsertRecipes(recipes: ExtractedRecipe[]): Promise<number> {
   for (const r of recipes) {
     if (!r.nameDe || !r.stepsDe?.length) continue;
 
-    // Validate enums
     const validTypes = ["soup", "main", "salad", "dessert", "side", "drink"];
-    const validCats = ["vegan", "vegetarian", "meat", "fish", "kids"];
+    const validCats  = ["vegan", "vegetarian", "meat", "fish", "kids"];
     const validMeats = ["beef", "pork", "chicken", "lamb", "turkey", "none"];
 
-    const type = validTypes.includes(r.type) ? r.type : "main";
-    const category = validCats.includes(r.category) ? r.category : "vegetarian";
-    const meat = validMeats.includes(r.meat) ? r.meat : "none";
+    const type     = validTypes.includes(r.type)     ? r.type     : "main";
+    const category = validCats.includes(r.category)  ? r.category : "vegetarian";
+    const meat     = validMeats.includes(r.meat)     ? r.meat     : "none";
 
     try {
       await db
@@ -161,39 +174,39 @@ async function upsertRecipes(recipes: ExtractedRecipe[]): Promise<number> {
           id: randomUUID(),
           nameDe: r.nameDe.trim().slice(0, 200),
           name: (r.name ?? r.nameDe).trim().slice(0, 200),
-          type: type as typeof recipeLibrary.$inferInsert["type"],
+          type:     type     as typeof recipeLibrary.$inferInsert["type"],
           category: category as typeof recipeLibrary.$inferInsert["category"],
-          meat: meat as typeof recipeLibrary.$inferInsert["meat"],
+          meat:     meat     as typeof recipeLibrary.$inferInsert["meat"],
           portionGrams: Math.max(50, Math.min(2000, r.portionGrams ?? 350)),
           basePrice: 2.5,
           sellPrice: 0,
           cookTimeMin: Math.max(5, Math.min(480, r.cookTimeMin ?? 30)),
           kcalPerPortion: r.kcalPerPortion ?? null,
           protein: r.protein ?? null,
-          fat: r.fat ?? null,
-          carbs: r.carbs ?? null,
+          fat:     r.fat     ?? null,
+          carbs:   r.carbs   ?? null,
           allergens: Array.isArray(r.allergens) ? r.allergens.slice(0, 14) : [],
           stepsDe: Array.isArray(r.stepsDe) ? r.stepsDe : [],
-          steps: Array.isArray(r.steps) ? r.steps : r.stepsDe,
-          tags: Array.isArray(r.tags) ? r.tags : [],
+          steps:   Array.isArray(r.steps)   ? r.steps   : r.stepsDe,
+          tags:    Array.isArray(r.tags)    ? r.tags    : [],
         })
         .onConflictDoUpdate({
           target: recipeLibrary.nameDe,
           set: {
-            name: sql`excluded.name`,
-            type: sql`excluded.type`,
-            category: sql`excluded.category`,
-            meat: sql`excluded.meat`,
-            portionGrams: sql`excluded.portion_grams`,
-            cookTimeMin: sql`excluded.cook_time_min`,
+            name:           sql`excluded.name`,
+            type:           sql`excluded.type`,
+            category:       sql`excluded.category`,
+            meat:           sql`excluded.meat`,
+            portionGrams:   sql`excluded.portion_grams`,
+            cookTimeMin:    sql`excluded.cook_time_min`,
             kcalPerPortion: sql`excluded.kcal_per_portion`,
-            protein: sql`excluded.protein`,
-            fat: sql`excluded.fat`,
-            carbs: sql`excluded.carbs`,
-            allergens: sql`excluded.allergens`,
-            stepsDe: sql`excluded.steps_de`,
-            steps: sql`excluded.steps`,
-            tags: sql`excluded.tags`,
+            protein:        sql`excluded.protein`,
+            fat:            sql`excluded.fat`,
+            carbs:          sql`excluded.carbs`,
+            allergens:      sql`excluded.allergens`,
+            stepsDe:        sql`excluded.steps_de`,
+            steps:          sql`excluded.steps`,
+            tags:           sql`excluded.tags`,
           },
         });
       count++;
@@ -226,7 +239,14 @@ async function main() {
     process.exit(0);
   }
 
-  console.log(`📄 Zu verarbeitende PDFs: ${files.join(", ")}\n`);
+  // Show which ones have partial progress
+  for (const f of files) {
+    const partial = progress.inProgress[f];
+    if (partial) {
+      console.log(`  ↩️  ${f} — weiter ab Chunk ${partial.nextChunk + 1} (${partial.upserted} bisher)`);
+    }
+  }
+  console.log();
 
   for (const file of files) {
     const filePath = join(PDF_DIR, file);
@@ -247,36 +267,51 @@ async function main() {
     // Remove excessive whitespace but keep structure
     fullText = fullText.replace(/\n{4,}/g, "\n\n").replace(/[ \t]{3,}/g, " ");
 
-    // Split into chunks and process each
-    const chunks = chunkText(fullText);
-    console.log(`  🔪 ${chunks.length} Chunks à ~${CHUNK_SIZE} Zeichen`);
-
+    const chunks   = chunkText(fullText);
     const bookName = file.replace(".pdf", "").replace(/-/g, " ");
-    let bookTotal = 0;
-    const seenNames = new Set<string>();
 
-    for (let i = 0; i < chunks.length; i++) {
+    // Restore or initialise per-file state
+    const state: InProgressEntry = progress.inProgress[file] ?? {
+      nextChunk: 0,
+      upserted: 0,
+      seenNames: [],
+    };
+    const seenNames = new Set<string>(state.seenNames);
+
+    console.log(`  🔪 ${chunks.length} Chunks à ~${CHUNK_SIZE} Zeichen (Start: ${state.nextChunk + 1})`);
+
+    for (let i = state.nextChunk; i < chunks.length; i++) {
       process.stdout.write(`  🤖 Chunk ${i + 1}/${chunks.length} … `);
       try {
         const recipes = await extractFromChunk(chunks[i]!, bookName);
-        // Deduplicate within this book
-        const fresh = recipes.filter((r) => r.nameDe && !seenNames.has(r.nameDe));
+        const fresh   = recipes.filter((r) => r.nameDe && !seenNames.has(r.nameDe));
         fresh.forEach((r) => seenNames.add(r.nameDe));
 
         const inserted = await upsertRecipes(fresh);
-        bookTotal += inserted;
+        state.upserted += inserted;
         console.log(`${fresh.length} gefunden, ${inserted} eingefügt`);
       } catch (err) {
         console.error(`❌ Fehler: ${(err as Error).message?.slice(0, 100)}`);
-        await new Promise((r) => setTimeout(r, 5000)); // backoff
+        // Save checkpoint before backing off so a hard kill still resumes here
+        state.nextChunk  = i;
+        state.seenNames  = [...seenNames];
+        progress.inProgress[file] = state;
+        saveProgress(progress);
+        await new Promise((r) => setTimeout(r, 5000));
       }
 
-      // No delay — gpt-4o-mini rate limits are generous
+      // ── Checkpoint after every chunk ──────────────────────────────────────
+      state.nextChunk  = i + 1;
+      state.seenNames  = [...seenNames];
+      progress.inProgress[file] = state;
+      saveProgress(progress);
     }
 
-    console.log(`  ✅ ${bookName}: ${bookTotal} Rezepte eingefügt`);
+    // PDF complete — move from inProgress → done
+    console.log(`  ✅ ${bookName}: ${state.upserted} Rezepte eingefügt`);
     progress.done.push(file);
-    progress.totalUpserted += bookTotal;
+    progress.totalUpserted += state.upserted;
+    delete progress.inProgress[file];
     saveProgress(progress);
   }
 
