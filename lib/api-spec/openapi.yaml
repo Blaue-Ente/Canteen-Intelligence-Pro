@@ -420,6 +420,187 @@ paths:
               schema:
                 $ref: "#/components/schemas/CustomerProfile"
 
+  /preorder/staff/ref-codes:
+    get:
+      operationId: listRefCodes
+      tags: [preorder]
+      summary: Admin lists all generated business reference codes for their org.
+      responses:
+        "200":
+          description: List of reference codes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BusinessRefCode"
+    post:
+      operationId: createRefCode
+      tags: [preorder]
+      summary: Admin generates a new business reference code.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRefCodeBody"
+      responses:
+        "201":
+          description: Created reference code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BusinessRefCode"
+
+  /preorder/staff/ref-codes/{code}:
+    delete:
+      operationId: deleteRefCode
+      tags: [preorder]
+      summary: Admin revokes (deletes) a reference code.
+      parameters:
+        - in: path
+          name: code
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required: [ok]
+
+  /preorder/customer/redeem-code:
+    post:
+      operationId: redeemRefCode
+      tags: [preorder]
+      summary: Customer redeems a reference code to become business_approved instantly.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RedeemRefCodeBody"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerProfile"
+
+  /preorder/staff/announcements:
+    get:
+      operationId: listStaffAnnouncements
+      tags: [preorder]
+      summary: Admin lists announcements for their org.
+      parameters:
+        - in: query
+          name: locationCode
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of announcements
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PortalAnnouncement"
+    post:
+      operationId: createAnnouncement
+      tags: [preorder]
+      summary: Admin creates a new announcement (optionally with a PDF or image attachment as base64).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAnnouncementBody"
+      responses:
+        "201":
+          description: Created announcement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalAnnouncement"
+
+  /preorder/staff/announcements/{id}:
+    delete:
+      operationId: deleteAnnouncement
+      tags: [preorder]
+      summary: Admin deletes an announcement.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required: [ok]
+
+  /preorder/announcements/{locationCode}:
+    get:
+      operationId: listAnnouncements
+      tags: [preorder]
+      summary: Public — list announcements for a location (without file data).
+      parameters:
+        - in: path
+          name: locationCode
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of announcements (no file data)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PortalAnnouncementPublic"
+
+  /preorder/announcements/{locationCode}/{id}/file:
+    get:
+      operationId: getAnnouncementFile
+      tags: [preorder]
+      summary: Public — download the file attachment of an announcement.
+      parameters:
+        - in: path
+          name: locationCode
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: File binary (PDF, image, etc.)
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
 components:
   schemas:
     HealthStatus:
@@ -827,3 +1008,109 @@ components:
         grandTotal:
           type: number
       required: [date, locationCode, currency, totalsByDish, byCustomer, grandTotal]
+
+    BusinessRefCode:
+      type: object
+      properties:
+        code:
+          type: string
+        orgId:
+          type: string
+        locationCode:
+          type: string
+        label:
+          type: ["string", "null"]
+        createdBy:
+          type: string
+        maxUses:
+          type: integer
+        usesCount:
+          type: integer
+        createdAt:
+          type: string
+      required: [code, orgId, locationCode, createdBy, maxUses, usesCount, createdAt]
+
+    CreateRefCodeBody:
+      type: object
+      properties:
+        locationCode:
+          type: string
+        label:
+          type: ["string", "null"]
+          description: Optional label for admin reference, e.g. company name.
+        maxUses:
+          type: integer
+          description: How many times the code can be redeemed (default 1).
+      required: [locationCode]
+
+    RedeemRefCodeBody:
+      type: object
+      properties:
+        code:
+          type: string
+      required: [code]
+
+    PortalAnnouncement:
+      type: object
+      properties:
+        id:
+          type: string
+        orgId:
+          type: string
+        locationCode:
+          type: string
+        title:
+          type: string
+        body:
+          type: ["string", "null"]
+        fileName:
+          type: ["string", "null"]
+        mimeType:
+          type: ["string", "null"]
+        fileData:
+          type: ["string", "null"]
+          description: Base64-encoded file content.
+        createdBy:
+          type: string
+        publishedAt:
+          type: string
+      required: [id, orgId, locationCode, title, createdBy, publishedAt]
+
+    PortalAnnouncementPublic:
+      type: object
+      properties:
+        id:
+          type: string
+        locationCode:
+          type: string
+        title:
+          type: string
+        body:
+          type: ["string", "null"]
+        fileName:
+          type: ["string", "null"]
+        mimeType:
+          type: ["string", "null"]
+        hasFile:
+          type: boolean
+        publishedAt:
+          type: string
+      required: [id, locationCode, title, hasFile, publishedAt]
+
+    CreateAnnouncementBody:
+      type: object
+      properties:
+        locationCode:
+          type: string
+        title:
+          type: string
+        body:
+          type: ["string", "null"]
+        fileName:
+          type: ["string", "null"]
+        mimeType:
+          type: ["string", "null"]
+        fileData:
+          type: ["string", "null"]
+          description: Base64-encoded file content (max ~7 MB base64 = ~5 MB raw).
+      required: [locationCode, title]

@@ -304,6 +304,83 @@ export interface OrderAggregateResponse {
   grandTotal: number;
 }
 
+export interface BusinessRefCode {
+  code: string;
+  orgId: string;
+  locationCode: string;
+  /** @nullable */
+  label?: string | null;
+  createdBy: string;
+  maxUses: number;
+  usesCount: number;
+  createdAt: string;
+}
+
+export interface CreateRefCodeBody {
+  locationCode: string;
+  /**
+   * Optional label for admin reference, e.g. company name.
+   * @nullable
+   */
+  label?: string | null;
+  /** How many times the code can be redeemed (default 1). */
+  maxUses?: number;
+}
+
+export interface RedeemRefCodeBody {
+  code: string;
+}
+
+export interface PortalAnnouncement {
+  id: string;
+  orgId: string;
+  locationCode: string;
+  title: string;
+  /** @nullable */
+  body?: string | null;
+  /** @nullable */
+  fileName?: string | null;
+  /** @nullable */
+  mimeType?: string | null;
+  /**
+   * Base64-encoded file content.
+   * @nullable
+   */
+  fileData?: string | null;
+  createdBy: string;
+  publishedAt: string;
+}
+
+export interface PortalAnnouncementPublic {
+  id: string;
+  locationCode: string;
+  title: string;
+  /** @nullable */
+  body?: string | null;
+  /** @nullable */
+  fileName?: string | null;
+  /** @nullable */
+  mimeType?: string | null;
+  hasFile: boolean;
+  publishedAt: string;
+}
+
+export interface CreateAnnouncementBody {
+  locationCode: string;
+  title: string;
+  /** @nullable */
+  body?: string | null;
+  /** @nullable */
+  fileName?: string | null;
+  /** @nullable */
+  mimeType?: string | null;
+  /**
+   * Base64-encoded file content (max ~7 MB base64 = ~5 MB raw).
+   * @nullable
+   */
+  fileData?: string | null;
+}
+
 export type GetGuestOrderParams = {
   token: string;
 };
@@ -331,4 +408,16 @@ export type GetStaffOrdersAggregateParams = {
 
 export type ListStaffCustomersParams = {
   status?: CustomerAccountType;
+};
+
+export type DeleteRefCode200 = {
+  ok: boolean;
+};
+
+export type ListStaffAnnouncementsParams = {
+  locationCode?: string;
+};
+
+export type DeleteAnnouncement200 = {
+  ok: boolean;
 };

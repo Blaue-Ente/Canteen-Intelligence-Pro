@@ -1,10 +1,10 @@
 import { Link, useRoute, useLocation } from "wouter";
 import { SignedIn, SignedOut, useAuth } from "@clerk/clerk-react";
-import { useGetPublishedMenu, useGetCustomerProfile, PreorderDish } from "@workspace/api-client-react";
+import { useGetPublishedMenu, useGetCustomerProfile, useListAnnouncements, PreorderDish } from "@workspace/api-client-react";
 import { useCart } from "@/hooks/use-cart";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/currency";
-import { Plus, Minus, ChevronRight, AlertCircle, Star, Leaf, Flame, LogIn, Lock, Clock4 } from "lucide-react";
+import { Plus, Minus, ChevronRight, AlertCircle, Star, Leaf, Flame, LogIn, Lock, Clock4, Bell, Paperclip } from "lucide-react";
 import { AuthNav } from "@/components/auth-nav";
 
 export default function Menu() {
@@ -17,6 +17,9 @@ export default function Menu() {
   const { isSignedIn } = useAuth();
   const { data: profile } = useGetCustomerProfile({
     query: { enabled: !!isSignedIn, queryKey: ["/api/preorder/customer/me"] },
+  });
+  const { data: announcements } = useListAnnouncements(locationCode, {
+    query: { enabled: !!locationCode, queryKey: [`/api/preorder/announcements/${locationCode}`] },
   });
   const canOrder = profile?.accountType === "business_approved";
   const isPending = profile?.accountType === "business_pending";
@@ -206,6 +209,45 @@ export default function Menu() {
               </div>
             );
           })
+        )}
+
+        {/* Announcements section */}
+        {announcements && announcements.length > 0 && (
+          <div className="pt-2 space-y-3">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <Bell className="w-4 h-4 text-primary" />
+              Ankündigungen <span className="opacity-50 font-normal text-xs">/ Announcements</span>
+            </div>
+            {announcements.map((ann) => (
+              <div
+                key={ann.id}
+                className="p-4 bg-primary/5 border border-primary/15 rounded-2xl space-y-1.5"
+              >
+                <p className="font-medium text-sm leading-snug">{ann.title}</p>
+                {ann.body && (
+                  <p className="text-xs text-muted-foreground leading-relaxed">{ann.body}</p>
+                )}
+                {ann.hasFile && ann.fileName && (
+                  <a
+                    href={`${import.meta.env.BASE_URL}api/preorder/announcements/${locationCode}/${ann.id}/file`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline mt-1"
+                  >
+                    <Paperclip className="w-3 h-3" />
+                    {ann.fileName}
+                  </a>
+                )}
+                <p className="text-[10px] text-muted-foreground/60">
+                  {new Date(ann.publishedAt).toLocaleDateString("de-DE", {
+                    day: "2-digit",
+                    month: "long",
+                    year: "numeric",
+                  })}
+                </p>
+              </div>
+            ))}
+          </div>
         )}
 
         <div className="pt-4">

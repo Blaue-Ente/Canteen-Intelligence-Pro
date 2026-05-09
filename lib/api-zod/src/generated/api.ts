@@ -724,3 +724,145 @@ export const DecideStaffCustomerResponse = zod.object({
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
+
+/**
+ * @summary Admin lists all generated business reference codes for their org.
+ */
+export const ListRefCodesResponseItem = zod.object({
+  code: zod.string(),
+  orgId: zod.string(),
+  locationCode: zod.string(),
+  label: zod.string().nullish(),
+  createdBy: zod.string(),
+  maxUses: zod.number(),
+  usesCount: zod.number(),
+  createdAt: zod.string(),
+});
+export const ListRefCodesResponse = zod.array(ListRefCodesResponseItem);
+
+/**
+ * @summary Admin generates a new business reference code.
+ */
+export const CreateRefCodeBody = zod.object({
+  locationCode: zod.string(),
+  label: zod
+    .string()
+    .nullish()
+    .describe("Optional label for admin reference, e.g. company name."),
+  maxUses: zod
+    .number()
+    .optional()
+    .describe("How many times the code can be redeemed (default 1)."),
+});
+
+/**
+ * @summary Admin revokes (deletes) a reference code.
+ */
+export const DeleteRefCodeParams = zod.object({
+  code: zod.coerce.string(),
+});
+
+export const DeleteRefCodeResponse = zod.object({
+  ok: zod.boolean(),
+});
+
+/**
+ * @summary Customer redeems a reference code to become business_approved instantly.
+ */
+export const RedeemRefCodeBody = zod.object({
+  code: zod.string(),
+});
+
+export const RedeemRefCodeResponse = zod.object({
+  clerkUserId: zod.string(),
+  displayName: zod.string(),
+  email: zod.string().nullish(),
+  homeLocationCode: zod.string().nullish(),
+  accountType: zod.enum([
+    "regular",
+    "business_pending",
+    "business_approved",
+    "rejected",
+  ]),
+  ownerOrgId: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Admin lists announcements for their org.
+ */
+export const ListStaffAnnouncementsQueryParams = zod.object({
+  locationCode: zod.coerce.string().optional(),
+});
+
+export const ListStaffAnnouncementsResponseItem = zod.object({
+  id: zod.string(),
+  orgId: zod.string(),
+  locationCode: zod.string(),
+  title: zod.string(),
+  body: zod.string().nullish(),
+  fileName: zod.string().nullish(),
+  mimeType: zod.string().nullish(),
+  fileData: zod.string().nullish().describe("Base64-encoded file content."),
+  createdBy: zod.string(),
+  publishedAt: zod.string(),
+});
+export const ListStaffAnnouncementsResponse = zod.array(
+  ListStaffAnnouncementsResponseItem,
+);
+
+/**
+ * @summary Admin creates a new announcement (optionally with a PDF or image attachment as base64).
+ */
+export const CreateAnnouncementBody = zod.object({
+  locationCode: zod.string(),
+  title: zod.string(),
+  body: zod.string().nullish(),
+  fileName: zod.string().nullish(),
+  mimeType: zod.string().nullish(),
+  fileData: zod
+    .string()
+    .nullish()
+    .describe("Base64-encoded file content (max ~7 MB base64 = ~5 MB raw)."),
+});
+
+/**
+ * @summary Admin deletes an announcement.
+ */
+export const DeleteAnnouncementParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const DeleteAnnouncementResponse = zod.object({
+  ok: zod.boolean(),
+});
+
+/**
+ * @summary Public — list announcements for a location (without file data).
+ */
+export const ListAnnouncementsParams = zod.object({
+  locationCode: zod.coerce.string(),
+});
+
+export const ListAnnouncementsResponseItem = zod.object({
+  id: zod.string(),
+  locationCode: zod.string(),
+  title: zod.string(),
+  body: zod.string().nullish(),
+  fileName: zod.string().nullish(),
+  mimeType: zod.string().nullish(),
+  hasFile: zod.boolean(),
+  publishedAt: zod.string(),
+});
+export const ListAnnouncementsResponse = zod.array(
+  ListAnnouncementsResponseItem,
+);
+
+/**
+ * @summary Public — download the file attachment of an announcement.
+ */
+export const GetAnnouncementFileParams = zod.object({
+  locationCode: zod.coerce.string(),
+  id: zod.coerce.string(),
+});

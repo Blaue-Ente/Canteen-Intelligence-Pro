@@ -5,6 +5,8 @@ import {
   guestOrdersTable,
   guestFeedbackTable,
   customerProfilesTable,
+  businessRefCodesTable,
+  portalAnnouncementsTable,
   memberships,
   orgBranding,
   organizations,
@@ -920,6 +922,302 @@ router.get(
     });
   },
 );
+
+// ─── Business Reference Codes ────────────────────────────────────────────────
+
+// Helper: generate a random 8-char uppercase alphanumeric code, e.g. "AB12CD34"
+function generateRefCode(): string {
+  return randomBytes(4).toString("hex").toUpperCase();
+}
+
+// GET /preorder/staff/ref-codes — auth, list all codes for the caller's org
+router.get("/preorder/staff/ref-codes", requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as AuthedRequest).userId;
+  const orgIds = await userOrgIds(userId);
+  if (orgIds.length === 0) {
+    res.status(403).json({ error: "No organisation membership" });
+    return;
+  }
+  const rows = await db
+    .select()
+    .from(businessRefCodesTable)
+    .where(inArray(businessRefCodesTable.orgId, orgIds))
+    .orderBy(desc(businessRefCodesTable.createdAt));
+  res.json(rows.map((r) => ({
+    code: r.code,
+    orgId: r.orgId,
+    locationCode: r.locationCode,
+    label: r.label,
+    createdBy: r.createdBy,
+    maxUses: r.maxUses,
+    usesCount: r.usesCount,
+    createdAt: r.createdAt.toISOString(),
+  })));
+});
+
+// POST /preorder/staff/ref-codes — auth, generate a new reference code
+router.post("/preorder/staff/ref-codes", requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as AuthedRequest).userId;
+  const parsed = schemas.CreateRefCodeBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const orgIds = await userOrgIds(userId);
+  if (orgIds.length === 0) {
+    res.status(403).json({ error: "No organisation membership" });
+    return;
+  }
+  const orgId = orgIds[0]!;
+  const code = generateRefCode();
+  const [row] = await db
+    .insert(businessRefCodesTable)
+    .values({
+      code,
+      orgId,
+      locationCode: parsed.data.locationCode,
+      label: parsed.data.label ?? null,
+      createdBy: userId,
+      maxUses: parsed.data.maxUses ?? 1,
+      usesCount: 0,
+    })
+    .returning();
+  res.status(201).json({
+    code: row!.code,
+    orgId: row!.orgId,
+    locationCode: row!.locationCode,
+    label: row!.label,
+    createdBy: row!.createdBy,
+    maxUses: row!.maxUses,
+    usesCount: row!.usesCount,
+    createdAt: row!.createdAt.toISOString(),
+  });
+});
+
+// DELETE /preorder/staff/ref-codes/:code — auth, revoke a code
+router.delete("/preorder/staff/ref-codes/:code", requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as AuthedRequest).userId;
+  const code = String(req.params.code).toUpperCase().trim();
+  const orgIds = await userOrgIds(userId);
+  if (orgIds.length === 0) {
+    res.status(403).json({ error: "No organisation membership" });
+    return;
+  }
+  const rows = await db
+    .select()
+    .from(businessRefCodesTable)
+    .where(eq(businessRefCodesTable.code, code))
+    .limit(1);
+  if (rows.length === 0) {
+    res.status(404).json({ error: "Code not found" });
+    return;
+  }
+  if (!orgIds.includes(rows[0]!.orgId)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  await db.delete(businessRefCodesTable).where(eq(businessRefCodesTable.code, code));
+  res.json({ ok: true });
+});
+
+// POST /preorder/customer/redeem-code — auth, redeem a code → business_approved
+router.post("/preorder/customer/redeem-code", requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as AuthedRequest).userId;
+  const parsed = schemas.RedeemRefCodeBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const code = parsed.data.code.toUpperCase().trim();
+  await ensureProfile(userId);
+  const profile = (await loadProfile(userId))!;
+
+  if (profile.accountType === "business_approved") {
+    res.status(409).json({ error: "Ihr Konto hat bereits Business-Status." });
+    return;
+  }
+
+  // Look up the code
+  const codeRows = await db
+    .select()
+    .from(businessRefCodesTable)
+    .where(eq(businessRefCodesTable.code, code))
+    .limit(1);
+  if (codeRows.length === 0) {
+    res.status(404).json({ error: "Ungültiger Referenzcode." });
+    return;
+  }
+  const refCode = codeRows[0]!;
+  if (refCode.usesCount >= refCode.maxUses) {
+    res.status(409).json({ error: "Dieser Code wurde bereits vollständig eingelöst." });
+    return;
+  }
+
+  // Atomically increment usesCount and update the customer profile
+  await db
+    .update(businessRefCodesTable)
+    .set({ usesCount: refCode.usesCount + 1 })
+    .where(eq(businessRefCodesTable.code, code));
+
+  const updated = await db
+    .update(customerProfilesTable)
+    .set({
+      accountType: "business_approved",
+      ownerOrgId: refCode.orgId,
+      homeLocationCode: profile.homeLocationCode ?? refCode.locationCode,
+      updatedAt: new Date(),
+    })
+    .where(eq(customerProfilesTable.clerkUserId, userId))
+    .returning();
+
+  res.json(serializeProfile(updated[0]!));
+});
+
+// ─── Portal Announcements ─────────────────────────────────────────────────────
+
+function serializeAnnouncement(r: typeof portalAnnouncementsTable.$inferSelect, includeFile = false) {
+  return {
+    id: r.id,
+    orgId: r.orgId,
+    locationCode: r.locationCode,
+    title: r.title,
+    body: r.body,
+    fileName: r.fileName,
+    mimeType: r.mimeType,
+    fileData: includeFile ? r.fileData : undefined,
+    hasFile: !!r.fileData,
+    createdBy: r.createdBy,
+    publishedAt: r.publishedAt.toISOString(),
+  };
+}
+
+// GET /preorder/staff/announcements — auth, list admin's announcements
+router.get("/preorder/staff/announcements", requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as AuthedRequest).userId;
+  const orgIds = await userOrgIds(userId);
+  if (orgIds.length === 0) {
+    res.status(403).json({ error: "No organisation membership" });
+    return;
+  }
+  const locationCode = req.query.locationCode ? String(req.query.locationCode) : null;
+  const conditions = [inArray(portalAnnouncementsTable.orgId, orgIds)];
+  if (locationCode) conditions.push(eq(portalAnnouncementsTable.locationCode, locationCode));
+  const rows = await db
+    .select()
+    .from(portalAnnouncementsTable)
+    .where(and(...conditions))
+    .orderBy(desc(portalAnnouncementsTable.publishedAt));
+  res.json(rows.map((r) => serializeAnnouncement(r, false)));
+});
+
+// POST /preorder/staff/announcements — auth, create announcement
+router.post("/preorder/staff/announcements", requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as AuthedRequest).userId;
+  const parsed = schemas.CreateAnnouncementBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const orgIds = await userOrgIds(userId);
+  if (orgIds.length === 0) {
+    res.status(403).json({ error: "No organisation membership" });
+    return;
+  }
+  const orgId = orgIds[0]!;
+  const { title, locationCode, body, fileName, mimeType, fileData } = parsed.data;
+
+  // Guard: max ~7 MB base64
+  if (fileData && fileData.length > 7 * 1024 * 1024) {
+    res.status(413).json({ error: "Datei zu groß (max. 5 MB)." });
+    return;
+  }
+
+  const [row] = await db
+    .insert(portalAnnouncementsTable)
+    .values({
+      orgId,
+      locationCode,
+      title: title.trim().slice(0, 120),
+      body: body ?? null,
+      fileName: fileName ?? null,
+      mimeType: mimeType ?? null,
+      fileData: fileData ?? null,
+      createdBy: userId,
+    })
+    .returning();
+  res.status(201).json(serializeAnnouncement(row!, false));
+});
+
+// DELETE /preorder/staff/announcements/:id — auth
+router.delete("/preorder/staff/announcements/:id", requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as AuthedRequest).userId;
+  const id = String(req.params.id);
+  const orgIds = await userOrgIds(userId);
+  if (orgIds.length === 0) {
+    res.status(403).json({ error: "No organisation membership" });
+    return;
+  }
+  const rows = await db
+    .select()
+    .from(portalAnnouncementsTable)
+    .where(eq(portalAnnouncementsTable.id, id))
+    .limit(1);
+  if (rows.length === 0) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (!orgIds.includes(rows[0]!.orgId)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  await db.delete(portalAnnouncementsTable).where(eq(portalAnnouncementsTable.id, id));
+  res.json({ ok: true });
+});
+
+// GET /preorder/announcements/:locationCode — public, list (no file data)
+router.get("/preorder/announcements/:locationCode", async (req: Request, res: Response) => {
+  const locationCode = String(req.params.locationCode).toUpperCase().trim();
+  const rows = await db
+    .select()
+    .from(portalAnnouncementsTable)
+    .where(eq(portalAnnouncementsTable.locationCode, locationCode))
+    .orderBy(desc(portalAnnouncementsTable.publishedAt))
+    .limit(20);
+  res.json(rows.map((r) => ({
+    id: r.id,
+    locationCode: r.locationCode,
+    title: r.title,
+    body: r.body,
+    fileName: r.fileName,
+    mimeType: r.mimeType,
+    hasFile: !!r.fileData,
+    publishedAt: r.publishedAt.toISOString(),
+  })));
+});
+
+// GET /preorder/announcements/:locationCode/:id/file — public, serve file binary
+router.get("/preorder/announcements/:locationCode/:id/file", async (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  const locationCode = String(req.params.locationCode).toUpperCase().trim();
+  const rows = await db
+    .select()
+    .from(portalAnnouncementsTable)
+    .where(and(
+      eq(portalAnnouncementsTable.id, id),
+      eq(portalAnnouncementsTable.locationCode, locationCode),
+    ))
+    .limit(1);
+  if (rows.length === 0 || !rows[0]!.fileData) {
+    res.status(404).json({ error: "File not found" });
+    return;
+  }
+  const row = rows[0]!;
+  const buf = Buffer.from(row.fileData!, "base64");
+  res.setHeader("Content-Type", row.mimeType ?? "application/octet-stream");
+  res.setHeader("Content-Disposition", `inline; filename="${row.fileName ?? "file"}"`);
+  res.setHeader("Content-Length", buf.length);
+  res.end(buf);
+});
 
 // ─── T005: Preorder Branding ─────────────────────────────────────────────────
 

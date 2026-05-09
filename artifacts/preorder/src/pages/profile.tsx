@@ -4,12 +4,13 @@ import { SignedIn, SignedOut, RedirectToSignIn } from "@clerk/clerk-react";
 import {
   useGetCustomerProfile,
   useUpsertCustomerProfile,
+  useRedeemRefCode,
   type CustomerProfile,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Loader2, ShieldCheck, Clock4, ShieldX } from "lucide-react";
+import { ArrowLeft, Loader2, ShieldCheck, Clock4, ShieldX, Key } from "lucide-react";
 import { toast } from "sonner";
 import { AuthNav } from "@/components/auth-nav";
 
@@ -45,8 +46,11 @@ function StatusBadge({ accountType }: { accountType: CustomerProfile["accountTyp
 function ProfileForm() {
   const { data: profile, isLoading, refetch } = useGetCustomerProfile();
   const upsert = useUpsertCustomerProfile();
+  const redeemMutation = useRedeemRefCode();
   const [displayName, setDisplayName] = useState("");
   const [homeLocationCode, setHomeLocationCode] = useState("");
+  const [refCode, setRefCode] = useState("");
+  const [showCodeInput, setShowCodeInput] = useState(false);
 
   useEffect(() => {
     if (profile) {
@@ -83,7 +87,25 @@ function ProfileForm() {
     }
   };
 
+  const handleRedeemCode = async () => {
+    if (!refCode.trim()) {
+      toast.error("Bitte einen Referenzcode eingeben.");
+      return;
+    }
+    try {
+      await redeemMutation.mutateAsync({ data: { code: refCode.trim().toUpperCase() } });
+      toast.success("Referenzcode eingelöst — Business-Zugang freigeschaltet!");
+      setRefCode("");
+      setShowCodeInput(false);
+      await refetch();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Fehler beim Einlösen.";
+      toast.error(msg.includes("eingelöst") ? msg : "Ungültiger oder bereits genutzter Code.");
+    }
+  };
+
   const canRequest = profile.accountType === "regular" || profile.accountType === "rejected";
+  const isBusiness = profile.accountType === "business_approved";
 
   return (
     <section className="bg-card rounded-2xl border border-border p-6 space-y-6">
@@ -138,20 +160,75 @@ function ProfileForm() {
         )}
       </div>
 
+      {/* Reference code redemption — show for non-approved accounts */}
+      {!isBusiness && (
+        <div className="border-t border-border pt-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Key className="w-4 h-4 text-primary" />
+            <p className="text-sm font-medium">Referenzcode einlösen</p>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Sie haben einen Referenzcode von Ihrer Kantine erhalten? Hier einlösen und sofort Business-Zugang erhalten — ohne Wartezeit.
+            <br />
+            <span className="opacity-70 italic">Have a reference code from your canteen? Redeem it here for instant business access.</span>
+          </p>
+          {showCodeInput ? (
+            <div className="space-y-2">
+              <Input
+                value={refCode}
+                onChange={(e) => setRefCode(e.target.value.toUpperCase())}
+                placeholder="z.B. AB12CD34"
+                maxLength={12}
+                className="font-mono tracking-widest text-center text-lg"
+              />
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleRedeemCode}
+                  disabled={redeemMutation.isPending || !refCode.trim()}
+                  className="flex-1"
+                >
+                  {redeemMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    "Code einlösen / Redeem"
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => { setShowCodeInput(false); setRefCode(""); }}
+                >
+                  Abbrechen
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowCodeInput(true)}
+              className="gap-2"
+            >
+              <Key className="w-3 h-3" />
+              Code eingeben / Enter code
+            </Button>
+          )}
+        </div>
+      )}
+
       {profile.accountType === "regular" && (
         <p className="text-xs text-muted-foreground">
-          Mit einem Geschäftskonto können Sie Vorbestellungen aufgeben. Ein KItchenOS-Mitarbeiter
-          prüft Ihren Antrag.
+          Mit einem Geschäftskonto können Sie Vorbestellungen aufgeben. Entweder einen Referenzcode
+          von Ihrem Kantinen-Team eingeben, oder einen Antrag stellen — ein Mitarbeiter prüft Ihren Antrag.
         </p>
       )}
       {profile.accountType === "business_pending" && (
         <p className="text-xs text-amber-700 dark:text-amber-400">
-          Wir prüfen Ihren Antrag. Sobald freigegeben, können Sie bestellen.
+          Wir prüfen Ihren Antrag. Oder geben Sie einen Referenzcode ein, um sofort freigeschaltet zu werden.
         </p>
       )}
       {profile.accountType === "rejected" && (
         <p className="text-xs text-destructive">
-          Ihr Antrag wurde abgelehnt. Sie können einen neuen Antrag stellen oder das Kantinen-Team ansprechen.
+          Ihr Antrag wurde abgelehnt. Sie können einen Referenzcode eingeben oder einen neuen Antrag stellen.
         </p>
       )}
     </section>

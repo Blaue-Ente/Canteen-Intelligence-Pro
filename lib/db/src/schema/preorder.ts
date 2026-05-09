@@ -90,3 +90,45 @@ export const customerProfilesTable = pgTable("customer_profiles", {
 });
 
 export type CustomerProfileRow = typeof customerProfilesTable.$inferSelect;
+
+// ── Business reference codes ─────────────────────────────────────────────────
+// Admin generates short alphanumeric codes (e.g. "AB12CD34"). When a customer
+// redeems one on the pre-order portal, their account type is instantly set to
+// business_approved — no manual approval needed.
+
+export const businessRefCodesTable = pgTable("business_ref_codes", {
+  code: text("code").primaryKey(),
+  orgId: text("org_id").notNull(),
+  locationCode: text("location_code").notNull(),
+  /** Optional label for admin reference, e.g. "Firma Müller GmbH". */
+  label: text("label"),
+  createdBy: text("created_by").notNull(),
+  maxUses: integer("max_uses").notNull().default(1),
+  usesCount: integer("uses_count").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type BusinessRefCodeRow = typeof businessRefCodesTable.$inferSelect;
+
+// ── Portal announcements ──────────────────────────────────────────────────────
+// Admin uploads PDFs, images or text messages. Guests see them on the portal.
+// File data is stored as base64 text (≤ 5 MB raw = ≤ 7 MB base64).
+
+export const portalAnnouncementsTable = pgTable("portal_announcements", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: text("org_id").notNull(),
+  locationCode: text("location_code").notNull(),
+  title: text("title").notNull(),
+  /** Optional plain-text body shown alongside or instead of an attachment. */
+  body: text("body"),
+  /** Original filename, e.g. "speiseplan-kw24.pdf". */
+  fileName: text("file_name"),
+  /** MIME type of the uploaded file, e.g. "application/pdf". */
+  mimeType: text("mime_type"),
+  /** Base64-encoded file contents. Null when announcement is text-only. */
+  fileData: text("file_data"),
+  createdBy: text("created_by").notNull(),
+  publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type PortalAnnouncementRow = typeof portalAnnouncementsTable.$inferSelect;

@@ -17,10 +17,15 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  BusinessRefCode,
+  CreateAnnouncementBody,
   CreateFeedbackBody,
   CreateOrderBody,
+  CreateRefCodeBody,
   CustomerProfile,
   DecideCustomerBody,
+  DeleteAnnouncement200,
+  DeleteRefCode200,
   ErrorResponse,
   FeedbackSummary,
   GetGuestOrderParams,
@@ -29,13 +34,17 @@ import type {
   GuestFeedback,
   GuestOrder,
   HealthStatus,
+  ListStaffAnnouncementsParams,
   ListStaffCustomersParams,
   ListStaffFeedbackParams,
   ListStaffOrdersParams,
   LocationRollup,
   OrderAggregateResponse,
+  PortalAnnouncement,
+  PortalAnnouncementPublic,
   PublishMenuBody,
   PublishedMenu,
+  RedeemRefCodeBody,
   UpdateOrderItemsBody,
   UpdateOrderStatusBody,
   UpsertCustomerProfileBody,
@@ -1657,3 +1666,801 @@ export const useDecideStaffCustomer = <
 > => {
   return useMutation(getDecideStaffCustomerMutationOptions(options));
 };
+
+/**
+ * @summary Admin lists all generated business reference codes for their org.
+ */
+export const getListRefCodesUrl = () => {
+  return `/api/preorder/staff/ref-codes`;
+};
+
+export const listRefCodes = async (
+  options?: RequestInit,
+): Promise<BusinessRefCode[]> => {
+  return customFetch<BusinessRefCode[]>(getListRefCodesUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListRefCodesQueryKey = () => {
+  return [`/api/preorder/staff/ref-codes`] as const;
+};
+
+export const getListRefCodesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listRefCodes>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listRefCodes>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListRefCodesQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listRefCodes>>> = ({
+    signal,
+  }) => listRefCodes({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listRefCodes>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListRefCodesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listRefCodes>>
+>;
+export type ListRefCodesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Admin lists all generated business reference codes for their org.
+ */
+
+export function useListRefCodes<
+  TData = Awaited<ReturnType<typeof listRefCodes>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listRefCodes>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListRefCodesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Admin generates a new business reference code.
+ */
+export const getCreateRefCodeUrl = () => {
+  return `/api/preorder/staff/ref-codes`;
+};
+
+export const createRefCode = async (
+  createRefCodeBody: CreateRefCodeBody,
+  options?: RequestInit,
+): Promise<BusinessRefCode> => {
+  return customFetch<BusinessRefCode>(getCreateRefCodeUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createRefCodeBody),
+  });
+};
+
+export const getCreateRefCodeMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createRefCode>>,
+    TError,
+    { data: BodyType<CreateRefCodeBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createRefCode>>,
+  TError,
+  { data: BodyType<CreateRefCodeBody> },
+  TContext
+> => {
+  const mutationKey = ["createRefCode"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createRefCode>>,
+    { data: BodyType<CreateRefCodeBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createRefCode(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateRefCodeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createRefCode>>
+>;
+export type CreateRefCodeMutationBody = BodyType<CreateRefCodeBody>;
+export type CreateRefCodeMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Admin generates a new business reference code.
+ */
+export const useCreateRefCode = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createRefCode>>,
+    TError,
+    { data: BodyType<CreateRefCodeBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createRefCode>>,
+  TError,
+  { data: BodyType<CreateRefCodeBody> },
+  TContext
+> => {
+  return useMutation(getCreateRefCodeMutationOptions(options));
+};
+
+/**
+ * @summary Admin revokes (deletes) a reference code.
+ */
+export const getDeleteRefCodeUrl = (code: string) => {
+  return `/api/preorder/staff/ref-codes/${code}`;
+};
+
+export const deleteRefCode = async (
+  code: string,
+  options?: RequestInit,
+): Promise<DeleteRefCode200> => {
+  return customFetch<DeleteRefCode200>(getDeleteRefCodeUrl(code), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteRefCodeMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteRefCode>>,
+    TError,
+    { code: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteRefCode>>,
+  TError,
+  { code: string },
+  TContext
+> => {
+  const mutationKey = ["deleteRefCode"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteRefCode>>,
+    { code: string }
+  > = (props) => {
+    const { code } = props ?? {};
+
+    return deleteRefCode(code, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteRefCodeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteRefCode>>
+>;
+
+export type DeleteRefCodeMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Admin revokes (deletes) a reference code.
+ */
+export const useDeleteRefCode = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteRefCode>>,
+    TError,
+    { code: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteRefCode>>,
+  TError,
+  { code: string },
+  TContext
+> => {
+  return useMutation(getDeleteRefCodeMutationOptions(options));
+};
+
+/**
+ * @summary Customer redeems a reference code to become business_approved instantly.
+ */
+export const getRedeemRefCodeUrl = () => {
+  return `/api/preorder/customer/redeem-code`;
+};
+
+export const redeemRefCode = async (
+  redeemRefCodeBody: RedeemRefCodeBody,
+  options?: RequestInit,
+): Promise<CustomerProfile> => {
+  return customFetch<CustomerProfile>(getRedeemRefCodeUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(redeemRefCodeBody),
+  });
+};
+
+export const getRedeemRefCodeMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof redeemRefCode>>,
+    TError,
+    { data: BodyType<RedeemRefCodeBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof redeemRefCode>>,
+  TError,
+  { data: BodyType<RedeemRefCodeBody> },
+  TContext
+> => {
+  const mutationKey = ["redeemRefCode"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof redeemRefCode>>,
+    { data: BodyType<RedeemRefCodeBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return redeemRefCode(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RedeemRefCodeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof redeemRefCode>>
+>;
+export type RedeemRefCodeMutationBody = BodyType<RedeemRefCodeBody>;
+export type RedeemRefCodeMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Customer redeems a reference code to become business_approved instantly.
+ */
+export const useRedeemRefCode = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof redeemRefCode>>,
+    TError,
+    { data: BodyType<RedeemRefCodeBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof redeemRefCode>>,
+  TError,
+  { data: BodyType<RedeemRefCodeBody> },
+  TContext
+> => {
+  return useMutation(getRedeemRefCodeMutationOptions(options));
+};
+
+/**
+ * @summary Admin lists announcements for their org.
+ */
+export const getListStaffAnnouncementsUrl = (
+  params?: ListStaffAnnouncementsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/preorder/staff/announcements?${stringifiedParams}`
+    : `/api/preorder/staff/announcements`;
+};
+
+export const listStaffAnnouncements = async (
+  params?: ListStaffAnnouncementsParams,
+  options?: RequestInit,
+): Promise<PortalAnnouncement[]> => {
+  return customFetch<PortalAnnouncement[]>(
+    getListStaffAnnouncementsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListStaffAnnouncementsQueryKey = (
+  params?: ListStaffAnnouncementsParams,
+) => {
+  return [
+    `/api/preorder/staff/announcements`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListStaffAnnouncementsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listStaffAnnouncements>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListStaffAnnouncementsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listStaffAnnouncements>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListStaffAnnouncementsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listStaffAnnouncements>>
+  > = ({ signal }) =>
+    listStaffAnnouncements(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listStaffAnnouncements>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListStaffAnnouncementsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listStaffAnnouncements>>
+>;
+export type ListStaffAnnouncementsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Admin lists announcements for their org.
+ */
+
+export function useListStaffAnnouncements<
+  TData = Awaited<ReturnType<typeof listStaffAnnouncements>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListStaffAnnouncementsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listStaffAnnouncements>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListStaffAnnouncementsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Admin creates a new announcement (optionally with a PDF or image attachment as base64).
+ */
+export const getCreateAnnouncementUrl = () => {
+  return `/api/preorder/staff/announcements`;
+};
+
+export const createAnnouncement = async (
+  createAnnouncementBody: CreateAnnouncementBody,
+  options?: RequestInit,
+): Promise<PortalAnnouncement> => {
+  return customFetch<PortalAnnouncement>(getCreateAnnouncementUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createAnnouncementBody),
+  });
+};
+
+export const getCreateAnnouncementMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createAnnouncement>>,
+    TError,
+    { data: BodyType<CreateAnnouncementBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createAnnouncement>>,
+  TError,
+  { data: BodyType<CreateAnnouncementBody> },
+  TContext
+> => {
+  const mutationKey = ["createAnnouncement"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createAnnouncement>>,
+    { data: BodyType<CreateAnnouncementBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createAnnouncement(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateAnnouncementMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createAnnouncement>>
+>;
+export type CreateAnnouncementMutationBody = BodyType<CreateAnnouncementBody>;
+export type CreateAnnouncementMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Admin creates a new announcement (optionally with a PDF or image attachment as base64).
+ */
+export const useCreateAnnouncement = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createAnnouncement>>,
+    TError,
+    { data: BodyType<CreateAnnouncementBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createAnnouncement>>,
+  TError,
+  { data: BodyType<CreateAnnouncementBody> },
+  TContext
+> => {
+  return useMutation(getCreateAnnouncementMutationOptions(options));
+};
+
+/**
+ * @summary Admin deletes an announcement.
+ */
+export const getDeleteAnnouncementUrl = (id: string) => {
+  return `/api/preorder/staff/announcements/${id}`;
+};
+
+export const deleteAnnouncement = async (
+  id: string,
+  options?: RequestInit,
+): Promise<DeleteAnnouncement200> => {
+  return customFetch<DeleteAnnouncement200>(getDeleteAnnouncementUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteAnnouncementMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteAnnouncement>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteAnnouncement>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["deleteAnnouncement"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteAnnouncement>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteAnnouncement(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteAnnouncementMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteAnnouncement>>
+>;
+
+export type DeleteAnnouncementMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Admin deletes an announcement.
+ */
+export const useDeleteAnnouncement = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteAnnouncement>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteAnnouncement>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getDeleteAnnouncementMutationOptions(options));
+};
+
+/**
+ * @summary Public — list announcements for a location (without file data).
+ */
+export const getListAnnouncementsUrl = (locationCode: string) => {
+  return `/api/preorder/announcements/${locationCode}`;
+};
+
+export const listAnnouncements = async (
+  locationCode: string,
+  options?: RequestInit,
+): Promise<PortalAnnouncementPublic[]> => {
+  return customFetch<PortalAnnouncementPublic[]>(
+    getListAnnouncementsUrl(locationCode),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListAnnouncementsQueryKey = (locationCode: string) => {
+  return [`/api/preorder/announcements/${locationCode}`] as const;
+};
+
+export const getListAnnouncementsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAnnouncements>>,
+  TError = ErrorType<unknown>,
+>(
+  locationCode: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAnnouncements>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListAnnouncementsQueryKey(locationCode);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listAnnouncements>>
+  > = ({ signal }) =>
+    listAnnouncements(locationCode, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!locationCode,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAnnouncements>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAnnouncementsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAnnouncements>>
+>;
+export type ListAnnouncementsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Public — list announcements for a location (without file data).
+ */
+
+export function useListAnnouncements<
+  TData = Awaited<ReturnType<typeof listAnnouncements>>,
+  TError = ErrorType<unknown>,
+>(
+  locationCode: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAnnouncements>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAnnouncementsQueryOptions(locationCode, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Public — download the file attachment of an announcement.
+ */
+export const getGetAnnouncementFileUrl = (locationCode: string, id: string) => {
+  return `/api/preorder/announcements/${locationCode}/${id}/file`;
+};
+
+export const getAnnouncementFile = async (
+  locationCode: string,
+  id: string,
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getGetAnnouncementFileUrl(locationCode, id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAnnouncementFileQueryKey = (
+  locationCode: string,
+  id: string,
+) => {
+  return [`/api/preorder/announcements/${locationCode}/${id}/file`] as const;
+};
+
+export const getGetAnnouncementFileQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAnnouncementFile>>,
+  TError = ErrorType<unknown>,
+>(
+  locationCode: string,
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAnnouncementFile>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetAnnouncementFileQueryKey(locationCode, id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAnnouncementFile>>
+  > = ({ signal }) =>
+    getAnnouncementFile(locationCode, id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!(locationCode && id),
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAnnouncementFile>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAnnouncementFileQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAnnouncementFile>>
+>;
+export type GetAnnouncementFileQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Public — download the file attachment of an announcement.
+ */
+
+export function useGetAnnouncementFile<
+  TData = Awaited<ReturnType<typeof getAnnouncementFile>>,
+  TError = ErrorType<unknown>,
+>(
+  locationCode: string,
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAnnouncementFile>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAnnouncementFileQueryOptions(
+    locationCode,
+    id,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
