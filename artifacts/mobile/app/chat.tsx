@@ -39,9 +39,11 @@ function buildSystemPrompt(state: ReturnType<typeof useApp>["state"]): string {
   const dgeStandard = state.dgeStandard;
   const dgeLabel = getDgeLabel(dgeStandard);
   const dgeKnowledge = getDgeKnowledge(dgeStandard);
+  const kiosName = state.kiosName?.trim();
 
   const parts: string[] = [
     `You are KItchenOS, the proactive AI head chef and operations assistant for a German ${dgeLabel || "restaurant"}. Always answer in ${lang}.`,
+    kiosName ? `Address the user as "${kiosName}".` : "If the user has provided a preferred name, use it naturally.",
     "Be concise, professional, action-oriented. Use bullet lists when helpful.",
     dgeLabel
       ? `This kitchen operates under the DGE-Qualitätsstandard for ${dgeLabel}. Apply its rules to ALL menu and recipe suggestions.`

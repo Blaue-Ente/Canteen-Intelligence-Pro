@@ -638,6 +638,7 @@ export interface AppState {
   okoProgress: OkoProgress;
   // ---- Kios voice ----
   kiosVoice: KiosVoice;
+  kiosName?: string;
   // ---- TSE / cash register (T011, Voll-Modus only) ----
   /**
    * Legacy single-register config. Kept for migration — new code should

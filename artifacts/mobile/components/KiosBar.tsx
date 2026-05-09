@@ -9,6 +9,7 @@ interface Props {
   isSupported: boolean;
   onEnable: () => void;
   onDisable: () => void;
+  name?: string;
 }
 
 const STATUS_META: Record<
@@ -22,7 +23,7 @@ const STATUS_META: Record<
   speaking: { icon: "volume-2",   labelDe: "Kios spricht…", pulse: false, bright: true  },
 };
 
-export function KiosBar({ status, isSupported, onEnable, onDisable }: Props) {
+export function KiosBar({ status, isSupported, onEnable, onDisable, name }: Props) {
   const c = useColors();
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const spinAnim  = useRef(new Animated.Value(0)).current;
@@ -144,7 +145,7 @@ export function KiosBar({ status, isSupported, onEnable, onDisable }: Props) {
             letterSpacing: 0.2,
           }}
         >
-          {meta.labelDe}
+          {name?.trim() ? `${name.trim()} · ${meta.labelDe}` : meta.labelDe}
         </Text>
 
         {/* Close button when active */}

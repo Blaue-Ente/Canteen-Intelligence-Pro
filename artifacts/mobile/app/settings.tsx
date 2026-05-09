@@ -57,6 +57,7 @@ export default function Settings() {
   const [pbColor, setPbColor] = useState(branding.primaryColor ?? "#f59e0b");
   const [pbLogo, setPbLogo] = useState(branding.logoUri ?? "");
   const [pbWelcome, setPbWelcome] = useState(branding.welcomeMessage ?? "");
+  const [kiosName, setKiosName] = useState(state.kiosName ?? "");
 
   async function pickBrandingLogo() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -85,6 +86,11 @@ export default function Settings() {
       // Non-critical — local state already saved
     }
     Alert.alert("✓", state.locale === "de" ? "Branding gespeichert." : "Branding saved.");
+  }
+
+  function saveKiosName() {
+    dispatch({ type: "setKiosName", name: kiosName.trim() || undefined });
+    Alert.alert("✓", state.locale === "de" ? "Kios-Name gespeichert." : "Kios name saved.");
   }
 
   function saveCompanyProfile() {
@@ -389,6 +395,33 @@ export default function Settings() {
             </View>
           </Card>
         )}
+
+        <Card>
+          <SectionHeader title={state.locale === "de" ? "Kios-Name" : "Kios name"} />
+          <Text style={[subStyle, { marginBottom: 10 }]}>
+            {state.locale === "de"
+              ? "Optionaler Name, den Kios für dich verwenden soll."
+              : "Optional name Kios should use for you."}
+          </Text>
+          <TextInput
+            value={kiosName}
+            onChangeText={setKiosName}
+            placeholder={state.locale === "de" ? "z.B. Chef" : "e.g. Chef"}
+            placeholderTextColor={c.mutedForeground}
+            style={{
+              borderWidth: 1,
+              borderColor: c.border,
+              borderRadius: 8,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              color: c.foreground,
+              fontFamily: "Inter_500Medium",
+              backgroundColor: c.card,
+              marginBottom: 10,
+            }}
+          />
+          <Button label={state.locale === "de" ? "Speichern" : "Save"} onPress={saveKiosName} />
+        </Card>
 
         <Card>
           <SectionHeader title={t("notifications")} />
