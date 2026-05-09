@@ -1768,4 +1768,185 @@ router.get("/preorder/staff/report", requireAuth, async (req: Request, res: Resp
   });
 });
 
+// ─── Production Plan ──────────────────────────────────────────────────────────
+// GET /preorder/staff/production-plan?locationCode=X&dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD
+// Aggregates upcoming (non-cancelled) orders by delivery date + dish name
+// so the kitchen knows how many of each dish to prepare.
+router.get("/preorder/staff/production-plan", requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as AuthedRequest).userId;
+  const { locationCode, dateFrom, dateTo } = req.query as Record<string, string>;
+  if (!locationCode || !dateFrom || !dateTo) {
+    res.status(400).json({ error: "locationCode, dateFrom, dateTo required" });
+    return;
+  }
+  const orgIds = await userOrgIds(userId);
+  if (orgIds.length === 0) { res.status(403).json({ error: "No organisation" }); return; }
+
+  // All non-cancelled orders for the date range at this location
+  const orders = await db
+    .select()
+    .from(guestOrdersTable)
+    .where(and(
+      inArray(guestOrdersTable.ownerOrgId, orgIds),
+      eq(guestOrdersTable.locationCode, locationCode),
+      ne(guestOrdersTable.status, "cancelled"),
+      gte(guestOrdersTable.wantedFor, dateFrom),
+      lte(guestOrdersTable.wantedFor, dateTo),
+    ))
+    .orderBy(guestOrdersTable.wantedFor);
+
+  // Aggregate: date → dishName → { qty, status breakdown }
+  type DishAgg = { dishName: string; totalQty: number; byStatus: Record<string, number> };
+  const byDate = new Map<string, Map<string, DishAgg>>();
+
+  for (const order of orders) {
+    const date = (order.wantedFor as string | null) ?? order.createdAt.toISOString().slice(0, 10);
+    if (!byDate.has(date)) byDate.set(date, new Map());
+    const dateMap = byDate.get(date)!;
+
+    const items = order.items as Array<{ dishId: string; name: string; qty: number; price: number }>;
+    for (const item of items) {
+      const key = item.name;
+      const existing = dateMap.get(key);
+      if (existing) {
+        existing.totalQty += item.qty;
+        existing.byStatus[order.status] = (existing.byStatus[order.status] ?? 0) + item.qty;
+      } else {
+        dateMap.set(key, {
+          dishName: item.name,
+          totalQty: item.qty,
+          byStatus: { [order.status]: item.qty },
+        });
+      }
+    }
+  }
+
+  // Build response sorted by date
+  const days = [...byDate.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, dishMap]) => ({
+      date,
+      dishes: [...dishMap.values()].sort((a, b) => b.totalQty - a.totalQty),
+      totalPortions: [...dishMap.values()].reduce((s, d) => s + d.totalQty, 0),
+    }));
+
+  const grandTotal = days.reduce((s, d) => s + d.totalPortions, 0);
+
+  res.json({
+    locationCode,
+    dateFrom,
+    dateTo,
+    days,
+    grandTotal,
+    generatedAt: new Date().toISOString(),
+  });
+});
+
+// ─── Weekly Reconciliation ────────────────────────────────────────────────────
+// GET /preorder/staff/weekly-reconciliation?locationCode=X&kwYear=2026&kwNumber=20
+// Compares planned (orders, non-cancelled) vs. delivered (delivery_ledger) for a KW.
+router.get("/preorder/staff/weekly-reconciliation", requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as AuthedRequest).userId;
+  const { locationCode, kwYear, kwNumber } = req.query as Record<string, string>;
+  if (!locationCode || !kwYear || !kwNumber) {
+    res.status(400).json({ error: "locationCode, kwYear, kwNumber required" });
+    return;
+  }
+  const orgIds = await userOrgIds(userId);
+  if (orgIds.length === 0) { res.status(403).json({ error: "No organisation" }); return; }
+
+  // Compute Monday–Friday of the given KW
+  function kwToMonday(year: number, week: number): Date {
+    const jan4 = new Date(Date.UTC(year, 0, 4));
+    const jan4Day = jan4.getUTCDay() || 7;
+    return new Date(jan4.getTime() - (jan4Day - 1) * 86400000 + (week - 1) * 7 * 86400000);
+  }
+  const year = parseInt(kwYear, 10);
+  const week = parseInt(kwNumber, 10);
+  const monday = kwToMonday(year, week);
+  const friday = new Date(monday.getTime() + 4 * 86400000);
+  const dateFrom = monday.toISOString().slice(0, 10);
+  const dateTo = friday.toISOString().slice(0, 10);
+
+  // Planned: non-cancelled orders for the week
+  const orders = await db
+    .select()
+    .from(guestOrdersTable)
+    .where(and(
+      inArray(guestOrdersTable.ownerOrgId, orgIds),
+      eq(guestOrdersTable.locationCode, locationCode),
+      ne(guestOrdersTable.status, "cancelled"),
+      gte(guestOrdersTable.wantedFor, dateFrom),
+      lte(guestOrdersTable.wantedFor, dateTo),
+    ));
+
+  // Delivered: ledger entries for the week
+  const ledger = await db
+    .select()
+    .from(deliveryLedgerTable)
+    .where(and(
+      inArray(deliveryLedgerTable.orgId, orgIds),
+      eq(deliveryLedgerTable.locationCode, locationCode),
+      gte(deliveryLedgerTable.deliveryDate, dateFrom),
+      lte(deliveryLedgerTable.deliveryDate, dateTo),
+    ));
+
+  // Aggregate planned by date + dish name
+  type RecRow = { dishName: string; planned: number; delivered: number; diff: number };
+  const byDate = new Map<string, Map<string, RecRow>>();
+
+  const ensureDate = (date: string) => {
+    if (!byDate.has(date)) byDate.set(date, new Map());
+    return byDate.get(date)!;
+  };
+  const ensureDish = (dateMap: Map<string, RecRow>, name: string): RecRow => {
+    if (!dateMap.has(name)) dateMap.set(name, { dishName: name, planned: 0, delivered: 0, diff: 0 });
+    return dateMap.get(name)!;
+  };
+
+  for (const order of orders) {
+    const date = (order.wantedFor as string | null) ?? order.createdAt.toISOString().slice(0, 10);
+    const dateMap = ensureDate(date);
+    const items = order.items as Array<{ dishId: string; name: string; qty: number; price: number }>;
+    for (const item of items) {
+      ensureDish(dateMap, item.name).planned += item.qty;
+    }
+  }
+
+  for (const entry of ledger) {
+    const date = entry.deliveryDate as string;
+    const dateMap = ensureDate(date);
+    const items = entry.items as LedgerItemRow[];
+    for (const item of items) {
+      ensureDish(dateMap, item.name).delivered += item.qty;
+    }
+  }
+
+  // Calculate diff and build response
+  const days = [...byDate.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, dishMap]) => {
+      const dishes = [...dishMap.values()].map(d => ({
+        ...d,
+        diff: d.delivered - d.planned, // positive = over-delivered, negative = under
+      }));
+      return {
+        date,
+        dishes,
+        totalPlanned: dishes.reduce((s, d) => s + d.planned, 0),
+        totalDelivered: dishes.reduce((s, d) => s + d.delivered, 0),
+      };
+    });
+
+  res.json({
+    locationCode,
+    kwYear: year,
+    kwNumber: week,
+    dateFrom,
+    dateTo,
+    days,
+    generatedAt: new Date().toISOString(),
+  });
+});
+
 export default router;
