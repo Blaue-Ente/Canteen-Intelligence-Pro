@@ -14,6 +14,7 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button } from "@/components/ui";
+import { getDgeKnowledge, getDgeLabel } from "@/constants/dgeAiKnowledge";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { streamChat, type AiChatMessage } from "@/lib/ai";
@@ -34,14 +35,26 @@ function buildSystemPrompt(state: ReturnType<typeof useApp>["state"]): string {
     .join(", ");
   const recipes = state.recipes.map((r) => r.nameDe).join(", ");
   const lang = state.locale === "de" ? "Deutsch" : "English";
-  return [
-    `You are KItchenOS, the proactive AI head chef and operations assistant for a German restaurant. Always answer in ${lang}.`,
+  const dgeStandard = state.dgeStandard;
+  const dgeLabel = getDgeLabel(dgeStandard);
+  const dgeKnowledge = getDgeKnowledge(dgeStandard);
+
+  const parts: string[] = [
+    `You are KItchenOS, the proactive AI head chef and operations assistant for a German ${dgeLabel || "restaurant"}. Always answer in ${lang}.`,
     "Be concise, professional, action-oriented. Use bullet lists when helpful.",
-    "Knowledge: German food law (LMIV allergens, §4 LMHV HACCP, EU 852/2004 hygiene), receipt/delivery-note OCR, menu rotation, supplier complaints, pricing, waste reduction.",
+    dgeLabel
+      ? `This kitchen operates under the DGE-Qualitätsstandard for ${dgeLabel}. Apply its rules to ALL menu and recipe suggestions.`
+      : "Knowledge: German food law (LMIV allergens, §4 LMHV HACCP, EU 852/2004 hygiene), menu rotation, supplier management, waste reduction.",
     `Current low-stock items: ${lowStock || "none"}.`,
-    `Available recipes: ${recipes}.`,
-    "When you suggest an order, list quantities & supplier. When asked about HACCP, cite the relevant German rule.",
-  ].join(" ");
+    `Available recipes: ${recipes || "none"}.`,
+    "When you suggest an order, list quantities & supplier. When asked about HACCP or DGE rules, cite the relevant German standard and paragraph.",
+  ];
+
+  if (dgeKnowledge) {
+    parts.push("\n\n--- AKTIVE DGE-STANDARDS & RECHTLICHES WISSEN ---\n" + dgeKnowledge);
+  }
+
+  return parts.join(" ");
 }
 
 export default function Chat() {

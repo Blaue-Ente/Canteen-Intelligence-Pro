@@ -9,6 +9,7 @@
     "seed:demo": "tsx ./src/seed-demo-users.ts",
     "seed:recipes": "tsx ./src/seed-recipe-library.ts",
     "extract:koechenord": "tsx ./src/extract-koechenord-recipes.ts",
+    "seed:institutional": "tsx ./src/seed-institutional-recipes.ts",
     "gen:secretary-kit": "tsx ./src/generate-secretary-kit.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
