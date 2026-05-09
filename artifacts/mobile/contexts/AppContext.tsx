@@ -160,7 +160,9 @@ type Action =
   | { type: "updateKasseArtikel"; artikel: import("@/types").KasseArtikel }
   | { type: "removeKasseArtikel"; id: string }
   // ---- Inventory Transfer ----
-  | { type: "transferInventory"; fromItemId: string; toLocationId: string; qty: number };
+  | { type: "transferInventory"; fromItemId: string; toLocationId: string; qty: number }
+  // ---- Kios → Chat bridge ----
+  | { type: "setPendingChatQuery"; query: string | undefined };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -529,6 +531,9 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, kasseArtikel: (state.kasseArtikel ?? []).map((a) => a.id === action.artikel.id ? action.artikel : a) };
     case "removeKasseArtikel":
       return { ...state, kasseArtikel: (state.kasseArtikel ?? []).filter((a) => a.id !== action.id) };
+    // ---- Kios → Chat bridge ----
+    case "setPendingChatQuery":
+      return { ...state, pendingChatQuery: action.query };
     // ---- Inventory Transfer ----
     case "transferInventory": {
       const item = state.inventory.find((i) => i.id === action.fromItemId);

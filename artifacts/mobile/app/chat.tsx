@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button } from "@/components/ui";
 import { getDgeKnowledge, getDgeLabel } from "@/constants/dgeAiKnowledge";
+import { searchOffline } from "@/constants/offlineKnowledge";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { streamChat, type AiChatMessage } from "@/lib/ai";
@@ -77,6 +78,20 @@ export default function Chat() {
     };
   }, []);
 
+  // Kios → Chat bridge: auto-send a question forwarded from Kios.
+  const pendingHandled = useRef(false);
+  useEffect(() => {
+    const query = state.pendingChatQuery;
+    if (!query || pendingHandled.current || busy) return;
+    pendingHandled.current = true;
+    // Clear the pending query immediately so it doesn't re-trigger.
+    dispatch({ type: "setPendingChatQuery", query: undefined });
+    // Small delay to let the screen finish mounting.
+    const timer = setTimeout(() => void send(query), 400);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.pendingChatQuery]);
+
   const send = useCallback(
     async (text: string) => {
       if (!text.trim() || busy) return;
@@ -108,8 +123,19 @@ export default function Chat() {
           (delta) => dispatch({ type: "updateLastChat", content: delta }),
         );
       } catch (e) {
-        const err = "\n⚠️ " + (e instanceof Error ? e.message : "Verbindungsfehler") + ".";
-        dispatch({ type: "updateLastChat", content: err });
+        // Offline fallback: try the local knowledge base before showing error.
+        const offline = searchOffline(text.trim());
+        if (offline) {
+          const src = offline.source ? `\n\n*Quelle: ${offline.source}*` : "";
+          final = `⚡ **Offline-Antwort**\n\n${offline.answerFull}${src}`;
+          dispatch({ type: "updateLastChat", content: final });
+        } else {
+          const isNetwork = e instanceof TypeError || (e instanceof Error && e.message.toLowerCase().includes("network"));
+          const err = isNetwork
+            ? "\n📵 Kein Internet. Ich konnte diese Frage offline nicht beantworten. Bitte Verbindung prüfen."
+            : "\n⚠️ " + (e instanceof Error ? e.message : "Verbindungsfehler") + ".";
+          dispatch({ type: "updateLastChat", content: err });
+        }
       } finally {
         setBusy(false);
         if (autoSpeak && final && lastSpokenRef.current !== final) {

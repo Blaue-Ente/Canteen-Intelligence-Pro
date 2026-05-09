@@ -687,6 +687,13 @@ export interface AppState {
   // ---- T023: POS Terminal ----
   /** External card payment terminal configuration (SumUp / manual / none). */
   terminalConfig?: PosTerminalConfig;
+  // ---- Kios → Chat bridge ----
+  /**
+   * When Kios cannot answer a question and escalates to the AI assistant,
+   * the original voice query is stored here. The chat screen reads it on
+   * mount, auto-sends it, and clears the field. Ephemeral — not persisted.
+   */
+  pendingChatQuery?: string;
 }
 
 // ─── T021: AI Tray Scanner + Time Machine ───────────────────────────────────

@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { askKios } from "@/lib/kios";
 import { generateRecipe } from "@/lib/ai";
+import { searchOffline } from "@/constants/offlineKnowledge";
 import { speakHQ, stopSpeaking, isSafari, prewarmTtsCache, primeAudio, prefetchKiosPhrases } from "@/lib/voice";
 import { useApp } from "@/contexts/AppContext";
 import {
@@ -1736,21 +1737,37 @@ export function useKios() {
       ]);
       clearTimeout(tid);
     } catch {
+      // AI unreachable — try offline knowledge first, then escalate to chat.
+      const offline = searchOffline(question);
+      if (offline) {
+        setStatus("speaking");
+        r.current.lastSpokenText = offline.answerShort;
+        speakHQ(offline.answerShort, locale, () => scheduleFollowup(500), snap.kiosVoice);
+        return;
+      }
+      // Nothing found offline — escalate to the AI chat screen.
+      const escalateMsg = locale === "de"
+        ? "Ich leite das an den KI-Assistenten weiter."
+        : "Forwarding your question to the AI assistant.";
+      dispatch({ type: "setPendingChatQuery", query: question });
       setStatus("speaking");
-      speakHQ(
-        locale === "de"
-          ? "Entschuldigung, das hat leider nicht geklappt."
-          : "Sorry, something went wrong.",
-        locale,
-        () => scheduleFollowup(500),
-        snap.kiosVoice,
-      );
+      speakHQ(escalateMsg, locale, () => {
+        router.push(NAV_MAP["chat"] as never);
+        scheduleFollowup(500);
+      }, snap.kiosVoice);
       return;
     }
 
     if (!result) { scheduleFollowup(500); return; }
 
     const navKey = result.navigate && result.navigate !== "null" ? result.navigate : null;
+
+    // When Kios explicitly routes to chat, store the question so chat.tsx
+    // can auto-send it and produce a full AI response.
+    if (navKey === "chat") {
+      dispatch({ type: "setPendingChatQuery", query: question });
+    }
+
     if (navKey && NAV_MAP[navKey]) router.push(NAV_MAP[navKey] as never);
 
     r.current.lastSpokenText = result.answer;
