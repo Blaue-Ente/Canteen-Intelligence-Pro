@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import * as Linking from "expo-linking";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -15,6 +16,15 @@ import { Badge, Button, Card, EmptyState, SectionHeader } from "@/components/ui"
 import { useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { apiFetch } from "@/lib/api";
+
+const PREORDER_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}/preorder`;
+
+function openPortalPreview(locationCode: string) {
+  const url = `${PREORDER_BASE}/menu/${encodeURIComponent(locationCode)}`;
+  Linking.openURL(url).catch(() =>
+    Alert.alert("Fehler", `Konnte ${url} nicht öffnen.`),
+  );
+}
 
 type AccountType = "regular" | "business_pending" | "business_approved" | "rejected";
 
@@ -529,13 +539,32 @@ export default function CustomersScreen() {
                         {new Date(code.createdAt).toLocaleDateString("de")}
                       </Text>
                     </View>
-                    <Pressable
-                      onPress={() => deleteCode(code.code)}
-                      style={{ padding: 8 }}
-                      hitSlop={8}
-                    >
-                      <Feather name="trash-2" size={16} color={c.destructive} />
-                    </Pressable>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                      <Pressable
+                        onPress={() => openPortalPreview(code.locationCode)}
+                        style={{
+                          padding: 8,
+                          borderRadius: 8,
+                          backgroundColor: c.muted,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                        hitSlop={6}
+                      >
+                        <Feather name="eye" size={13} color={c.primary} />
+                        <Text style={{ color: c.primary, fontSize: 11, fontFamily: "Inter_600SemiBold" }}>
+                          Vorschau
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => deleteCode(code.code)}
+                        style={{ padding: 8 }}
+                        hitSlop={8}
+                      >
+                        <Feather name="trash-2" size={16} color={c.destructive} />
+                      </Pressable>
+                    </View>
                   </View>
                   {code.usesCount >= code.maxUses && (
                     <Text style={{ color: c.mutedForeground, fontSize: 11 }}>
@@ -641,13 +670,32 @@ export default function CustomersScreen() {
                         </Text>
                       </View>
                     </View>
-                    <Pressable
-                      onPress={() => deleteAnnouncement(ann.id)}
-                      style={{ padding: 8 }}
-                      hitSlop={8}
-                    >
-                      <Feather name="trash-2" size={16} color={c.destructive} />
-                    </Pressable>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                      <Pressable
+                        onPress={() => openPortalPreview(ann.locationCode)}
+                        style={{
+                          padding: 8,
+                          borderRadius: 8,
+                          backgroundColor: c.muted,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                        hitSlop={6}
+                      >
+                        <Feather name="eye" size={13} color={c.primary} />
+                        <Text style={{ color: c.primary, fontSize: 11, fontFamily: "Inter_600SemiBold" }}>
+                          Vorschau
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => deleteAnnouncement(ann.id)}
+                        style={{ padding: 8 }}
+                        hitSlop={8}
+                      >
+                        <Feather name="trash-2" size={16} color={c.destructive} />
+                      </Pressable>
+                    </View>
                   </View>
                 </Card>
               ))
