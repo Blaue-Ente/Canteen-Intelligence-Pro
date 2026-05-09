@@ -1,9 +1,10 @@
 import { Feather } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
-import React, { useEffect, useMemo, useState } from "react";
-import { Alert, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 
 import { Badge, Button, Card, EmptyState, Field, SectionHeader } from "@/components/ui";
 import { useApp, useT } from "@/contexts/AppContext";
@@ -57,6 +58,356 @@ interface GuestOrder {
 }
 
 const STATUS_FLOW: GuestStatus[] = ["new", "accepted", "preparing", "ready", "served"];
+
+// ─── KW Menu types ────────────────────────────────────────────────────────────
+
+interface WeeklyMenuDishRow {
+  id: string;
+  name: string;
+  description?: string | null;
+  dishType: string;
+  menuDate: string; // YYYY-MM-DD
+  price: number;
+  allergens: string[];
+  kcal?: number | null;
+  dge?: "green" | "amber" | "red" | null;
+}
+
+interface WeeklyMenuRecord {
+  id: string;
+  locationCode: string;
+  menuSlot: string;
+  kwYear: number;
+  kwNumber: number;
+  validFrom: string;
+  validTo: string;
+  currency: string;
+  dishes: WeeklyMenuDishRow[];
+  createdAt: string;
+}
+
+const MENU_SLOTS = ["Menü 1", "Menü 2", "Menü 3", "Menü 4", "Menü 5", "Menü 6"];
+const DISH_TYPES_SHORT = ["Hauptgericht 1", "Hauptgericht 2", "Suppe", "Dessert", "Beilage", "Salat"];
+
+function getISOWeek(date: Date): { year: number; week: number } {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const year = d.getUTCFullYear();
+  const startOfYear = new Date(Date.UTC(year, 0, 1));
+  const week = Math.ceil((((d.getTime() - startOfYear.getTime()) / 86400000) + 1) / 7);
+  return { year, week };
+}
+
+function getMondayOfKW(kwYear: number, kwNumber: number): Date {
+  const jan4 = new Date(Date.UTC(kwYear, 0, 4));
+  const jan4Day = jan4.getUTCDay() || 7;
+  const monday = new Date(jan4.getTime() - (jan4Day - 1) * 86400000 + (kwNumber - 1) * 7 * 86400000);
+  return monday;
+}
+
+const WEEKDAYS_DE = ["Mo", "Di", "Mi", "Do", "Fr"];
+
+// ─── KW Menu sub-component ────────────────────────────────────────────────────
+
+function KWMenuSection({ locationCode, c }: { locationCode: string; c: ReturnType<typeof useColors> }) {
+  const router = useRouter();
+  const [menus, setMenus] = useState<WeeklyMenuRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const { year: curYear, week: curWeek } = getISOWeek(new Date());
+  const [kwYear, setKwYear] = useState(curYear);
+  const [kwNumber, setKwNumber] = useState(curWeek);
+
+  const load = useCallback(async () => {
+    if (!locationCode) return;
+    setLoading(true);
+    try {
+      const data = await apiFetch<WeeklyMenuRecord[]>(
+        `/api/preorder/staff/weekly-menus?locationCode=${encodeURIComponent(locationCode)}&kwYear=${kwYear}&kwNumber=${kwNumber}`,
+      );
+      setMenus(data);
+    } catch {
+      setMenus([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [locationCode, kwYear, kwNumber]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const monday = getMondayOfKW(kwYear, kwNumber);
+  const weekDates = Array.from({ length: 5 }, (_, i) => {
+    const d = new Date(monday.getTime() + i * 86400000);
+    return d.toISOString().slice(0, 10);
+  });
+
+  const [newDishType, setNewDishType] = useState(DISH_TYPES_SHORT[0]!);
+  const [newDishName, setNewDishName] = useState("");
+  const [newDishDate, setNewDishDate] = useState(weekDates[0]!);
+  const [newDishPrice, setNewDishPrice] = useState("");
+  const [newMenuSlot, setNewMenuSlot] = useState(MENU_SLOTS[0]!);
+  const [creating, setCreating] = useState(false);
+
+  const createMenu = async () => {
+    if (!newDishName.trim()) { Alert.alert("Fehler", "Bitte mindestens einen Gericht-Namen eingeben."); return; }
+    const priceNum = parseFloat(newDishPrice.replace(",", "."));
+    if (isNaN(priceNum) || priceNum <= 0) { Alert.alert("Fehler", "Bitte einen gültigen Preis eingeben."); return; }
+    setCreating(true);
+    try {
+      await apiFetch("/api/preorder/staff/weekly-menus", {
+        method: "POST",
+        body: {
+          locationCode,
+          menuSlot: newMenuSlot,
+          kwYear,
+          kwNumber,
+          validFrom: weekDates[0],
+          validTo: weekDates[4],
+          currency: "EUR",
+          dishes: [{
+            id: Math.random().toString(36).slice(2),
+            name: newDishName.trim(),
+            dishType: newDishType,
+            menuDate: newDishDate,
+            price: priceNum,
+            allergens: [],
+          }],
+        },
+      });
+      setNewDishName("");
+      setNewDishPrice("");
+      await load();
+    } catch (e) {
+      Alert.alert("Fehler", e instanceof Error ? e.message : String(e));
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const deleteMenu = (id: string) => {
+    Alert.alert("Löschen?", "Dieses Wochemenü endgültig löschen?", [
+      { text: "Abbrechen", style: "cancel" },
+      {
+        text: "Löschen", style: "destructive",
+        onPress: async () => {
+          try {
+            await apiFetch(`/api/preorder/staff/weekly-menus/${encodeURIComponent(id)}`, { method: "DELETE" });
+            await load();
+          } catch (e) {
+            Alert.alert("Fehler", e instanceof Error ? e.message : String(e));
+          }
+        },
+      },
+    ]);
+  };
+
+  const inputStyle = {
+    borderWidth: 1, borderColor: c.border, borderRadius: 8,
+    padding: 10, color: c.foreground, backgroundColor: c.card,
+    fontFamily: "Inter_400Regular" as const, fontSize: 14,
+  };
+  const labelStyle = { color: c.mutedForeground, fontSize: 12, fontFamily: "Inter_500Medium" as const, marginBottom: 4 };
+
+  return (
+    <Card style={{ gap: 14 }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+        <SectionHeader title="Wochenmenu (KW)" />
+        <Pressable
+          onPress={() => router.push("/delivery-report")}
+          style={{
+            flexDirection: "row", alignItems: "center", gap: 4,
+            paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: c.muted,
+          }}
+        >
+          <Feather name="bar-chart-2" size={13} color={c.primary} />
+          <Text style={{ color: c.primary, fontFamily: "Inter_600SemiBold" as const, fontSize: 12 }}>Lieferbericht</Text>
+        </Pressable>
+      </View>
+
+      {/* KW navigator */}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <Pressable
+          onPress={() => {
+            if (kwNumber === 1) { setKwYear(kwYear - 1); setKwNumber(52); }
+            else setKwNumber(kwNumber - 1);
+          }}
+          style={{ padding: 8, borderRadius: 8, backgroundColor: c.muted }}
+        >
+          <Feather name="chevron-left" size={16} color={c.foreground} />
+        </Pressable>
+        <View style={{ flex: 1, alignItems: "center" }}>
+          <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold" as const, fontSize: 15 }}>
+            KW {kwNumber} / {kwYear}
+          </Text>
+          <Text style={{ color: c.mutedForeground, fontSize: 11 }}>
+            {weekDates[0]?.split("-").reverse().slice(0, 2).join(".")} – {weekDates[4]?.split("-").reverse().slice(0, 2).join(".")}
+          </Text>
+        </View>
+        <Pressable
+          onPress={() => {
+            if (kwNumber >= 52) { setKwYear(kwYear + 1); setKwNumber(1); }
+            else setKwNumber(kwNumber + 1);
+          }}
+          style={{ padding: 8, borderRadius: 8, backgroundColor: c.muted }}
+        >
+          <Feather name="chevron-right" size={16} color={c.foreground} />
+        </Pressable>
+      </View>
+
+      {/* Existing menus for this KW */}
+      {loading ? (
+        <ActivityIndicator color={c.primary} />
+      ) : menus.length === 0 ? (
+        <Text style={{ color: c.mutedForeground, fontSize: 13, textAlign: "center" }}>
+          Kein Wochenmenu für KW {kwNumber} hinterlegt.
+        </Text>
+      ) : (
+        menus.map((menu) => (
+          <View key={menu.id} style={{ borderWidth: 1, borderColor: c.border, borderRadius: 10, overflow: "hidden" }}>
+            <View style={{
+              flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+              backgroundColor: c.muted, paddingHorizontal: 12, paddingVertical: 8,
+            }}>
+              <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold" as const, fontSize: 14 }}>
+                {menu.menuSlot}
+              </Text>
+              <Pressable onPress={() => deleteMenu(menu.id)} hitSlop={10} style={{ padding: 4 }}>
+                <Feather name="trash-2" size={15} color={c.destructive} />
+              </Pressable>
+            </View>
+            {menu.dishes.map((dish, i) => {
+              const dayIdx = weekDates.indexOf(dish.menuDate);
+              return (
+                <View key={i} style={{
+                  flexDirection: "row", justifyContent: "space-between",
+                  paddingHorizontal: 12, paddingVertical: 8,
+                  borderTopWidth: i > 0 ? 1 : 0, borderTopColor: c.border,
+                }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: c.mutedForeground, fontSize: 11 }}>
+                      {dayIdx >= 0 ? WEEKDAYS_DE[dayIdx] : dish.menuDate} · {dish.dishType}
+                    </Text>
+                    <Text style={{ color: c.foreground, fontFamily: "Inter_500Medium" as const, fontSize: 13 }}>{dish.name}</Text>
+                  </View>
+                  <Text style={{ color: c.primary, fontFamily: "Inter_600SemiBold" as const, fontSize: 14 }}>
+                    {dish.price.toFixed(2).replace(".", ",")} €
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        ))
+      )}
+
+      {/* Add new dish / menu entry */}
+      <View style={{ gap: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: c.border }}>
+        <Text style={{ color: c.foreground, fontFamily: "Inter_600SemiBold" as const, fontSize: 14 }}>
+          Gericht hinzufügen
+        </Text>
+
+        {/* Menu slot */}
+        <View style={{ gap: 4 }}>
+          <Text style={labelStyle}>Menü-Slot</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+            {MENU_SLOTS.map((s) => (
+              <Pressable
+                key={s}
+                onPress={() => setNewMenuSlot(s)}
+                style={{
+                  paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+                  backgroundColor: newMenuSlot === s ? c.primary : c.muted,
+                  borderWidth: 1, borderColor: newMenuSlot === s ? c.primary : c.border,
+                }}
+              >
+                <Text style={{ color: newMenuSlot === s ? c.primaryForeground : c.foreground, fontSize: 12, fontFamily: "Inter_500Medium" as const }}>
+                  {s}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        {/* Dish type */}
+        <View style={{ gap: 4 }}>
+          <Text style={labelStyle}>Kategorie</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+            {DISH_TYPES_SHORT.map((dt) => (
+              <Pressable
+                key={dt}
+                onPress={() => setNewDishType(dt)}
+                style={{
+                  paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+                  backgroundColor: newDishType === dt ? c.primary : c.muted,
+                  borderWidth: 1, borderColor: newDishType === dt ? c.primary : c.border,
+                }}
+              >
+                <Text style={{ color: newDishType === dt ? c.primaryForeground : c.foreground, fontSize: 12, fontFamily: "Inter_500Medium" as const }}>
+                  {dt}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        {/* Weekday picker */}
+        <View style={{ gap: 4 }}>
+          <Text style={labelStyle}>Liefertag</Text>
+          <View style={{ flexDirection: "row", gap: 6 }}>
+            {weekDates.map((d, i) => (
+              <Pressable
+                key={d}
+                onPress={() => setNewDishDate(d)}
+                style={{
+                  flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: 8,
+                  backgroundColor: newDishDate === d ? c.primary : c.muted,
+                  borderWidth: 1, borderColor: newDishDate === d ? c.primary : c.border,
+                }}
+              >
+                <Text style={{ color: newDishDate === d ? c.primaryForeground : c.mutedForeground, fontSize: 10, fontFamily: "Inter_500Medium" as const }}>
+                  {WEEKDAYS_DE[i]}
+                </Text>
+                <Text style={{ color: newDishDate === d ? c.primaryForeground : c.foreground, fontSize: 11, fontFamily: "Inter_600SemiBold" as const }}>
+                  {d.slice(8)}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        <View style={{ gap: 4 }}>
+          <Text style={labelStyle}>Gerichts-Name *</Text>
+          <TextInput
+            style={inputStyle}
+            value={newDishName}
+            onChangeText={setNewDishName}
+            placeholder="z.B. Hähnchen mit Kartoffeln"
+            placeholderTextColor={c.mutedForeground}
+          />
+        </View>
+
+        <View style={{ gap: 4 }}>
+          <Text style={labelStyle}>Preis (€) *</Text>
+          <TextInput
+            style={inputStyle}
+            value={newDishPrice}
+            onChangeText={setNewDishPrice}
+            keyboardType="decimal-pad"
+            placeholder="z.B. 8,50"
+            placeholderTextColor={c.mutedForeground}
+          />
+        </View>
+
+        <Button
+          label={creating ? "Hinzufügen…" : "Gericht speichern"}
+          onPress={createMenu}
+          disabled={creating}
+        />
+      </View>
+    </Card>
+  );
+}
+
+// ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function PreorderScreen() {
   const { state } = useApp();
@@ -310,6 +661,9 @@ export default function PreorderScreen() {
             )}
           </View>
         </Card>
+
+        {/* KW Wochenmenu management */}
+        <KWMenuSection locationCode={locationCode} c={c} />
 
         <Card>
           <SectionHeader title={t("qrLink")} />

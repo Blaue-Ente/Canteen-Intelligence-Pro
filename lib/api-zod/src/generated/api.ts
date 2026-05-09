@@ -839,6 +839,418 @@ export const DeleteAnnouncementResponse = zod.object({
 });
 
 /**
+ * @summary Staff — list weekly KW menus for the org (auth required).
+ */
+export const ListWeeklyMenusQueryParams = zod.object({
+  locationCode: zod.coerce.string().optional(),
+  kwYear: zod.coerce.number().optional(),
+  kwNumber: zod.coerce.number().optional(),
+});
+
+export const ListWeeklyMenusResponseItem = zod.object({
+  id: zod.string(),
+  orgId: zod.string(),
+  locationCode: zod.string(),
+  menuSlot: zod.string().describe('e.g. \"Menü 1\", \"Menü 2\"'),
+  kwYear: zod.number(),
+  kwNumber: zod.number(),
+  validFrom: zod.string().describe("ISO date YYYY-MM-DD (Monday of the week)"),
+  validTo: zod
+    .string()
+    .describe("ISO date YYYY-MM-DD (Friday or Sunday of the week)"),
+  currency: zod.string(),
+  dishes: zod.array(
+    zod.object({
+      id: zod.string(),
+      name: zod.string(),
+      description: zod.string().nullish(),
+      dishType: zod
+        .string()
+        .describe('e.g. \"Hauptgericht 1\", \"Suppe\", \"Dessert\"'),
+      menuDate: zod
+        .string()
+        .describe("ISO date YYYY-MM-DD — which day this dish is served"),
+      price: zod.number(),
+      allergens: zod.array(zod.string()),
+      kcal: zod.number().nullish(),
+      dge: zod
+        .union([
+          zod.literal("green"),
+          zod.literal("amber"),
+          zod.literal("red"),
+          zod.literal(null),
+        ])
+        .nullish(),
+    }),
+  ),
+  createdBy: zod.string(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListWeeklyMenusResponse = zod.array(ListWeeklyMenusResponseItem);
+
+/**
+ * @summary Staff — create a new weekly KW menu (auth required).
+ */
+export const CreateWeeklyMenuBody = zod.object({
+  locationCode: zod.string(),
+  menuSlot: zod.string().optional(),
+  kwYear: zod.number(),
+  kwNumber: zod.number(),
+  validFrom: zod.string(),
+  validTo: zod.string(),
+  currency: zod.string().optional(),
+  dishes: zod.array(
+    zod.object({
+      id: zod.string(),
+      name: zod.string(),
+      description: zod.string().nullish(),
+      dishType: zod
+        .string()
+        .describe('e.g. \"Hauptgericht 1\", \"Suppe\", \"Dessert\"'),
+      menuDate: zod
+        .string()
+        .describe("ISO date YYYY-MM-DD — which day this dish is served"),
+      price: zod.number(),
+      allergens: zod.array(zod.string()),
+      kcal: zod.number().nullish(),
+      dge: zod
+        .union([
+          zod.literal("green"),
+          zod.literal("amber"),
+          zod.literal("red"),
+          zod.literal(null),
+        ])
+        .nullish(),
+    }),
+  ),
+});
+
+/**
+ * @summary Staff — update a weekly menu (auth required).
+ */
+export const UpdateWeeklyMenuParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const UpdateWeeklyMenuBody = zod.object({
+  locationCode: zod.string(),
+  menuSlot: zod.string().optional(),
+  kwYear: zod.number(),
+  kwNumber: zod.number(),
+  validFrom: zod.string(),
+  validTo: zod.string(),
+  currency: zod.string().optional(),
+  dishes: zod.array(
+    zod.object({
+      id: zod.string(),
+      name: zod.string(),
+      description: zod.string().nullish(),
+      dishType: zod
+        .string()
+        .describe('e.g. \"Hauptgericht 1\", \"Suppe\", \"Dessert\"'),
+      menuDate: zod
+        .string()
+        .describe("ISO date YYYY-MM-DD — which day this dish is served"),
+      price: zod.number(),
+      allergens: zod.array(zod.string()),
+      kcal: zod.number().nullish(),
+      dge: zod
+        .union([
+          zod.literal("green"),
+          zod.literal("amber"),
+          zod.literal("red"),
+          zod.literal(null),
+        ])
+        .nullish(),
+    }),
+  ),
+});
+
+export const UpdateWeeklyMenuResponse = zod.object({
+  id: zod.string(),
+  orgId: zod.string(),
+  locationCode: zod.string(),
+  menuSlot: zod.string().describe('e.g. \"Menü 1\", \"Menü 2\"'),
+  kwYear: zod.number(),
+  kwNumber: zod.number(),
+  validFrom: zod.string().describe("ISO date YYYY-MM-DD (Monday of the week)"),
+  validTo: zod
+    .string()
+    .describe("ISO date YYYY-MM-DD (Friday or Sunday of the week)"),
+  currency: zod.string(),
+  dishes: zod.array(
+    zod.object({
+      id: zod.string(),
+      name: zod.string(),
+      description: zod.string().nullish(),
+      dishType: zod
+        .string()
+        .describe('e.g. \"Hauptgericht 1\", \"Suppe\", \"Dessert\"'),
+      menuDate: zod
+        .string()
+        .describe("ISO date YYYY-MM-DD — which day this dish is served"),
+      price: zod.number(),
+      allergens: zod.array(zod.string()),
+      kcal: zod.number().nullish(),
+      dge: zod
+        .union([
+          zod.literal("green"),
+          zod.literal("amber"),
+          zod.literal("red"),
+          zod.literal(null),
+        ])
+        .nullish(),
+    }),
+  ),
+  createdBy: zod.string(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Staff — delete a weekly menu (auth required).
+ */
+export const DeleteWeeklyMenuParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const DeleteWeeklyMenuResponse = zod.object({
+  ok: zod.boolean(),
+});
+
+/**
+ * @summary Public — list upcoming weekly menus for a location.
+ */
+export const ListPublicWeeklyMenusParams = zod.object({
+  locationCode: zod.coerce.string(),
+});
+
+export const ListPublicWeeklyMenusResponseItem = zod.object({
+  id: zod.string(),
+  orgId: zod.string(),
+  locationCode: zod.string(),
+  menuSlot: zod.string().describe('e.g. \"Menü 1\", \"Menü 2\"'),
+  kwYear: zod.number(),
+  kwNumber: zod.number(),
+  validFrom: zod.string().describe("ISO date YYYY-MM-DD (Monday of the week)"),
+  validTo: zod
+    .string()
+    .describe("ISO date YYYY-MM-DD (Friday or Sunday of the week)"),
+  currency: zod.string(),
+  dishes: zod.array(
+    zod.object({
+      id: zod.string(),
+      name: zod.string(),
+      description: zod.string().nullish(),
+      dishType: zod
+        .string()
+        .describe('e.g. \"Hauptgericht 1\", \"Suppe\", \"Dessert\"'),
+      menuDate: zod
+        .string()
+        .describe("ISO date YYYY-MM-DD — which day this dish is served"),
+      price: zod.number(),
+      allergens: zod.array(zod.string()),
+      kcal: zod.number().nullish(),
+      dge: zod
+        .union([
+          zod.literal("green"),
+          zod.literal("amber"),
+          zod.literal("red"),
+          zod.literal(null),
+        ])
+        .nullish(),
+    }),
+  ),
+  createdBy: zod.string(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListPublicWeeklyMenusResponse = zod.array(
+  ListPublicWeeklyMenusResponseItem,
+);
+
+/**
+ * @summary Staff — list price list entries for a customer (auth required).
+ */
+export const ListPriceListsQueryParams = zod.object({
+  clerkUserId: zod.coerce.string().optional(),
+  locationCode: zod.coerce.string().optional(),
+});
+
+export const ListPriceListsResponseItem = zod.object({
+  id: zod.string(),
+  orgId: zod.string(),
+  locationCode: zod.string(),
+  clerkUserId: zod.string(),
+  dishType: zod.string(),
+  agreedPrice: zod.number(),
+  currency: zod.string(),
+  note: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListPriceListsResponse = zod.array(ListPriceListsResponseItem);
+
+/**
+ * @summary Staff — create or update a price entry for a customer + dishType (auth required).
+ */
+export const UpsertPriceEntryBody = zod.object({
+  locationCode: zod.string(),
+  clerkUserId: zod.string(),
+  dishType: zod.string(),
+  agreedPrice: zod.number(),
+  currency: zod.string().optional(),
+  note: zod.string().nullish(),
+});
+
+export const UpsertPriceEntryResponse = zod.object({
+  id: zod.string(),
+  orgId: zod.string(),
+  locationCode: zod.string(),
+  clerkUserId: zod.string(),
+  dishType: zod.string(),
+  agreedPrice: zod.number(),
+  currency: zod.string(),
+  note: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Staff — delete a price list entry (auth required).
+ */
+export const DeletePriceEntryParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const DeletePriceEntryResponse = zod.object({
+  ok: zod.boolean(),
+});
+
+/**
+ * @summary Staff — get ordering settings for a location (auth required).
+ */
+export const GetLocationSettingsParams = zod.object({
+  locationCode: zod.coerce.string(),
+});
+
+export const GetLocationSettingsResponse = zod.object({
+  locationCode: zod.string(),
+  orgId: zod.string(),
+  leadDays: zod
+    .number()
+    .describe("How many days in advance customers can order"),
+  cutoffHour: zod
+    .number()
+    .describe("Hour (0-23) after which orders for the same day are locked"),
+  autoFinalize: zod.boolean(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Staff — update ordering settings for a location (auth required).
+ */
+export const PatchLocationSettingsParams = zod.object({
+  locationCode: zod.coerce.string(),
+});
+
+export const PatchLocationSettingsBody = zod.object({
+  leadDays: zod.number().optional(),
+  cutoffHour: zod.number().optional(),
+  autoFinalize: zod.boolean().optional(),
+});
+
+export const PatchLocationSettingsResponse = zod.object({
+  locationCode: zod.string(),
+  orgId: zod.string(),
+  leadDays: zod
+    .number()
+    .describe("How many days in advance customers can order"),
+  cutoffHour: zod
+    .number()
+    .describe("Hour (0-23) after which orders for the same day are locked"),
+  autoFinalize: zod.boolean(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Staff — list delivery ledger entries (auth required).
+ */
+export const ListDeliveryLedgerQueryParams = zod.object({
+  locationCode: zod.coerce.string().optional(),
+  clerkUserId: zod.coerce.string().optional(),
+  dateFrom: zod.coerce.string().optional(),
+  dateTo: zod.coerce.string().optional(),
+});
+
+export const ListDeliveryLedgerResponseItem = zod.object({
+  id: zod.string(),
+  orgId: zod.string(),
+  locationCode: zod.string(),
+  clerkUserId: zod.string(),
+  orderId: zod.string(),
+  deliveryDate: zod.string(),
+  items: zod.array(
+    zod.object({
+      dishId: zod.string(),
+      name: zod.string(),
+      dishType: zod.string(),
+      qty: zod.number(),
+      unitPrice: zod.number(),
+      lineTotal: zod.number(),
+    }),
+  ),
+  total: zod.number(),
+  currency: zod.string(),
+  createdAt: zod.string(),
+});
+export const ListDeliveryLedgerResponse = zod.array(
+  ListDeliveryLedgerResponseItem,
+);
+
+/**
+ * @summary Staff — finalize all served orders for a date and write to ledger (auth required).
+ */
+export const FinalizeDeliveryDayBody = zod.object({
+  locationCode: zod.string(),
+  deliveryDate: zod.string().describe("ISO date YYYY-MM-DD to finalize"),
+});
+
+export const FinalizeDeliveryDayResponse = zod.object({
+  written: zod.number(),
+});
+
+/**
+ * @summary Staff — aggregated delivery report for a period (auth required).
+ */
+export const GetDeliveryReportQueryParams = zod.object({
+  locationCode: zod.coerce.string(),
+  dateFrom: zod.coerce.string(),
+  dateTo: zod.coerce.string(),
+  clerkUserId: zod.coerce.string().optional(),
+});
+
+export const GetDeliveryReportResponse = zod.object({
+  locationCode: zod.string(),
+  dateFrom: zod.string(),
+  dateTo: zod.string(),
+  lines: zod.array(
+    zod.object({
+      clerkUserId: zod.string(),
+      displayName: zod.string(),
+      dishType: zod.string(),
+      totalQty: zod.number(),
+      totalAmount: zod.number(),
+      currency: zod.string(),
+    }),
+  ),
+  grandTotal: zod.number(),
+  currency: zod.string(),
+  generatedAt: zod.string(),
+});
+
+/**
  * @summary Public — list announcements for a location (without file data).
  */
 export const ListAnnouncementsParams = zod.object({

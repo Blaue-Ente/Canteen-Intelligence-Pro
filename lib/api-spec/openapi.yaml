@@ -555,6 +555,322 @@ paths:
                     type: boolean
                 required: [ok]
 
+  # ── Weekly menus ────────────────────────────────────────────────────────────
+
+  /preorder/staff/weekly-menus:
+    get:
+      operationId: listWeeklyMenus
+      tags: [preorder]
+      summary: Staff — list weekly KW menus for the org (auth required).
+      parameters:
+        - in: query
+          name: locationCode
+          schema:
+            type: string
+        - in: query
+          name: kwYear
+          schema:
+            type: integer
+        - in: query
+          name: kwNumber
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of weekly menus
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WeeklyMenu"
+    post:
+      operationId: createWeeklyMenu
+      tags: [preorder]
+      summary: Staff — create a new weekly KW menu (auth required).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWeeklyMenuBody"
+      responses:
+        "201":
+          description: Created weekly menu
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeeklyMenu"
+
+  /preorder/staff/weekly-menus/{id}:
+    put:
+      operationId: updateWeeklyMenu
+      tags: [preorder]
+      summary: Staff — update a weekly menu (auth required).
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWeeklyMenuBody"
+      responses:
+        "200":
+          description: Updated weekly menu
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeeklyMenu"
+    delete:
+      operationId: deleteWeeklyMenu
+      tags: [preorder]
+      summary: Staff — delete a weekly menu (auth required).
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required: [ok]
+
+  /preorder/weekly-menus/{locationCode}:
+    get:
+      operationId: listPublicWeeklyMenus
+      tags: [preorder]
+      summary: Public — list upcoming weekly menus for a location.
+      parameters:
+        - in: path
+          name: locationCode
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Upcoming weekly menus
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WeeklyMenu"
+
+  # ── Client price lists ───────────────────────────────────────────────────────
+
+  /preorder/staff/price-lists:
+    get:
+      operationId: listPriceLists
+      tags: [preorder]
+      summary: Staff — list price list entries for a customer (auth required).
+      parameters:
+        - in: query
+          name: clerkUserId
+          schema:
+            type: string
+        - in: query
+          name: locationCode
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Price list entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ClientPriceEntry"
+    post:
+      operationId: upsertPriceEntry
+      tags: [preorder]
+      summary: Staff — create or update a price entry for a customer + dishType (auth required).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertPriceEntryBody"
+      responses:
+        "200":
+          description: Saved price entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientPriceEntry"
+
+  /preorder/staff/price-lists/{id}:
+    delete:
+      operationId: deletePriceEntry
+      tags: [preorder]
+      summary: Staff — delete a price list entry (auth required).
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required: [ok]
+
+  # ── Location settings ────────────────────────────────────────────────────────
+
+  /preorder/staff/location-settings/{locationCode}:
+    get:
+      operationId: getLocationSettings
+      tags: [preorder]
+      summary: Staff — get ordering settings for a location (auth required).
+      parameters:
+        - in: path
+          name: locationCode
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Location settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationSettings"
+    patch:
+      operationId: patchLocationSettings
+      tags: [preorder]
+      summary: Staff — update ordering settings for a location (auth required).
+      parameters:
+        - in: path
+          name: locationCode
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchLocationSettingsBody"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationSettings"
+
+  # ── Delivery ledger & reports ────────────────────────────────────────────────
+
+  /preorder/staff/delivery-ledger:
+    get:
+      operationId: listDeliveryLedger
+      tags: [preorder]
+      summary: Staff — list delivery ledger entries (auth required).
+      parameters:
+        - in: query
+          name: locationCode
+          schema:
+            type: string
+        - in: query
+          name: clerkUserId
+          schema:
+            type: string
+        - in: query
+          name: dateFrom
+          schema:
+            type: string
+            description: ISO date YYYY-MM-DD
+        - in: query
+          name: dateTo
+          schema:
+            type: string
+            description: ISO date YYYY-MM-DD
+      responses:
+        "200":
+          description: Ledger entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DeliveryLedgerEntry"
+
+  /preorder/staff/delivery-ledger/finalize-day:
+    post:
+      operationId: finalizeDeliveryDay
+      tags: [preorder]
+      summary: Staff — finalize all served orders for a date and write to ledger (auth required).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FinalizeDayBody"
+      responses:
+        "200":
+          description: Number of ledger entries written
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  written:
+                    type: integer
+                required: [written]
+
+  /preorder/staff/report:
+    get:
+      operationId: getDeliveryReport
+      tags: [preorder]
+      summary: Staff — aggregated delivery report for a period (auth required).
+      parameters:
+        - in: query
+          name: locationCode
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: dateFrom
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: dateTo
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: clerkUserId
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Report grouped by customer and dish type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryReport"
+
   /preorder/announcements/{locationCode}:
     get:
       operationId: listAnnouncements
@@ -1114,3 +1430,263 @@ components:
           type: ["string", "null"]
           description: Base64-encoded file content (max ~7 MB base64 = ~5 MB raw).
       required: [locationCode, title]
+
+    # ── Weekly menus ───────────────────────────────────────────────────────────
+
+    WeeklyMenuDish:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        dishType:
+          type: string
+          description: e.g. "Hauptgericht 1", "Suppe", "Dessert"
+        menuDate:
+          type: string
+          description: ISO date YYYY-MM-DD — which day this dish is served
+        price:
+          type: number
+        allergens:
+          type: array
+          items:
+            type: string
+        kcal:
+          type: ["number", "null"]
+        dge:
+          type: ["string", "null"]
+          enum: [green, amber, red, null]
+      required: [id, name, dishType, menuDate, price, allergens]
+
+    WeeklyMenu:
+      type: object
+      properties:
+        id:
+          type: string
+        orgId:
+          type: string
+        locationCode:
+          type: string
+        menuSlot:
+          type: string
+          description: e.g. "Menü 1", "Menü 2"
+        kwYear:
+          type: integer
+        kwNumber:
+          type: integer
+        validFrom:
+          type: string
+          description: ISO date YYYY-MM-DD (Monday of the week)
+        validTo:
+          type: string
+          description: ISO date YYYY-MM-DD (Friday or Sunday of the week)
+        currency:
+          type: string
+        dishes:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeeklyMenuDish"
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [id, orgId, locationCode, menuSlot, kwYear, kwNumber, validFrom, validTo, currency, dishes, createdBy, createdAt, updatedAt]
+
+    CreateWeeklyMenuBody:
+      type: object
+      properties:
+        locationCode:
+          type: string
+        menuSlot:
+          type: string
+        kwYear:
+          type: integer
+        kwNumber:
+          type: integer
+        validFrom:
+          type: string
+        validTo:
+          type: string
+        currency:
+          type: string
+        dishes:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeeklyMenuDish"
+      required: [locationCode, kwYear, kwNumber, validFrom, validTo, dishes]
+
+    # ── Client price lists ─────────────────────────────────────────────────────
+
+    ClientPriceEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        orgId:
+          type: string
+        locationCode:
+          type: string
+        clerkUserId:
+          type: string
+        dishType:
+          type: string
+        agreedPrice:
+          type: number
+        currency:
+          type: string
+        note:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [id, orgId, locationCode, clerkUserId, dishType, agreedPrice, currency, createdAt, updatedAt]
+
+    UpsertPriceEntryBody:
+      type: object
+      properties:
+        locationCode:
+          type: string
+        clerkUserId:
+          type: string
+        dishType:
+          type: string
+        agreedPrice:
+          type: number
+        currency:
+          type: string
+        note:
+          type: ["string", "null"]
+      required: [locationCode, clerkUserId, dishType, agreedPrice]
+
+    # ── Location settings ──────────────────────────────────────────────────────
+
+    LocationSettings:
+      type: object
+      properties:
+        locationCode:
+          type: string
+        orgId:
+          type: string
+        leadDays:
+          type: integer
+          description: How many days in advance customers can order
+        cutoffHour:
+          type: integer
+          description: Hour (0-23) after which orders for the same day are locked
+        autoFinalize:
+          type: boolean
+        updatedAt:
+          type: string
+      required: [locationCode, orgId, leadDays, cutoffHour, autoFinalize, updatedAt]
+
+    PatchLocationSettingsBody:
+      type: object
+      properties:
+        leadDays:
+          type: integer
+        cutoffHour:
+          type: integer
+        autoFinalize:
+          type: boolean
+
+    # ── Delivery ledger ────────────────────────────────────────────────────────
+
+    LedgerItem:
+      type: object
+      properties:
+        dishId:
+          type: string
+        name:
+          type: string
+        dishType:
+          type: string
+        qty:
+          type: integer
+        unitPrice:
+          type: number
+        lineTotal:
+          type: number
+      required: [dishId, name, dishType, qty, unitPrice, lineTotal]
+
+    DeliveryLedgerEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        orgId:
+          type: string
+        locationCode:
+          type: string
+        clerkUserId:
+          type: string
+        orderId:
+          type: string
+        deliveryDate:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/LedgerItem"
+        total:
+          type: number
+        currency:
+          type: string
+        createdAt:
+          type: string
+      required: [id, orgId, locationCode, clerkUserId, orderId, deliveryDate, items, total, currency, createdAt]
+
+    FinalizeDayBody:
+      type: object
+      properties:
+        locationCode:
+          type: string
+        deliveryDate:
+          type: string
+          description: ISO date YYYY-MM-DD to finalize
+      required: [locationCode, deliveryDate]
+
+    # ── Report ─────────────────────────────────────────────────────────────────
+
+    ReportLine:
+      type: object
+      properties:
+        clerkUserId:
+          type: string
+        displayName:
+          type: string
+        dishType:
+          type: string
+        totalQty:
+          type: integer
+        totalAmount:
+          type: number
+        currency:
+          type: string
+      required: [clerkUserId, displayName, dishType, totalQty, totalAmount, currency]
+
+    DeliveryReport:
+      type: object
+      properties:
+        locationCode:
+          type: string
+        dateFrom:
+          type: string
+        dateTo:
+          type: string
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReportLine"
+        grandTotal:
+          type: number
+        currency:
+          type: string
+        generatedAt:
+          type: string
+      required: [locationCode, dateFrom, dateTo, lines, grandTotal, currency, generatedAt]

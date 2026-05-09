@@ -381,6 +381,154 @@ export interface CreateAnnouncementBody {
   fileData?: string | null;
 }
 
+/**
+ * @nullable
+ */
+export type WeeklyMenuDishDge =
+  | (typeof WeeklyMenuDishDge)[keyof typeof WeeklyMenuDishDge]
+  | null;
+
+export const WeeklyMenuDishDge = {
+  green: "green",
+  amber: "amber",
+  red: "red",
+} as const;
+
+export interface WeeklyMenuDish {
+  id: string;
+  name: string;
+  /** @nullable */
+  description?: string | null;
+  /** e.g. "Hauptgericht 1", "Suppe", "Dessert" */
+  dishType: string;
+  /** ISO date YYYY-MM-DD — which day this dish is served */
+  menuDate: string;
+  price: number;
+  allergens: string[];
+  /** @nullable */
+  kcal?: number | null;
+  /** @nullable */
+  dge?: WeeklyMenuDishDge;
+}
+
+export interface WeeklyMenu {
+  id: string;
+  orgId: string;
+  locationCode: string;
+  /** e.g. "Menü 1", "Menü 2" */
+  menuSlot: string;
+  kwYear: number;
+  kwNumber: number;
+  /** ISO date YYYY-MM-DD (Monday of the week) */
+  validFrom: string;
+  /** ISO date YYYY-MM-DD (Friday or Sunday of the week) */
+  validTo: string;
+  currency: string;
+  dishes: WeeklyMenuDish[];
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateWeeklyMenuBody {
+  locationCode: string;
+  menuSlot?: string;
+  kwYear: number;
+  kwNumber: number;
+  validFrom: string;
+  validTo: string;
+  currency?: string;
+  dishes: WeeklyMenuDish[];
+}
+
+export interface ClientPriceEntry {
+  id: string;
+  orgId: string;
+  locationCode: string;
+  clerkUserId: string;
+  dishType: string;
+  agreedPrice: number;
+  currency: string;
+  /** @nullable */
+  note?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpsertPriceEntryBody {
+  locationCode: string;
+  clerkUserId: string;
+  dishType: string;
+  agreedPrice: number;
+  currency?: string;
+  /** @nullable */
+  note?: string | null;
+}
+
+export interface LocationSettings {
+  locationCode: string;
+  orgId: string;
+  /** How many days in advance customers can order */
+  leadDays: number;
+  /** Hour (0-23) after which orders for the same day are locked */
+  cutoffHour: number;
+  autoFinalize: boolean;
+  updatedAt: string;
+}
+
+export interface PatchLocationSettingsBody {
+  leadDays?: number;
+  cutoffHour?: number;
+  autoFinalize?: boolean;
+}
+
+export interface LedgerItem {
+  dishId: string;
+  name: string;
+  dishType: string;
+  qty: number;
+  unitPrice: number;
+  lineTotal: number;
+}
+
+export interface DeliveryLedgerEntry {
+  id: string;
+  orgId: string;
+  locationCode: string;
+  clerkUserId: string;
+  orderId: string;
+  deliveryDate: string;
+  items: LedgerItem[];
+  total: number;
+  currency: string;
+  createdAt: string;
+}
+
+export interface FinalizeDayBody {
+  locationCode: string;
+  /** ISO date YYYY-MM-DD to finalize */
+  deliveryDate: string;
+}
+
+export interface ReportLine {
+  clerkUserId: string;
+  displayName: string;
+  dishType: string;
+  totalQty: number;
+  totalAmount: number;
+  currency: string;
+}
+
+export interface DeliveryReport {
+  locationCode: string;
+  dateFrom: string;
+  dateTo: string;
+  lines: ReportLine[];
+  grandTotal: number;
+  currency: string;
+  generatedAt: string;
+}
+
 export type GetGuestOrderParams = {
   token: string;
 };
@@ -420,4 +568,47 @@ export type ListStaffAnnouncementsParams = {
 
 export type DeleteAnnouncement200 = {
   ok: boolean;
+};
+
+export type ListWeeklyMenusParams = {
+  locationCode?: string;
+  kwYear?: number;
+  kwNumber?: number;
+};
+
+export type DeleteWeeklyMenu200 = {
+  ok: boolean;
+};
+
+export type ListPriceListsParams = {
+  clerkUserId?: string;
+  locationCode?: string;
+};
+
+export type DeletePriceEntry200 = {
+  ok: boolean;
+};
+
+export type ListDeliveryLedgerParams = {
+  locationCode?: string;
+  clerkUserId?: string;
+  /**
+   * ISO date YYYY-MM-DD
+   */
+  dateFrom?: string;
+  /**
+   * ISO date YYYY-MM-DD
+   */
+  dateTo?: string;
+};
+
+export type FinalizeDeliveryDay200 = {
+  written: number;
+};
+
+export type GetDeliveryReportParams = {
+  locationCode: string;
+  dateFrom: string;
+  dateTo: string;
+  clerkUserId?: string;
 };

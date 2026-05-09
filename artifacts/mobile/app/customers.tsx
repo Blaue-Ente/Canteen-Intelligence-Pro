@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 
 import { Badge, Button, Card, EmptyState, SectionHeader } from "@/components/ui";
 import { useT } from "@/contexts/AppContext";
@@ -74,6 +75,7 @@ export default function CustomersScreen() {
   const t = useT();
   const c = useColors();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
 
   const [mainTab, setMainTab] = useState<MainTab>("customers");
 
@@ -439,6 +441,36 @@ export default function CustomersScreen() {
                         style={{ flex: 1 }}
                       />
                     </View>
+                  )}
+                  {/* Price-list shortcut — always visible for approved customers */}
+                  {row.accountType === "business_approved" && (
+                    <Pressable
+                      onPress={() =>
+                        router.push({
+                          pathname: "/price-list",
+                          params: {
+                            clerkUserId: row.clerkUserId,
+                            displayName: row.displayName,
+                            locationCode: row.homeLocationCode ?? "",
+                          },
+                        })
+                      }
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 6,
+                        paddingVertical: 6,
+                        paddingHorizontal: 10,
+                        borderRadius: 8,
+                        backgroundColor: c.muted,
+                        alignSelf: "flex-start",
+                      }}
+                    >
+                      <Feather name="tag" size={13} color={c.primary} />
+                      <Text style={{ color: c.primary, fontFamily: "Inter_600SemiBold", fontSize: 12 }}>
+                        Preisvereinbarungen
+                      </Text>
+                    </Pressable>
                   )}
                 </Card>
               ))

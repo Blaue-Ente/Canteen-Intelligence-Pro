@@ -18,28 +18,42 @@ import type {
 
 import type {
   BusinessRefCode,
+  ClientPriceEntry,
   CreateAnnouncementBody,
   CreateFeedbackBody,
   CreateOrderBody,
   CreateRefCodeBody,
+  CreateWeeklyMenuBody,
   CustomerProfile,
   DecideCustomerBody,
   DeleteAnnouncement200,
+  DeletePriceEntry200,
   DeleteRefCode200,
+  DeleteWeeklyMenu200,
+  DeliveryLedgerEntry,
+  DeliveryReport,
   ErrorResponse,
   FeedbackSummary,
+  FinalizeDayBody,
+  FinalizeDeliveryDay200,
+  GetDeliveryReportParams,
   GetGuestOrderParams,
   GetLocationRollupParams,
   GetStaffOrdersAggregateParams,
   GuestFeedback,
   GuestOrder,
   HealthStatus,
+  ListDeliveryLedgerParams,
+  ListPriceListsParams,
   ListStaffAnnouncementsParams,
   ListStaffCustomersParams,
   ListStaffFeedbackParams,
   ListStaffOrdersParams,
+  ListWeeklyMenusParams,
   LocationRollup,
+  LocationSettings,
   OrderAggregateResponse,
+  PatchLocationSettingsBody,
   PortalAnnouncement,
   PortalAnnouncementPublic,
   PublishMenuBody,
@@ -48,6 +62,8 @@ import type {
   UpdateOrderItemsBody,
   UpdateOrderStatusBody,
   UpsertCustomerProfileBody,
+  UpsertPriceEntryBody,
+  WeeklyMenu,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -2273,6 +2289,1188 @@ export const useDeleteAnnouncement = <
 > => {
   return useMutation(getDeleteAnnouncementMutationOptions(options));
 };
+
+/**
+ * @summary Staff — list weekly KW menus for the org (auth required).
+ */
+export const getListWeeklyMenusUrl = (params?: ListWeeklyMenusParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/preorder/staff/weekly-menus?${stringifiedParams}`
+    : `/api/preorder/staff/weekly-menus`;
+};
+
+export const listWeeklyMenus = async (
+  params?: ListWeeklyMenusParams,
+  options?: RequestInit,
+): Promise<WeeklyMenu[]> => {
+  return customFetch<WeeklyMenu[]>(getListWeeklyMenusUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListWeeklyMenusQueryKey = (params?: ListWeeklyMenusParams) => {
+  return [
+    `/api/preorder/staff/weekly-menus`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListWeeklyMenusQueryOptions = <
+  TData = Awaited<ReturnType<typeof listWeeklyMenus>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListWeeklyMenusParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listWeeklyMenus>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListWeeklyMenusQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listWeeklyMenus>>> = ({
+    signal,
+  }) => listWeeklyMenus(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listWeeklyMenus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListWeeklyMenusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listWeeklyMenus>>
+>;
+export type ListWeeklyMenusQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Staff — list weekly KW menus for the org (auth required).
+ */
+
+export function useListWeeklyMenus<
+  TData = Awaited<ReturnType<typeof listWeeklyMenus>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListWeeklyMenusParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listWeeklyMenus>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListWeeklyMenusQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Staff — create a new weekly KW menu (auth required).
+ */
+export const getCreateWeeklyMenuUrl = () => {
+  return `/api/preorder/staff/weekly-menus`;
+};
+
+export const createWeeklyMenu = async (
+  createWeeklyMenuBody: CreateWeeklyMenuBody,
+  options?: RequestInit,
+): Promise<WeeklyMenu> => {
+  return customFetch<WeeklyMenu>(getCreateWeeklyMenuUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createWeeklyMenuBody),
+  });
+};
+
+export const getCreateWeeklyMenuMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createWeeklyMenu>>,
+    TError,
+    { data: BodyType<CreateWeeklyMenuBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createWeeklyMenu>>,
+  TError,
+  { data: BodyType<CreateWeeklyMenuBody> },
+  TContext
+> => {
+  const mutationKey = ["createWeeklyMenu"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createWeeklyMenu>>,
+    { data: BodyType<CreateWeeklyMenuBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createWeeklyMenu(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateWeeklyMenuMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createWeeklyMenu>>
+>;
+export type CreateWeeklyMenuMutationBody = BodyType<CreateWeeklyMenuBody>;
+export type CreateWeeklyMenuMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Staff — create a new weekly KW menu (auth required).
+ */
+export const useCreateWeeklyMenu = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createWeeklyMenu>>,
+    TError,
+    { data: BodyType<CreateWeeklyMenuBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createWeeklyMenu>>,
+  TError,
+  { data: BodyType<CreateWeeklyMenuBody> },
+  TContext
+> => {
+  return useMutation(getCreateWeeklyMenuMutationOptions(options));
+};
+
+/**
+ * @summary Staff — update a weekly menu (auth required).
+ */
+export const getUpdateWeeklyMenuUrl = (id: string) => {
+  return `/api/preorder/staff/weekly-menus/${id}`;
+};
+
+export const updateWeeklyMenu = async (
+  id: string,
+  createWeeklyMenuBody: CreateWeeklyMenuBody,
+  options?: RequestInit,
+): Promise<WeeklyMenu> => {
+  return customFetch<WeeklyMenu>(getUpdateWeeklyMenuUrl(id), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createWeeklyMenuBody),
+  });
+};
+
+export const getUpdateWeeklyMenuMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateWeeklyMenu>>,
+    TError,
+    { id: string; data: BodyType<CreateWeeklyMenuBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateWeeklyMenu>>,
+  TError,
+  { id: string; data: BodyType<CreateWeeklyMenuBody> },
+  TContext
+> => {
+  const mutationKey = ["updateWeeklyMenu"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateWeeklyMenu>>,
+    { id: string; data: BodyType<CreateWeeklyMenuBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateWeeklyMenu(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateWeeklyMenuMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateWeeklyMenu>>
+>;
+export type UpdateWeeklyMenuMutationBody = BodyType<CreateWeeklyMenuBody>;
+export type UpdateWeeklyMenuMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Staff — update a weekly menu (auth required).
+ */
+export const useUpdateWeeklyMenu = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateWeeklyMenu>>,
+    TError,
+    { id: string; data: BodyType<CreateWeeklyMenuBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateWeeklyMenu>>,
+  TError,
+  { id: string; data: BodyType<CreateWeeklyMenuBody> },
+  TContext
+> => {
+  return useMutation(getUpdateWeeklyMenuMutationOptions(options));
+};
+
+/**
+ * @summary Staff — delete a weekly menu (auth required).
+ */
+export const getDeleteWeeklyMenuUrl = (id: string) => {
+  return `/api/preorder/staff/weekly-menus/${id}`;
+};
+
+export const deleteWeeklyMenu = async (
+  id: string,
+  options?: RequestInit,
+): Promise<DeleteWeeklyMenu200> => {
+  return customFetch<DeleteWeeklyMenu200>(getDeleteWeeklyMenuUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteWeeklyMenuMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteWeeklyMenu>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteWeeklyMenu>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["deleteWeeklyMenu"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteWeeklyMenu>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteWeeklyMenu(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteWeeklyMenuMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteWeeklyMenu>>
+>;
+
+export type DeleteWeeklyMenuMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Staff — delete a weekly menu (auth required).
+ */
+export const useDeleteWeeklyMenu = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteWeeklyMenu>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteWeeklyMenu>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getDeleteWeeklyMenuMutationOptions(options));
+};
+
+/**
+ * @summary Public — list upcoming weekly menus for a location.
+ */
+export const getListPublicWeeklyMenusUrl = (locationCode: string) => {
+  return `/api/preorder/weekly-menus/${locationCode}`;
+};
+
+export const listPublicWeeklyMenus = async (
+  locationCode: string,
+  options?: RequestInit,
+): Promise<WeeklyMenu[]> => {
+  return customFetch<WeeklyMenu[]>(getListPublicWeeklyMenusUrl(locationCode), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListPublicWeeklyMenusQueryKey = (locationCode: string) => {
+  return [`/api/preorder/weekly-menus/${locationCode}`] as const;
+};
+
+export const getListPublicWeeklyMenusQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPublicWeeklyMenus>>,
+  TError = ErrorType<unknown>,
+>(
+  locationCode: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPublicWeeklyMenus>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListPublicWeeklyMenusQueryKey(locationCode);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listPublicWeeklyMenus>>
+  > = ({ signal }) =>
+    listPublicWeeklyMenus(locationCode, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!locationCode,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPublicWeeklyMenus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPublicWeeklyMenusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPublicWeeklyMenus>>
+>;
+export type ListPublicWeeklyMenusQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Public — list upcoming weekly menus for a location.
+ */
+
+export function useListPublicWeeklyMenus<
+  TData = Awaited<ReturnType<typeof listPublicWeeklyMenus>>,
+  TError = ErrorType<unknown>,
+>(
+  locationCode: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPublicWeeklyMenus>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPublicWeeklyMenusQueryOptions(
+    locationCode,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Staff — list price list entries for a customer (auth required).
+ */
+export const getListPriceListsUrl = (params?: ListPriceListsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/preorder/staff/price-lists?${stringifiedParams}`
+    : `/api/preorder/staff/price-lists`;
+};
+
+export const listPriceLists = async (
+  params?: ListPriceListsParams,
+  options?: RequestInit,
+): Promise<ClientPriceEntry[]> => {
+  return customFetch<ClientPriceEntry[]>(getListPriceListsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListPriceListsQueryKey = (params?: ListPriceListsParams) => {
+  return [
+    `/api/preorder/staff/price-lists`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListPriceListsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPriceLists>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListPriceListsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPriceLists>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListPriceListsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listPriceLists>>> = ({
+    signal,
+  }) => listPriceLists(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPriceLists>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPriceListsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPriceLists>>
+>;
+export type ListPriceListsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Staff — list price list entries for a customer (auth required).
+ */
+
+export function useListPriceLists<
+  TData = Awaited<ReturnType<typeof listPriceLists>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListPriceListsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPriceLists>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPriceListsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Staff — create or update a price entry for a customer + dishType (auth required).
+ */
+export const getUpsertPriceEntryUrl = () => {
+  return `/api/preorder/staff/price-lists`;
+};
+
+export const upsertPriceEntry = async (
+  upsertPriceEntryBody: UpsertPriceEntryBody,
+  options?: RequestInit,
+): Promise<ClientPriceEntry> => {
+  return customFetch<ClientPriceEntry>(getUpsertPriceEntryUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(upsertPriceEntryBody),
+  });
+};
+
+export const getUpsertPriceEntryMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof upsertPriceEntry>>,
+    TError,
+    { data: BodyType<UpsertPriceEntryBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof upsertPriceEntry>>,
+  TError,
+  { data: BodyType<UpsertPriceEntryBody> },
+  TContext
+> => {
+  const mutationKey = ["upsertPriceEntry"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof upsertPriceEntry>>,
+    { data: BodyType<UpsertPriceEntryBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return upsertPriceEntry(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpsertPriceEntryMutationResult = NonNullable<
+  Awaited<ReturnType<typeof upsertPriceEntry>>
+>;
+export type UpsertPriceEntryMutationBody = BodyType<UpsertPriceEntryBody>;
+export type UpsertPriceEntryMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Staff — create or update a price entry for a customer + dishType (auth required).
+ */
+export const useUpsertPriceEntry = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof upsertPriceEntry>>,
+    TError,
+    { data: BodyType<UpsertPriceEntryBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof upsertPriceEntry>>,
+  TError,
+  { data: BodyType<UpsertPriceEntryBody> },
+  TContext
+> => {
+  return useMutation(getUpsertPriceEntryMutationOptions(options));
+};
+
+/**
+ * @summary Staff — delete a price list entry (auth required).
+ */
+export const getDeletePriceEntryUrl = (id: string) => {
+  return `/api/preorder/staff/price-lists/${id}`;
+};
+
+export const deletePriceEntry = async (
+  id: string,
+  options?: RequestInit,
+): Promise<DeletePriceEntry200> => {
+  return customFetch<DeletePriceEntry200>(getDeletePriceEntryUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeletePriceEntryMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deletePriceEntry>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deletePriceEntry>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["deletePriceEntry"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deletePriceEntry>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deletePriceEntry(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeletePriceEntryMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deletePriceEntry>>
+>;
+
+export type DeletePriceEntryMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Staff — delete a price list entry (auth required).
+ */
+export const useDeletePriceEntry = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deletePriceEntry>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deletePriceEntry>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getDeletePriceEntryMutationOptions(options));
+};
+
+/**
+ * @summary Staff — get ordering settings for a location (auth required).
+ */
+export const getGetLocationSettingsUrl = (locationCode: string) => {
+  return `/api/preorder/staff/location-settings/${locationCode}`;
+};
+
+export const getLocationSettings = async (
+  locationCode: string,
+  options?: RequestInit,
+): Promise<LocationSettings> => {
+  return customFetch<LocationSettings>(
+    getGetLocationSettingsUrl(locationCode),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetLocationSettingsQueryKey = (locationCode: string) => {
+  return [`/api/preorder/staff/location-settings/${locationCode}`] as const;
+};
+
+export const getGetLocationSettingsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getLocationSettings>>,
+  TError = ErrorType<unknown>,
+>(
+  locationCode: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getLocationSettings>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetLocationSettingsQueryKey(locationCode);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getLocationSettings>>
+  > = ({ signal }) =>
+    getLocationSettings(locationCode, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!locationCode,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getLocationSettings>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetLocationSettingsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getLocationSettings>>
+>;
+export type GetLocationSettingsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Staff — get ordering settings for a location (auth required).
+ */
+
+export function useGetLocationSettings<
+  TData = Awaited<ReturnType<typeof getLocationSettings>>,
+  TError = ErrorType<unknown>,
+>(
+  locationCode: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getLocationSettings>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetLocationSettingsQueryOptions(
+    locationCode,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Staff — update ordering settings for a location (auth required).
+ */
+export const getPatchLocationSettingsUrl = (locationCode: string) => {
+  return `/api/preorder/staff/location-settings/${locationCode}`;
+};
+
+export const patchLocationSettings = async (
+  locationCode: string,
+  patchLocationSettingsBody: PatchLocationSettingsBody,
+  options?: RequestInit,
+): Promise<LocationSettings> => {
+  return customFetch<LocationSettings>(
+    getPatchLocationSettingsUrl(locationCode),
+    {
+      ...options,
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(patchLocationSettingsBody),
+    },
+  );
+};
+
+export const getPatchLocationSettingsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof patchLocationSettings>>,
+    TError,
+    { locationCode: string; data: BodyType<PatchLocationSettingsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof patchLocationSettings>>,
+  TError,
+  { locationCode: string; data: BodyType<PatchLocationSettingsBody> },
+  TContext
+> => {
+  const mutationKey = ["patchLocationSettings"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof patchLocationSettings>>,
+    { locationCode: string; data: BodyType<PatchLocationSettingsBody> }
+  > = (props) => {
+    const { locationCode, data } = props ?? {};
+
+    return patchLocationSettings(locationCode, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PatchLocationSettingsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof patchLocationSettings>>
+>;
+export type PatchLocationSettingsMutationBody =
+  BodyType<PatchLocationSettingsBody>;
+export type PatchLocationSettingsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Staff — update ordering settings for a location (auth required).
+ */
+export const usePatchLocationSettings = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof patchLocationSettings>>,
+    TError,
+    { locationCode: string; data: BodyType<PatchLocationSettingsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof patchLocationSettings>>,
+  TError,
+  { locationCode: string; data: BodyType<PatchLocationSettingsBody> },
+  TContext
+> => {
+  return useMutation(getPatchLocationSettingsMutationOptions(options));
+};
+
+/**
+ * @summary Staff — list delivery ledger entries (auth required).
+ */
+export const getListDeliveryLedgerUrl = (params?: ListDeliveryLedgerParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/preorder/staff/delivery-ledger?${stringifiedParams}`
+    : `/api/preorder/staff/delivery-ledger`;
+};
+
+export const listDeliveryLedger = async (
+  params?: ListDeliveryLedgerParams,
+  options?: RequestInit,
+): Promise<DeliveryLedgerEntry[]> => {
+  return customFetch<DeliveryLedgerEntry[]>(getListDeliveryLedgerUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListDeliveryLedgerQueryKey = (
+  params?: ListDeliveryLedgerParams,
+) => {
+  return [
+    `/api/preorder/staff/delivery-ledger`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListDeliveryLedgerQueryOptions = <
+  TData = Awaited<ReturnType<typeof listDeliveryLedger>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListDeliveryLedgerParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listDeliveryLedger>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListDeliveryLedgerQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listDeliveryLedger>>
+  > = ({ signal }) => listDeliveryLedger(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listDeliveryLedger>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListDeliveryLedgerQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listDeliveryLedger>>
+>;
+export type ListDeliveryLedgerQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Staff — list delivery ledger entries (auth required).
+ */
+
+export function useListDeliveryLedger<
+  TData = Awaited<ReturnType<typeof listDeliveryLedger>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListDeliveryLedgerParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listDeliveryLedger>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListDeliveryLedgerQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Staff — finalize all served orders for a date and write to ledger (auth required).
+ */
+export const getFinalizeDeliveryDayUrl = () => {
+  return `/api/preorder/staff/delivery-ledger/finalize-day`;
+};
+
+export const finalizeDeliveryDay = async (
+  finalizeDayBody: FinalizeDayBody,
+  options?: RequestInit,
+): Promise<FinalizeDeliveryDay200> => {
+  return customFetch<FinalizeDeliveryDay200>(getFinalizeDeliveryDayUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(finalizeDayBody),
+  });
+};
+
+export const getFinalizeDeliveryDayMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof finalizeDeliveryDay>>,
+    TError,
+    { data: BodyType<FinalizeDayBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof finalizeDeliveryDay>>,
+  TError,
+  { data: BodyType<FinalizeDayBody> },
+  TContext
+> => {
+  const mutationKey = ["finalizeDeliveryDay"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof finalizeDeliveryDay>>,
+    { data: BodyType<FinalizeDayBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return finalizeDeliveryDay(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type FinalizeDeliveryDayMutationResult = NonNullable<
+  Awaited<ReturnType<typeof finalizeDeliveryDay>>
+>;
+export type FinalizeDeliveryDayMutationBody = BodyType<FinalizeDayBody>;
+export type FinalizeDeliveryDayMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Staff — finalize all served orders for a date and write to ledger (auth required).
+ */
+export const useFinalizeDeliveryDay = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof finalizeDeliveryDay>>,
+    TError,
+    { data: BodyType<FinalizeDayBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof finalizeDeliveryDay>>,
+  TError,
+  { data: BodyType<FinalizeDayBody> },
+  TContext
+> => {
+  return useMutation(getFinalizeDeliveryDayMutationOptions(options));
+};
+
+/**
+ * @summary Staff — aggregated delivery report for a period (auth required).
+ */
+export const getGetDeliveryReportUrl = (params: GetDeliveryReportParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/preorder/staff/report?${stringifiedParams}`
+    : `/api/preorder/staff/report`;
+};
+
+export const getDeliveryReport = async (
+  params: GetDeliveryReportParams,
+  options?: RequestInit,
+): Promise<DeliveryReport> => {
+  return customFetch<DeliveryReport>(getGetDeliveryReportUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetDeliveryReportQueryKey = (
+  params?: GetDeliveryReportParams,
+) => {
+  return [`/api/preorder/staff/report`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetDeliveryReportQueryOptions = <
+  TData = Awaited<ReturnType<typeof getDeliveryReport>>,
+  TError = ErrorType<unknown>,
+>(
+  params: GetDeliveryReportParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDeliveryReport>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetDeliveryReportQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getDeliveryReport>>
+  > = ({ signal }) => getDeliveryReport(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getDeliveryReport>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetDeliveryReportQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getDeliveryReport>>
+>;
+export type GetDeliveryReportQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Staff — aggregated delivery report for a period (auth required).
+ */
+
+export function useGetDeliveryReport<
+  TData = Awaited<ReturnType<typeof getDeliveryReport>>,
+  TError = ErrorType<unknown>,
+>(
+  params: GetDeliveryReportParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDeliveryReport>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetDeliveryReportQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Public — list announcements for a location (without file data).
