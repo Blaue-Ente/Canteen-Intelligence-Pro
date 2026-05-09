@@ -537,6 +537,265 @@ export function eventTransportChecklistHtml(
   return baseHtml(L.title, body);
 }
 
+// ---- Preorder Delivery Sheet (Lieferschein / Tagesübersicht für Vorbestellungen) ----
+
+interface PreorderSheetItem { name: string; qty: number; price: number; }
+interface PreorderSheetOrder {
+  id: string;
+  guestName: string;
+  guestNote?: string | null;
+  wantedFor?: string | null;
+  items: PreorderSheetItem[];
+  total: number;
+  currency: string;
+}
+
+export function preorderDeliverySheetHtml(
+  orders: PreorderSheetOrder[],
+  locationName: string,
+  locale: "de" | "en",
+): string {
+  const fmt = locale === "de" ? "de-DE" : "en-GB";
+  const today = new Date().toLocaleDateString(fmt);
+  const L = locale === "de"
+    ? {
+        title: "Lieferschein — Vorbestellungen",
+        date: "Datum",
+        location: "Standort",
+        summary: "Gesamtübersicht Portionen",
+        dish: "Gericht",
+        qty: "Anzahl",
+        gnNote: "GN-Behälter",
+        orders: "Einzelne Bestellungen",
+        customer: "Gast",
+        items: "Bestellte Gerichte",
+        total: "Summe",
+        note: "Hinweis",
+        haccp: "HACCP-Hinweis: Temperatur bei Abfahrt (≥65°C warm, ≤7°C kalt) und bei Ankunft dokumentieren.",
+        driver: "Fahrer",
+        sign: "Unterschrift / Datum",
+        hot: "Warmgericht",
+        cold: "Kaltspeise",
+      }
+    : {
+        title: "Delivery Sheet — Pre-orders",
+        date: "Date",
+        location: "Location",
+        summary: "Total Portions Summary",
+        dish: "Dish",
+        qty: "Qty",
+        gnNote: "GN containers",
+        orders: "Individual Orders",
+        customer: "Guest",
+        items: "Ordered dishes",
+        total: "Total",
+        note: "Note",
+        haccp: "HACCP note: document temperature at departure (≥65°C hot, ≤7°C cold) and at arrival.",
+        driver: "Driver",
+        sign: "Signature / Date",
+        hot: "Hot dish",
+        cold: "Cold dish",
+      };
+
+  // Aggregate dish totals across all orders
+  const dishTotals = new Map<string, number>();
+  for (const o of orders) {
+    for (const item of o.items) {
+      dishTotals.set(item.name, (dishTotals.get(item.name) ?? 0) + item.qty);
+    }
+  }
+
+  let totalHotGn = 0;
+  let totalColdGn = 0;
+  const summaryRows = [...dishTotals.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, qty]) => {
+      const hot = isHotDish(name);
+      const gn = gnCount(qty, hot);
+      if (hot) totalHotGn += gn; else totalColdGn += gn;
+      return `<tr>
+        <td>□</td>
+        <td>${escapeHtml(name)}</td>
+        <td class="right" style="font-weight:700">${qty}</td>
+        <td>${gn}× <strong>GN 1/1</strong></td>
+        <td><span style="padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:${hot ? "#fee2e2" : "#dbeafe"};color:${hot ? "#991b1b" : "#1e40af"}">${hot ? L.hot : L.cold}</span></td>
+      </tr>`;
+    })
+    .join("");
+
+  const orderRows = orders.map((o) => {
+    const itemLines = o.items.map((it) =>
+      `<li>${it.qty}× ${escapeHtml(it.name)} — €${(it.price * it.qty).toFixed(2)}</li>`,
+    ).join("");
+    return `<tr>
+      <td style="vertical-align:top;font-weight:700;white-space:nowrap">${escapeHtml(o.guestName)}</td>
+      <td><ul style="margin:0;padding-left:16px;font-size:12px">${itemLines}</ul>
+        ${o.guestNote ? `<div style="font-size:11px;color:#78716c;font-style:italic;margin-top:4px">„${escapeHtml(o.guestNote)}"</div>` : ""}
+      </td>
+      <td class="right" style="font-weight:700;vertical-align:top;white-space:nowrap">€${o.total.toFixed(2)}</td>
+    </tr>`;
+  }).join("");
+
+  const body = `
+    <div class="header">
+      <div>
+        <div class="brand">KITCHENOS</div>
+        <h1>${L.title}</h1>
+      </div>
+      <div class="muted">${today} · ${escapeHtml(locationName)}</div>
+    </div>
+
+    <h2>${L.summary}</h2>
+    <table>
+      <thead><tr><th style="width:24px"></th><th>${L.dish}</th><th class="right">${L.qty}</th><th>${L.gnNote}</th><th>Typ</th></tr></thead>
+      <tbody>${summaryRows || `<tr><td colspan="5" class="muted">—</td></tr>`}</tbody>
+    </table>
+
+    <div style="margin-top:16px;display:flex;gap:20px">
+      <div style="flex:1;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px">
+        <div style="font-weight:700;font-size:12px;color:#9a3412">🔴 Warm ≥65°C — ${totalHotGn} GN</div>
+        <div style="font-size:11px;color:#57534e;margin-top:2px">Thermobehälter / Heißhaltebox</div>
+      </div>
+      <div style="flex:1;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px">
+        <div style="font-weight:700;font-size:12px;color:#1e40af">🔵 Kalt ≤7°C — ${totalColdGn} GN</div>
+        <div style="font-size:11px;color:#57534e;margin-top:2px">Kühlbox / Kühlfahrzeug</div>
+      </div>
+    </div>
+
+    <h2 style="margin-top:24px">${L.orders} (${orders.length})</h2>
+    <table>
+      <thead><tr><th>${L.customer}</th><th>${L.items}</th><th class="right">${L.total}</th></tr></thead>
+      <tbody>${orderRows || `<tr><td colspan="3" class="muted">—</td></tr>`}</tbody>
+    </table>
+
+    <div style="margin-top:20px;background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:12px;font-size:12px;color:#713f12">
+      ⚠️ ${L.haccp}
+    </div>
+
+    <div style="margin-top:24px;display:grid;grid-template-columns:1fr 1fr;gap:24px">
+      <div>
+        <div style="font-size:11px;color:#78716c;margin-bottom:4px">${L.driver}</div>
+        <div style="border-bottom:1px solid #1c1917;height:40px"></div>
+        <div style="font-size:11px;color:#78716c;margin-top:4px">${L.sign}</div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:#78716c;margin-bottom:4px">Gesamt GN</div>
+        <div style="font-size:24px;font-weight:800">${totalHotGn + totalColdGn}</div>
+        <div style="font-size:11px;color:#78716c">${totalHotGn} warm · ${totalColdGn} kalt</div>
+      </div>
+    </div>
+    <div class="footer">KItchenOS · ${L.title} · ${escapeHtml(locationName)} · ${today}</div>
+  `;
+  return baseHtml(L.title, body);
+}
+
+// ---- Preorder HACCP Begleitdokument ----
+
+export function preorderHaccpSheetHtml(
+  orders: PreorderSheetOrder[],
+  locationName: string,
+  locale: "de" | "en",
+): string {
+  const fmt = locale === "de" ? "de-DE" : "en-GB";
+  const today = new Date().toLocaleDateString(fmt);
+  const now = new Date().toLocaleTimeString(fmt, { hour: "2-digit", minute: "2-digit" });
+
+  // Aggregate
+  const dishTotals = new Map<string, number>();
+  for (const o of orders) {
+    for (const item of o.items) {
+      dishTotals.set(item.name, (dishTotals.get(item.name) ?? 0) + item.qty);
+    }
+  }
+
+  const tempRows = [...dishTotals.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, qty]) => {
+      const hot = isHotDish(name);
+      const target = hot ? "≥65°C" : "≤7°C";
+      return `<tr>
+        <td>${escapeHtml(name)}</td>
+        <td class="right">${qty}</td>
+        <td style="font-size:11px;color:${hot ? "#991b1b" : "#1e40af"};font-weight:600">${target}</td>
+        <td style="width:90px;border:1px solid #ccc">&nbsp;</td>
+        <td style="width:90px;border:1px solid #ccc">&nbsp;</td>
+        <td style="width:80px;border:1px solid #ccc">&nbsp;</td>
+      </tr>`;
+    })
+    .join("");
+
+  const checklist = locale === "de"
+    ? [
+        "□ Thermobehälter / Kühlbox auf Temperatur geprüft",
+        "□ Gerichte korrekt etikettiert (Gericht, Datum, Allergene)",
+        "□ Rückstellprobe entnommen und beschriftet",
+        "□ Fahrzeug sauber und desinfiziert",
+        "□ Uhrzeit der Abfahrt dokumentiert",
+      ]
+    : [
+        "□ Thermal/cool container temperature verified",
+        "□ Dishes correctly labelled (name, date, allergens)",
+        "□ Food sample (Rückstellprobe) taken and labelled",
+        "□ Vehicle clean and sanitised",
+        "□ Departure time documented",
+      ];
+
+  const body = `
+    <div class="header">
+      <div>
+        <div class="brand">KITCHENOS</div>
+        <h1>${locale === "de" ? "HACCP Begleitdokument — Auslieferung" : "HACCP Delivery Record"}</h1>
+      </div>
+      <div class="muted">${today} · ${escapeHtml(locationName)}</div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:16px;font-size:12px">
+      <div><strong>${locale === "de" ? "Datum" : "Date"}:</strong> ${today}</div>
+      <div><strong>${locale === "de" ? "Uhrzeit Produktion" : "Production time"}:</strong> ${now}</div>
+      <div><strong>${locale === "de" ? "Standort" : "Location"}:</strong> ${escapeHtml(locationName)}</div>
+    </div>
+
+    <h2 style="margin-top:20px">${locale === "de" ? "Vor-Abfahrt Checkliste" : "Pre-departure Checklist"}</h2>
+    <div style="font-size:12px;line-height:2.0">
+      ${checklist.map((c) => `<div>${escapeHtml(c)}</div>`).join("")}
+    </div>
+
+    <h2 style="margin-top:20px">${locale === "de" ? "Temperaturprotokoll" : "Temperature Log"}</h2>
+    <table>
+      <thead><tr>
+        <th>${locale === "de" ? "Gericht" : "Dish"}</th>
+        <th class="right">${locale === "de" ? "Portionen" : "Portions"}</th>
+        <th>${locale === "de" ? "Zieltemp." : "Target temp."}</th>
+        <th>${locale === "de" ? "Temp. bei Abfahrt" : "Temp. at departure"}</th>
+        <th>${locale === "de" ? "Temp. bei Ankunft" : "Temp. at arrival"}</th>
+        <th>${locale === "de" ? "Kürzel" : "Initials"}</th>
+      </tr></thead>
+      <tbody>${tempRows || `<tr><td colspan="6" class="muted">—</td></tr>`}</tbody>
+    </table>
+
+    <div style="margin-top:16px;background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:10px;font-size:11px;color:#713f12">
+      ⚠️ ${locale === "de"
+        ? "Temperaturen abweichend von Zielwert: Produkt nicht ausliefern, Vorgesetzten informieren, CCP-Protokoll ausfüllen."
+        : "Temperature deviates from target: do not deliver, inform supervisor, complete CCP record."}
+    </div>
+
+    <div style="margin-top:24px;display:grid;grid-template-columns:1fr 1fr;gap:24px">
+      <div>
+        <div style="font-size:11px;color:#78716c;margin-bottom:4px">${locale === "de" ? "Fahrer" : "Driver"}</div>
+        <div style="border-bottom:1px solid #1c1917;height:40px"></div>
+        <div style="font-size:11px;color:#78716c;margin-top:4px">${locale === "de" ? "Unterschrift / Datum" : "Signature / Date"}</div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:#78716c;margin-bottom:4px">${locale === "de" ? "Empfänger (Unterschrift bei Ankunft)" : "Recipient (signature on arrival)"}</div>
+        <div style="border-bottom:1px solid #1c1917;height:40px"></div>
+        <div style="font-size:11px;color:#78716c;margin-top:4px">${locale === "de" ? "Unterschrift / Uhrzeit" : "Signature / Time"}</div>
+      </div>
+    </div>
+    <div class="footer">KItchenOS · HACCP · ${escapeHtml(locationName)} · ${today}</div>
+  `;
+  return baseHtml(locale === "de" ? "HACCP Begleitdokument" : "HACCP Delivery Record", body);
+}
+
 export async function sharePdf(html: string, filename: string): Promise<void> {
   if (Platform.OS === "web") {
     const blob = new Blob([html], { type: "text/html" });

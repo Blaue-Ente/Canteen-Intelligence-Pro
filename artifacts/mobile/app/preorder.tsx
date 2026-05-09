@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
+import * as ImagePicker from "expo-image-picker";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import * as Notifications from "expo-notifications";
@@ -114,10 +115,26 @@ const WEEKDAYS_DE = ["Mo", "Di", "Mi", "Do", "Fr"];
 
 // ─── KW Menu sub-component ────────────────────────────────────────────────────
 
+// Day-name → weekday index (0=Mon … 4=Fri)
+const SCAN_DAY_MAP: Record<string, number> = {
+  montag: 0, monday: 0, mo: 0, mon: 0,
+  dienstag: 1, tuesday: 1, di: 1, tue: 1,
+  mittwoch: 2, wednesday: 2, mi: 2, wed: 2,
+  donnerstag: 3, thursday: 3, do: 3, thu: 3,
+  freitag: 4, friday: 4, fr: 4, fri: 4,
+};
+const SCAN_CAT_MAP: Record<string, string> = {
+  soup: "Suppe", main: "Hauptgericht 1",
+  starter: "Beilage", salad: "Salat",
+  dessert: "Dessert", side: "Beilage", other: "Hauptgericht 1",
+};
+
 function KWMenuSection({ locationCode, c }: { locationCode: string; c: ReturnType<typeof useColors> }) {
   const router = useRouter();
+  const { state } = useApp();
   const [menus, setMenus] = useState<WeeklyMenuRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [scanning, setScanning] = useState(false);
 
   const { year: curYear, week: curWeek } = getISOWeek(new Date());
   const [kwYear, setKwYear] = useState(curYear);
@@ -167,6 +184,74 @@ function KWMenuSection({ locationCode, c }: { locationCode: string; c: ReturnTyp
 
   // Sync form date to selected day tab
   useEffect(() => { setNewDishDate(selectedDay); }, [selectedDay]);
+
+  // ── Scan menu photo and import dishes into weekly menu ──────────────────────
+  const handleScanMenu = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) { Alert.alert("Berechtigung", "Bitte Fotobibliothek-Zugriff erlauben."); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.85,
+      base64: true,
+    });
+    if (result.canceled || !result.assets[0]?.base64) return;
+    setScanning(true);
+    try {
+      const { parseMenuImage } = await import("@/lib/ai");
+      const parsed = await parseMenuImage({ base64: result.assets[0].base64, locale: state.locale });
+      if (!parsed.items.length) { Alert.alert("Keine Gerichte", "Auf dem Foto wurden keine Gerichte erkannt."); return; }
+
+      // Group dishes by weekday date
+      const byDay = new Map<string, typeof parsed.items>();
+      for (const item of parsed.items) {
+        let dateStr = weekDates[0]!;
+        if (item.day) {
+          const key = item.day.toLowerCase();
+          if (key in SCAN_DAY_MAP) {
+            dateStr = weekDates[SCAN_DAY_MAP[key]!] ?? weekDates[0]!;
+          } else if (/^\d{4}-\d{2}-\d{2}$/.test(item.day)) {
+            dateStr = weekDates.includes(item.day) ? item.day : weekDates[0]!;
+          }
+        }
+        const arr = byDay.get(dateStr) ?? [];
+        arr.push(item);
+        byDay.set(dateStr, arr);
+      }
+
+      // Post one menu record per day (slot "Menü 1" as default)
+      let count = 0;
+      for (const [dateStr, items] of byDay) {
+        await apiFetch("/api/preorder/staff/weekly-menus", {
+          method: "POST",
+          body: {
+            locationCode,
+            menuSlot: "Menü 1",
+            kwYear,
+            kwNumber,
+            validFrom: weekDates[0],
+            validTo: weekDates[4],
+            currency: "EUR",
+            dishes: items.map((item) => ({
+              id: Math.random().toString(36).slice(2),
+              name: item.name,
+              description: item.description ?? null,
+              dishType: SCAN_CAT_MAP[item.category ?? "main"] ?? "Hauptgericht 1",
+              menuDate: dateStr,
+              price: item.price ?? 0,
+              allergens: (item.allergens ?? []).slice(0, 6),
+            })),
+          },
+        });
+        count += items.length;
+      }
+      Alert.alert("Import abgeschlossen", `${count} Gerichte aus der Speisekarte importiert.`);
+      await load();
+    } catch (e) {
+      Alert.alert("Scan-Fehler", e instanceof Error ? e.message : String(e));
+    } finally {
+      setScanning(false);
+    }
+  };
 
   const createMenu = async () => {
     if (!newDishName.trim()) { Alert.alert("Fehler", "Bitte mindestens einen Gericht-Namen eingeben."); return; }
@@ -232,16 +317,35 @@ function KWMenuSection({ locationCode, c }: { locationCode: string; c: ReturnTyp
     <Card style={{ gap: 14 }}>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
         <SectionHeader title="Wochenmenu (KW)" />
-        <Pressable
-          onPress={() => router.push("/delivery-report")}
-          style={{
-            flexDirection: "row", alignItems: "center", gap: 4,
-            paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: c.muted,
-          }}
-        >
-          <Feather name="bar-chart-2" size={13} color={c.primary} />
-          <Text style={{ color: c.primary, fontFamily: "Inter_600SemiBold" as const, fontSize: 12 }}>Lieferbericht</Text>
-        </Pressable>
+        <View style={{ flexDirection: "row", gap: 6 }}>
+          {/* Photo scan button */}
+          <Pressable
+            onPress={() => void handleScanMenu()}
+            disabled={scanning}
+            style={{
+              flexDirection: "row", alignItems: "center", gap: 4,
+              paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+              backgroundColor: scanning ? c.muted : c.primary + "22",
+            }}
+          >
+            {scanning
+              ? <ActivityIndicator size="small" color={c.primary} />
+              : <Feather name="camera" size={13} color={c.primary} />}
+            <Text style={{ color: c.primary, fontFamily: "Inter_600SemiBold" as const, fontSize: 12 }}>
+              {scanning ? "Scan…" : "Foto"}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => router.push("/delivery-report")}
+            style={{
+              flexDirection: "row", alignItems: "center", gap: 4,
+              paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: c.muted,
+            }}
+          >
+            <Feather name="bar-chart-2" size={13} color={c.primary} />
+            <Text style={{ color: c.primary, fontFamily: "Inter_600SemiBold" as const, fontSize: 12 }}>Lieferbericht</Text>
+          </Pressable>
+        </View>
       </View>
 
       {/* KW navigator */}
@@ -819,6 +923,21 @@ export default function PreorderScreen() {
     }
   };
 
+  // ── Print helpers for orders (Lieferschein + HACCP) ────────────────────────
+  const printOrderSheet = async (type: "delivery" | "haccp") => {
+    if (!orders.length) { Alert.alert("Keine Bestellungen", "Es gibt keine aktiven Bestellungen."); return; }
+    const { preorderDeliverySheetHtml, preorderHaccpSheetHtml, sharePdf } = await import("@/lib/pdf");
+    const html = type === "delivery"
+      ? preorderDeliverySheetHtml(orders, locationName, state.locale)
+      : preorderHaccpSheetHtml(orders, locationName, state.locale);
+    if (Platform.OS === "web") {
+      const w = window.open("", "_blank");
+      if (w) { w.document.write(html); w.document.close(); }
+    } else {
+      await sharePdf(html, type === "delivery" ? "lieferschein" : "haccp-auslieferung");
+    }
+  };
+
   const copyLink = async () => {
     await Clipboard.setStringAsync(guestUrl);
     setCopied(true);
@@ -977,7 +1096,33 @@ export default function PreorderScreen() {
         </Card>
 
         <Card>
-          <SectionHeader title={`${t("guestOrders")} (${orders.length})`} />
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
+            <View style={{ flex: 1 }}>
+              <SectionHeader title={`${t("guestOrders")} (${orders.length})`} />
+            </View>
+            <View style={{ flexDirection: "row", gap: 6 }}>
+              <Pressable
+                onPress={() => void printOrderSheet("delivery")}
+                style={{
+                  flexDirection: "row", alignItems: "center", gap: 4,
+                  paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8, backgroundColor: c.muted,
+                }}
+              >
+                <Feather name="truck" size={12} color={c.primary} />
+                <Text style={{ color: c.primary, fontFamily: "Inter_600SemiBold" as const, fontSize: 11 }}>Lieferschein</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => void printOrderSheet("haccp")}
+                style={{
+                  flexDirection: "row", alignItems: "center", gap: 4,
+                  paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8, backgroundColor: c.muted,
+                }}
+              >
+                <Feather name="shield" size={12} color={c.primary} />
+                <Text style={{ color: c.primary, fontFamily: "Inter_600SemiBold" as const, fontSize: 11 }}>HACCP</Text>
+              </Pressable>
+            </View>
+          </View>
           {orders.length === 0 ? (
             <EmptyState
               icon="inbox"
