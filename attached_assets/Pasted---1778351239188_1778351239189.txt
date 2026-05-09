@@ -1,0 +1,50 @@
+Този сценарий е класически случай в международното данъчно право. Имайте предвид, че наличието на офис и служител в България не изключва автоматично данъчните претенции на Германия, ако основната ви дейност се случва там. [1, 2] 
+Ето какви са вариантите и правилата според Спогодбата за избягване на двойното данъчно облагане (СИДДО) между двете страни: [3, 4] 
+## 1. Рискът от "Място на стопанска дейност" (Betriebsstätte)
+Дори фирмата да е регистрирана в България, Германия може да я обложи с немски данъци, ако се счита, че тя има място на стопанска дейност на немска територия. Това се случва, ако: [5, 6] 
+
+* Имате офис, цех или склад в Германия.
+* Извършвате услуги на място в Германия за период, по-дълъг от 6 или 12 месеца (в зависимост от вида дейност).
+* Вие, като управител, вземате оперативните решения, докато сте физически в Германия. [6, 7, 8] 
+
+## 2. Как ще се разпределят данъците?
+Ако бъде признато, че имате дейност и в двете страни, печалбата се разделя: [2, 9] 
+
+* Частта от печалбата, генерирана от българския офис/служител, се облага с 10% в България.
+* Частта от печалбата, която се приписва на дейността в Германия, се облага по немските данъчни ставки (~30%). [10, 11, 12] 
+
+## 3. Осигуровки и заплати на служители
+
+* За служителя в България: Плащате български осигуровки и 10% данък върху заплатата му в България.
+* За служители в Германия (ако има такива): Трябва да ги осигурявате по немското законодателство, дори работодателят да е българска фирма.
+* За Вас (ако живеете в Германия): Вие сте данъчно местно лице в Германия. Дори да получавате заплата от българската си фирма, тя ще бъде облагана в Германия (с признаване на платения в България данък според СИДДО). [13, 14, 15, 16, 17, 18] 
+
+## Варианти за структуриране:
+
+   1. Чист износ на услуги: Ако служителят в България произвежда продукта (напр. софтуер), а вие само го продавате онлайн или пътувате рядко до Германия, целият данък може да остане 10% в България.
+   2. Клон на българската фирма (Zweigniederlassung): Официално регистрирате клон в Германия. Така ясно разделяте приходите и разходите между двете държави, което ви предпазва от глоби при ревизия. [19, 20] 
+
+Важно за 2026 г.: От 1 януари 2026 г. в България прагът за регистрация по ДДС е 51 130 евро (100 000 лв.), което е важно за малкия бизнес. [21] 
+Въпросът е: Какъв е типът на дейността – консултантски услуги, строителство, търговия или нещо друго? Това определя дали Германия ще поиска своя дял от данъците.
+
+[1] [https://incorporations.io](https://incorporations.io/tax-treaty/bulgaria/germany)
+[2] [https://incorporations.io](https://incorporations.io/tax-treaty/bulgaria/germany)
+[3] [https://nra.bg](https://nra.bg/wps/portal/nra/mezhdunarodni-deinosti/siddo/spisuk/spisuk-sus-siddo_priority/f21afff9-a475-4ba1-9a5c-cc75796264de)
+[4] [https://balans.bg](https://balans.bg/normativen-akt/siddo-germania)
+[5] [https://www.winheller.com](https://www.winheller.com/en/tax-law-tax-advisory/international-tax-planning/permanent-establishments.html)
+[6] [https://payrollgermany.de](https://payrollgermany.de/blog/wage-tax-obligations-in-germany-for-foreign-companies-establishing-a-permanent-establishment/)
+[7] [https://wise.com](https://wise.com/gb/blog/bulgaria-corporate-tax)
+[8] [https://innovires.com](https://innovires.com/tax-residency/blog/running-company-bulgaria-abroad.html)
+[9] [https://www.ebnerstolz.de](https://www.ebnerstolz.de/en/insights/international-business/permanent-establishments/)
+[10] [https://stripe.com](https://stripe.com/resources/more/permanent-establishment-abroad-germany)
+[11] [https://www.commenda.io](https://www.commenda.io/bulgaria/corporate-tax-rates)
+[12] [https://www.ihk.de](https://www.ihk.de/berlin/service-und-beratung/recht-und-steuern/steuern-und-finanzen/verfahrensrecht-und-internationales-steuerrecht-index-2253060)
+[13] [https://payrollgermany.de](https://payrollgermany.de/blog/risks-of-establishing-a-permanent-establishment-in-germany-under-double-taxation-agreements-dta-when-employing-workers-as-a-foreign-company/)
+[14] [https://mfs-bg.com](http://mfs-bg.com/en/2020/03/17/income-tax-and-social-security-levy-for-bulgarian-workers-in-germany/)
+[15] [https://bsiservice.eu](https://bsiservice.eu/%D1%80%D0%B5%D0%B3%D0%B8%D1%81%D1%82%D1%80%D0%B0%D1%86%D0%B8%D1%8F_%D0%BD%D0%B0_%D1%84%D0%B8%D1%80%D0%BC%D0%B0_%D0%B2_%D0%B1%D1%8A%D0%BB%D0%B3%D0%B0%D1%80%D0%B8%D1%8F_%D0%B8_%D0%B4%D0%B5%D0%B9%D0%BD%D0%BE%D1%81%D1%82_%D0%B2_%D0%B3%D0%B5%D1%80%D0%BC%D0%B0%D0%BD%D0%B8%D1%8F_-3150.html)
+[16] [https://se-legal.de](https://se-legal.de/employment-lawyers-germany/posting-employees-to-germany-by-a-foreign-company/?lang=en)
+[17] [https://germantaxes.de](https://germantaxes.de/tax-tips/double-tax-treaty/)
+[18] [https://kik-info.com](https://kik-info.com/novini/nap/Vleze-v-sila-protokol-za-izmenenie-na-SIDDO.14401.php)
+[19] [https://www.youtube.com](https://www.youtube.com/watch?v=oBNbMuOu98Y&t=155)
+[20] [https://zaedno.eu](https://zaedno.eu/forums/viewtopic.php?t=12969)
+[21] [https://kik-info.com](https://kik-info.com/novini/novini-i-akcenti/ZDDS-2026-Noviyat-prag-novite-rezhimi-novite-srokove.205367.php)
