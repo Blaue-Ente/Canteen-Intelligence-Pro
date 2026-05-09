@@ -1,11 +1,11 @@
 import { useState, useMemo } from "react";
 import { Link, useRoute, useLocation } from "wouter";
 import { SignedIn, SignedOut, useAuth } from "@clerk/clerk-react";
+import { useQuery } from "@tanstack/react-query";
 import {
   useGetPublishedMenu,
   useGetCustomerProfile,
   useListAnnouncements,
-  useListPublicWeeklyMenus,
   WeeklyMenu,
   WeeklyMenuDish,
 } from "@workspace/api-client-react";
@@ -98,9 +98,18 @@ export default function Menu() {
     query: { enabled: !!locationCode, queryKey: [`/api/preorder/menu/${locationCode}`] },
   });
 
-  // Weekly KW menus
-  const { data: weeklyMenus, isLoading: weeklyLoading } = useListPublicWeeklyMenus(locationCode, {
-    query: { enabled: !!locationCode, queryKey: [`/api/preorder/weekly-menus/${locationCode}`] },
+  // Weekly KW menus — public endpoint (no auth required)
+  const { data: weeklyMenus, isLoading: weeklyLoading } = useQuery<WeeklyMenu[]>({
+    queryKey: [`/api/preorder/weekly-menus/${locationCode}`],
+    queryFn: async () => {
+      if (!locationCode) return [];
+      const res = await fetch(
+        `${import.meta.env.BASE_URL}api/preorder/weekly-menus/${encodeURIComponent(locationCode)}`,
+      );
+      if (!res.ok) return [];
+      return res.json() as Promise<WeeklyMenu[]>;
+    },
+    enabled: !!locationCode,
   });
 
   const { items, addItem, removeItem, total, count, clearCart } = useCart();

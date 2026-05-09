@@ -24,6 +24,55 @@ import { ALL_ALLERGENS, missingAllergenWarnings, suggestAllergensFromName } from
 import type { Allergen, InventoryItem, OrderDraft } from "@/types";
 
 const CATS = ["all", "meat", "dairy", "vegetable", "fruit", "dry", "spice", "frozen"] as const;
+type SortMode = "name" | "supplier" | "stock" | "category";
+
+// Generate a printable revision table HTML
+function revisionHtml(
+  items: InventoryItem[],
+  supplierMap: Record<string, string>,
+  locale: "de" | "en",
+): string {
+  const date = new Date().toLocaleDateString(locale === "de" ? "de-DE" : "en-GB");
+  const rows = items
+    .map((i) => {
+      const name = locale === "de" ? i.nameDe : i.name;
+      const sup = i.supplierId ? (supplierMap[i.supplierId] ?? "—") : "—";
+      const low = i.quantity < i.minQuantity;
+      return `<tr style="${low ? "background:#fff1f2" : ""}">
+        <td>${i.articleNo ?? ""}</td>
+        <td>${name}</td>
+        <td>${sup}</td>
+        <td style="text-align:center">${i.unit}</td>
+        <td style="text-align:right;font-weight:700;color:${low ? "#dc2626" : "#111"}">${i.quantity}</td>
+        <td style="text-align:right">${i.minQuantity}</td>
+        <td style="text-align:right">€${i.pricePerUnit.toFixed(2)}</td>
+        <td style="width:80px;border:1px solid #ccc">&nbsp;</td>
+      </tr>`;
+    })
+    .join("");
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>Inventur ${date}</title>
+  <style>
+    body{font-family:Arial,sans-serif;font-size:12px;margin:16px}
+    h2{margin:0 0 4px}p{margin:0 0 12px;color:#666}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid #e5e7eb;padding:5px 8px;text-align:left;white-space:nowrap}
+    th{background:#f3f4f6;font-weight:700}
+    @media print{body{margin:0}button{display:none}}
+  </style></head><body>
+  <h2>Inventur / Revision — ${date}</h2>
+  <p>Bitte Ist-Bestand eintragen und Unterschrift leisten.</p>
+  <table>
+    <thead><tr>
+      <th>#Art</th><th>Artikel</th><th>Lieferant</th>
+      <th>Einheit</th><th>Soll</th><th>Min</th><th>Preis</th><th>Ist (Handschrift)</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <p style="margin-top:20px">Datum: ________________ &nbsp;&nbsp; Unterschrift: ________________________________</p>
+  <button onclick="window.print()" style="margin-top:12px;padding:8px 20px;background:#f59e0b;border:none;border-radius:6px;cursor:pointer;font-size:13px">Drucken / Print</button>
+  </body></html>`;
+}
 
 export default function Inventory() {
   const { state, dispatch, newId } = useApp();
@@ -33,6 +82,7 @@ export default function Inventory() {
   const insets = useSafeAreaInsets();
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<(typeof CATS)[number]>("all");
+  const [sortMode, setSortMode] = useState<SortMode>("name");
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<InventoryItem | null>(null);
   const [orderBusy, setOrderBusy] = useState(false);
@@ -160,16 +210,36 @@ export default function Inventory() {
     }
   };
 
+  const supplierMap = useMemo(
+    () => Object.fromEntries(state.suppliers.map((s) => [s.id, s.name])),
+    [state.suppliers],
+  );
+
   const items = useMemo(() => {
-    return state.inventory.filter((i) => {
+    const filtered = state.inventory.filter((i) => {
       const name = (state.locale === "de" ? i.nameDe : i.name).toLowerCase();
-      const okQ = !q || name.includes(q.toLowerCase());
+      const okQ = !q || name.includes(q.toLowerCase())
+        || (i.articleNo ?? "").toLowerCase().includes(q.toLowerCase());
       const okC = cat === "all" || i.category === cat;
       const okL = matchesLoc(i);
       return okQ && okC && okL;
     });
+    return [...filtered].sort((a, b) => {
+      if (sortMode === "supplier") {
+        const sa = supplierMap[a.supplierId ?? ""] ?? "zzz";
+        const sb = supplierMap[b.supplierId ?? ""] ?? "zzz";
+        return sa.localeCompare(sb) || (a.nameDe || a.name).localeCompare(b.nameDe || b.name);
+      }
+      if (sortMode === "stock") {
+        const la = a.quantity < a.minQuantity ? 0 : 1;
+        const lb = b.quantity < b.minQuantity ? 0 : 1;
+        return la - lb || a.quantity - b.quantity;
+      }
+      if (sortMode === "category") return a.category.localeCompare(b.category);
+      return (a.nameDe || a.name).localeCompare(b.nameDe || b.name);
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.inventory, state.locale, q, cat, locId]);
+  }, [state.inventory, state.locale, q, cat, locId, sortMode, supplierMap]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
@@ -376,12 +446,52 @@ export default function Inventory() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 8, paddingTop: 10, paddingBottom: 4 }}
+          contentContainerStyle={{ gap: 8, paddingTop: 8, paddingBottom: 4 }}
         >
           {CATS.map((k) => (
             <Chip key={k} label={k === "all" ? "Alle" : k} active={cat === k} onPress={() => setCat(k)} />
           ))}
         </ScrollView>
+        {/* Sort + Revision row */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 4 }}>
+          <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 11 }}>Sort:</Text>
+          {(["name", "supplier", "stock", "category"] as SortMode[]).map((m) => (
+            <Pressable
+              key={m}
+              onPress={() => setSortMode(m)}
+              style={{
+                paddingHorizontal: 9, paddingVertical: 4, borderRadius: 12,
+                backgroundColor: sortMode === m ? c.primary : c.muted,
+              }}
+            >
+              <Text style={{
+                color: sortMode === m ? c.primaryForeground : c.mutedForeground,
+                fontSize: 11, fontFamily: "Inter_500Medium",
+              }}>
+                {m === "name" ? "Name" : m === "supplier" ? "Lieferant" : m === "stock" ? "Bestand" : "Kategorie"}
+              </Text>
+            </Pressable>
+          ))}
+          <Pressable
+            onPress={async () => {
+              const html = revisionHtml(items, supplierMap, state.locale);
+              if (Platform.OS === "web") {
+                const w = window.open("", "_blank");
+                if (w) { w.document.write(html); w.document.close(); }
+              } else {
+                const { sharePdf } = await import("@/lib/pdf");
+                try { await sharePdf(html, "inventur"); } catch { /* ignore */ }
+              }
+            }}
+            style={{
+              marginLeft: "auto", flexDirection: "row", alignItems: "center", gap: 4,
+              paddingHorizontal: 9, paddingVertical: 4, borderRadius: 12, backgroundColor: c.muted,
+            }}
+          >
+            <Feather name="printer" size={12} color={c.primary} />
+            <Text style={{ color: c.primary, fontSize: 11, fontFamily: "Inter_600SemiBold" }}>Inventur</Text>
+          </Pressable>
+        </View>
       </View>
 
       <FlatList
@@ -470,75 +580,82 @@ export default function Inventory() {
           paddingBottom: insets.bottom + 110,
           gap: 8,
         }}
-        renderItem={({ item }) => {
+        renderItem={({ item, index }) => {
           const low = item.quantity < item.minQuantity;
           const expSoon =
             item.expiresAt &&
             new Date(item.expiresAt).getTime() - Date.now() < 4 * 24 * 3600 * 1000;
+          const supplierName = item.supplierId ? (supplierMap[item.supplierId] ?? null) : null;
+          // Show supplier header when sorting by supplier and it changes
+          const prevItem = index > 0 ? items[index - 1] : null;
+          const showSupplierHeader = sortMode === "supplier" && (
+            !prevItem || prevItem.supplierId !== item.supplierId
+          );
           return (
-            <Card
-              onPress={() => {
-                setEditItem(item);
-                setModalOpen(true);
-              }}
-              style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
-            >
-              <View
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 12,
-                  backgroundColor: c.muted,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
+            <>
+              {showSupplierHeader && (
+                <Text style={{
+                  color: c.primary, fontFamily: "Inter_700Bold", fontSize: 11,
+                  paddingHorizontal: 4, paddingTop: index === 0 ? 0 : 8, paddingBottom: 2,
+                  textTransform: "uppercase", letterSpacing: 0.5,
+                }}>
+                  {supplierName ?? "— Kein Lieferant —"}
+                </Text>
+              )}
+              <Pressable
+                onPress={() => { setEditItem(item); setModalOpen(true); }}
+                style={({ pressed }) => [{
+                  flexDirection: "row", alignItems: "center",
+                  paddingVertical: 8, paddingHorizontal: 10,
+                  backgroundColor: pressed ? c.muted : c.card,
+                  borderRadius: 10, borderWidth: 1,
+                  borderColor: low ? c.destructive + "44" : c.border,
+                  gap: 8,
+                }]}
               >
-                <Feather name={iconFor(item.category)} size={18} color={c.primary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={{
-                    color: c.foreground,
-                    fontFamily: "Inter_600SemiBold",
-                    fontSize: 14,
-                  }}
-                >
-                  {state.locale === "de" ? item.nameDe : item.name}
-                </Text>
-                <View style={{ flexDirection: "row", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
-                  {low ? <Badge label={t("lowStock")} tone="destructive" /> : null}
-                  {expSoon ? <Badge label={t("expiringSoon")} tone="warning" /> : null}
-                  <Badge label={`€${item.pricePerUnit.toFixed(2)}/${item.unit}`} />
-                  {/* Show location pill only in "All" view when item is assigned to a specific location */}
-                  {!locId && item.locationId ? (
-                    <Badge
-                      label={state.locations.find((l) => l.id === item.locationId)?.name ?? item.locationId}
-                      tone="default"
-                    />
-                  ) : null}
+                {/* Color dot */}
+                <View style={{
+                  width: 8, height: 8, borderRadius: 4,
+                  backgroundColor: low ? c.destructive : expSoon ? c.warning : c.primary,
+                  flexShrink: 0, marginTop: 1,
+                }} />
+                {/* Middle */}
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <View style={{ flexDirection: "row", alignItems: "baseline", gap: 5 }}>
+                    {item.articleNo ? (
+                      <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 10 }}>
+                        #{item.articleNo}
+                      </Text>
+                    ) : null}
+                    <Text
+                      numberOfLines={1}
+                      style={{ color: c.foreground, fontFamily: "Inter_600SemiBold", fontSize: 13, flexShrink: 1 }}
+                    >
+                      {state.locale === "de" ? item.nameDe : item.name}
+                    </Text>
+                  </View>
+                  <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 11, marginTop: 1 }} numberOfLines={1}>
+                    {[
+                      supplierName,
+                      `€${item.pricePerUnit.toFixed(2)}/${item.unit}`,
+                      !locId && item.locationId
+                        ? (state.locations.find((l) => l.id === item.locationId)?.name ?? null)
+                        : null,
+                    ].filter(Boolean).join(" · ")}
+                  </Text>
                 </View>
-              </View>
-              <View style={{ alignItems: "flex-end" }}>
-                <Text
-                  style={{
-                    color: low ? c.destructive : c.foreground,
-                    fontFamily: "Inter_700Bold",
-                    fontSize: 17,
-                  }}
-                >
-                  {item.quantity}
-                </Text>
-                <Text
-                  style={{
-                    color: c.mutedForeground,
-                    fontFamily: "Inter_500Medium",
-                    fontSize: 11,
-                  }}
-                >
-                  {item.unit}
-                </Text>
-              </View>
-            </Card>
+                {/* Right: qty + unit + badges */}
+                <View style={{ alignItems: "flex-end", flexShrink: 0 }}>
+                  <Text style={{ color: low ? c.destructive : c.foreground, fontFamily: "Inter_700Bold", fontSize: 15 }}>
+                    {item.quantity} <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: c.mutedForeground }}>{item.unit}</Text>
+                  </Text>
+                  <View style={{ flexDirection: "row", gap: 4, marginTop: 2 }}>
+                    {low ? <Badge label="Knapp" tone="destructive" /> : null}
+                    {expSoon ? <Badge label="Ablauf" tone="warning" /> : null}
+                  </View>
+                </View>
+              </Pressable>
+            </>
           );
         }}
       />
@@ -618,6 +735,7 @@ function ItemModal({
   const t = useT();
   const insets = useSafeAreaInsets();
   const [name, setName] = useState(item?.nameDe ?? "");
+  const [articleNo, setArticleNo] = useState(item?.articleNo ?? "");
   const [qty, setQty] = useState(String(item?.quantity ?? ""));
   const [min, setMin] = useState(String(item?.minQuantity ?? ""));
   const [price, setPrice] = useState(String(item?.pricePerUnit ?? ""));
@@ -631,6 +749,7 @@ function ItemModal({
   React.useEffect(() => {
     if (open) {
       setName(item?.nameDe ?? "");
+      setArticleNo(item?.articleNo ?? "");
       setQty(String(item?.quantity ?? ""));
       setMin(String(item?.minQuantity ?? ""));
       setPrice(String(item?.pricePerUnit ?? ""));
@@ -674,7 +793,14 @@ function ItemModal({
           <View style={{ width: 70 }} />
         </View>
         <ScrollView contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: insets.bottom + 80 }}>
-          <Field label="Name" value={name} onChangeText={setName} placeholder="z.B. Kartoffeln" />
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <View style={{ flex: 2 }}>
+              <Field label="Name" value={name} onChangeText={setName} placeholder="z.B. Kartoffeln" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Field label="Art.-Nr." value={articleNo} onChangeText={setArticleNo} placeholder="z.B. 1234" />
+            </View>
+          </View>
           <View style={{ flexDirection: "row", gap: 10 }}>
             <View style={{ flex: 1 }}>
               <Field label="Menge" value={qty} onChangeText={setQty} keyboardType="numeric" />
@@ -778,6 +904,7 @@ function ItemModal({
                 id: item?.id ?? newId(),
                 name: name,
                 nameDe: name,
+                articleNo: articleNo.trim() || undefined,
                 unit,
                 quantity: Number(qty) || 0,
                 minQuantity: Number(min) || 0,

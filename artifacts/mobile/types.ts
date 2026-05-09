@@ -33,6 +33,8 @@ export interface InventoryItem {
   id: string;
   name: string;
   nameDe: string;
+  /** Supplier article number / internal SKU — shown in list and revision sheet */
+  articleNo?: string;
   unit: "kg" | "g" | "l" | "ml" | "pcs";
   quantity: number;
   minQuantity: number;

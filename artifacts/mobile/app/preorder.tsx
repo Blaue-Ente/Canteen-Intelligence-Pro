@@ -146,12 +146,27 @@ function KWMenuSection({ locationCode, c }: { locationCode: string; c: ReturnTyp
     return d.toISOString().slice(0, 10);
   });
 
+  // Selected day — default to today if in this KW, else Monday
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [selectedDay, setSelectedDay] = useState<string>(
+    () => weekDates.includes(todayStr) ? todayStr : (weekDates[0] ?? todayStr),
+  );
+
+  // Keep selectedDay in range when KW changes
+  useEffect(() => {
+    if (!weekDates.includes(selectedDay)) setSelectedDay(weekDates[0] ?? selectedDay);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kwYear, kwNumber]);
+
   const [newDishType, setNewDishType] = useState(DISH_TYPES_SHORT[0]!);
   const [newDishName, setNewDishName] = useState("");
   const [newDishDate, setNewDishDate] = useState(weekDates[0]!);
   const [newDishPrice, setNewDishPrice] = useState("");
   const [newMenuSlot, setNewMenuSlot] = useState(MENU_SLOTS[0]!);
   const [creating, setCreating] = useState(false);
+
+  // Sync form date to selected day tab
+  useEffect(() => { setNewDishDate(selectedDay); }, [selectedDay]);
 
   const createMenu = async () => {
     if (!newDishName.trim()) { Alert.alert("Fehler", "Bitte mindestens einen Gericht-Namen eingeben."); return; }
@@ -259,50 +274,106 @@ function KWMenuSection({ locationCode, c }: { locationCode: string; c: ReturnTyp
         </Pressable>
       </View>
 
-      {/* Existing menus for this KW */}
+      {/* Day tabs — Mo to Fr */}
+      <View style={{ flexDirection: "row", gap: 6 }}>
+        {weekDates.map((d, i) => {
+          const isSelected = d === selectedDay;
+          const dishCount = menus.reduce(
+            (n, m) => n + m.dishes.filter((dish) => dish.menuDate === d).length, 0,
+          );
+          return (
+            <Pressable
+              key={d}
+              onPress={() => setSelectedDay(d)}
+              style={{
+                flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: 10,
+                backgroundColor: isSelected ? c.primary : c.muted,
+                borderWidth: 1,
+                borderColor: isSelected ? c.primary : dishCount > 0 ? c.border : c.border + "55",
+              }}
+            >
+              <Text style={{
+                color: isSelected ? c.primaryForeground : c.mutedForeground,
+                fontFamily: "Inter_600SemiBold" as const, fontSize: 11,
+              }}>
+                {WEEKDAYS_DE[i]}
+              </Text>
+              <Text style={{
+                color: isSelected ? c.primaryForeground : c.foreground,
+                fontFamily: "Inter_700Bold" as const, fontSize: 13, marginTop: 1,
+              }}>
+                {d.slice(8)}
+              </Text>
+              {dishCount > 0 && (
+                <View style={{
+                  marginTop: 3, backgroundColor: isSelected ? "rgba(255,255,255,0.3)" : c.primary,
+                  borderRadius: 10, paddingHorizontal: 5, paddingVertical: 1,
+                }}>
+                  <Text style={{
+                    color: isSelected ? c.primaryForeground : c.primaryForeground,
+                    fontSize: 9, fontFamily: "Inter_700Bold" as const,
+                  }}>
+                    {dishCount}
+                  </Text>
+                </View>
+              )}
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {/* Dishes for selected day */}
       {loading ? (
         <ActivityIndicator color={c.primary} />
-      ) : menus.length === 0 ? (
-        <Text style={{ color: c.mutedForeground, fontSize: 13, textAlign: "center" }}>
-          Kein Wochenmenu für KW {kwNumber} hinterlegt.
-        </Text>
-      ) : (
-        menus.map((menu) => (
+      ) : (() => {
+        // Collect all dishes for this day, grouped by menuSlot
+        const bySlot = new Map<string, { menu: WeeklyMenuRecord; dishes: WeeklyMenuDishRow[] }>();
+        for (const menu of menus) {
+          const dayDishes = menu.dishes.filter((d) => d.menuDate === selectedDay);
+          if (dayDishes.length > 0) {
+            bySlot.set(menu.menuSlot + menu.id, { menu, dishes: dayDishes });
+          }
+        }
+        if (bySlot.size === 0) {
+          return (
+            <Text style={{ color: c.mutedForeground, fontSize: 13, textAlign: "center", paddingVertical: 8 }}>
+              Noch keine Gerichte für diesen Tag.
+            </Text>
+          );
+        }
+        return Array.from(bySlot.values()).map(({ menu, dishes }) => (
           <View key={menu.id} style={{ borderWidth: 1, borderColor: c.border, borderRadius: 10, overflow: "hidden" }}>
             <View style={{
               flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-              backgroundColor: c.muted, paddingHorizontal: 12, paddingVertical: 8,
+              backgroundColor: c.muted, paddingHorizontal: 12, paddingVertical: 7,
             }}>
-              <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold" as const, fontSize: 14 }}>
+              <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold" as const, fontSize: 13 }}>
                 {menu.menuSlot}
               </Text>
               <Pressable onPress={() => deleteMenu(menu.id)} hitSlop={10} style={{ padding: 4 }}>
-                <Feather name="trash-2" size={15} color={c.destructive} />
+                <Feather name="trash-2" size={14} color={c.destructive} />
               </Pressable>
             </View>
-            {menu.dishes.map((dish, i) => {
-              const dayIdx = weekDates.indexOf(dish.menuDate);
-              return (
-                <View key={i} style={{
-                  flexDirection: "row", justifyContent: "space-between",
-                  paddingHorizontal: 12, paddingVertical: 8,
-                  borderTopWidth: i > 0 ? 1 : 0, borderTopColor: c.border,
-                }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: c.mutedForeground, fontSize: 11 }}>
-                      {dayIdx >= 0 ? WEEKDAYS_DE[dayIdx] : dish.menuDate} · {dish.dishType}
-                    </Text>
-                    <Text style={{ color: c.foreground, fontFamily: "Inter_500Medium" as const, fontSize: 13 }}>{dish.name}</Text>
-                  </View>
-                  <Text style={{ color: c.primary, fontFamily: "Inter_600SemiBold" as const, fontSize: 14 }}>
-                    {dish.price.toFixed(2).replace(".", ",")} €
+            {dishes.map((dish, i) => (
+              <View key={i} style={{
+                flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+                paddingHorizontal: 12, paddingVertical: 8,
+                borderTopWidth: i > 0 ? 1 : 0, borderTopColor: c.border,
+              }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: c.mutedForeground, fontSize: 11 }}>{dish.dishType}</Text>
+                  <Text style={{ color: c.foreground, fontFamily: "Inter_500Medium" as const, fontSize: 13, marginTop: 1 }}>
+                    {dish.name}
                   </Text>
                 </View>
-              );
-            })}
+                <Text style={{ color: c.primary, fontFamily: "Inter_600SemiBold" as const, fontSize: 14, marginLeft: 8 }}>
+                  {dish.price.toFixed(2).replace(".", ",")} €
+                </Text>
+              </View>
+            ))}
           </View>
-        ))
-      )}
+        ));
+      })()}
 
       {/* Add new dish / menu entry */}
       <View style={{ gap: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: c.border }}>
