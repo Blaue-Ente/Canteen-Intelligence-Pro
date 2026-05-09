@@ -538,36 +538,122 @@ export default function PreorderScreen() {
       isFirstPoll.current = false;
 
       // ── Kios context cache update ────────────────────────────────────────
-      // Aggregate dish totals for Kios — "12× Schnitzel (Mo 12.05)"
+      // Build a rich, structured preorder summary so Kios can answer specific
+      // questions like "Was hat S3 am Dienstag bestellt?" or "Menü 1 für Samariterstraße".
+
       const openOrders = list.filter((o) => o.status !== "cancelled" && o.status !== "served");
+      const totalPortions = openOrders.reduce((s, o) => s + o.items.reduce((si, i) => si + i.qty, 0), 0);
+
+      // Helper: ISO date → "Di 13.05"
+      const toShortDay = (iso: string | null | undefined): string => {
+        if (!iso) return "?";
+        const DAYS_DE = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+        const d = new Date(iso + "T12:00:00");
+        const [, mm, dd] = iso.split("-");
+        return `${DAYS_DE[d.getDay()]} ${dd}.${mm}`;
+      };
+
+      // 1. Top dishes (across all dates) — "25× Schnitzel (Di 13.05)"
       const dishTotals = new Map<string, number>();
       for (const o of openOrders) {
-        const dayLabel = o.wantedFor
-          ? (() => {
-              const [, m, d] = (o.wantedFor as string).split("-");
-              return `${d}.${m}`;
-            })()
-          : "?";
+        const dayLabel = toShortDay(o.wantedFor);
         for (const item of o.items) {
-          const key = `${item.qty > 0 ? "" : ""}${item.name} (${dayLabel})`;
+          const key = `${item.name} (${dayLabel})`;
           dishTotals.set(key, (dishTotals.get(key) ?? 0) + item.qty);
         }
       }
       const summaryLines = [...dishTotals.entries()]
         .sort((a, b) => b[1] - a[1])
+        .slice(0, 12)
         .map(([name, qty]) => `${qty}× ${name}`);
 
-      updatePreorderCache(
-        openOrders.length > 0
-          ? {
-              locationCode,
-              totalNew: list.filter((o) => o.status === "new").length,
-              totalOpen: openOrders.length,
-              summaryLines,
-              updatedAt: new Date().toISOString(),
+      // 2. Per-date totals — "Di 13.05: 45 Portionen — 25× Schnitzel, 20× Gulasch"
+      const byDate = new Map<string, { label: string; dishes: Map<string, number>; total: number }>();
+      for (const o of openOrders) {
+        const date = o.wantedFor ?? o.createdAt.slice(0, 10);
+        const label = toShortDay(o.wantedFor);
+        if (!byDate.has(date)) byDate.set(date, { label, dishes: new Map(), total: 0 });
+        const entry = byDate.get(date)!;
+        for (const item of o.items) {
+          entry.dishes.set(item.name, (entry.dishes.get(item.name) ?? 0) + item.qty);
+          entry.total += item.qty;
+        }
+      }
+      const byDateLines = [...byDate.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([, e]) => {
+          const top = [...e.dishes.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
+            .map(([n, q]) => `${q}× ${n}`).join(", ");
+          return `${e.label}: ${e.total} Port. — ${top}`;
+        });
+
+      // 3. Per-customer lines (top 10 customers) — "S3 (Di 13.05): 2× Schnitzel, 1× Suppe"
+      const byCustomer = new Map<string, string[]>();
+      for (const o of openOrders) {
+        const key = o.guestName || "Gast";
+        if (!byCustomer.has(key)) byCustomer.set(key, []);
+        const dayLabel = toShortDay(o.wantedFor);
+        const items = o.items.map((i) => `${i.qty}× ${i.name}`).join(", ");
+        byCustomer.get(key)!.push(`${dayLabel}: ${items}`);
+      }
+      const customerLines = [...byCustomer.entries()]
+        .slice(0, 10)
+        .map(([name, orders]) => `${name} — ${orders.join("; ")}`);
+
+      // 4. Menu-slot lines — join order dish IDs with weekly menu slots
+      // Fetch current KW weekly menus to build dishId → menuSlot mapping
+      let menuSlotLines: string[] = [];
+      try {
+        const kw = getISOWeek(new Date());
+        const weeklyMenus = await apiFetch<WeeklyMenuRecord[]>(
+          `/api/preorder/staff/weekly-menus?locationCode=${encodeURIComponent(locationCode)}&kwYear=${kw.year}&kwNumber=${kw.week}`,
+        ).catch(() => [] as WeeklyMenuRecord[]);
+
+        if (weeklyMenus.length > 0) {
+          // Build map: dishId → menuSlot
+          const dishSlot = new Map<string, string>();
+          for (const wm of weeklyMenus) {
+            for (const dish of wm.dishes) {
+              dishSlot.set(dish.id, wm.menuSlot);
+              dishSlot.set(dish.name, wm.menuSlot); // fallback by name
             }
-          : { locationCode, totalNew: 0, totalOpen: 0, summaryLines: [], updatedAt: new Date().toISOString() },
-      );
+          }
+
+          // Aggregate ordered qty by menu slot
+          const slotTotals = new Map<string, Map<string, number>>(); // slot → dishName → qty
+          for (const o of openOrders) {
+            for (const item of o.items) {
+              const slot = dishSlot.get(item.dishId) ?? dishSlot.get(item.name);
+              if (!slot) continue;
+              if (!slotTotals.has(slot)) slotTotals.set(slot, new Map());
+              const m = slotTotals.get(slot)!;
+              m.set(item.name, (m.get(item.name) ?? 0) + item.qty);
+            }
+          }
+
+          menuSlotLines = [...slotTotals.entries()]
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([slot, dishes]) => {
+              const total = [...dishes.values()].reduce((s, q) => s + q, 0);
+              const top = [...dishes.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
+                .map(([n, q]) => `${q}× ${n}`).join(", ");
+              return `${slot}: ${total} Port. — ${top}`;
+            });
+        }
+      } catch { /* weekly menu fetch is best-effort */ }
+
+      updatePreorderCache({
+        locationCode,
+        locationName,
+        totalNew: list.filter((o) => o.status === "new").length,
+        totalOpen: openOrders.length,
+        totalPortions,
+        summaryLines,
+        byDateLines,
+        customerLines,
+        menuSlotLines,
+        updatedAt: new Date().toISOString(),
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }

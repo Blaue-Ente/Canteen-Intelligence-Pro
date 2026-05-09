@@ -3,14 +3,32 @@ import { scoreMenu, next7DayWindow } from "@/lib/dge";
 import type { AppState, DgeScore, DgeStandard } from "@/types";
 
 // ─── Preorder context cache ───────────────────────────────────────────────────
-// Updated by preorder.tsx after every poll so Kios knows about pending orders
-// without needing to make an extra API call.
+// Updated by preorder.tsx after every poll so Kios has live, structured data
+// about pending orders — without needing an extra API call at question time.
 export interface PreorderCtx {
   locationCode: string;
-  totalNew: number;       // orders with status "new" (unacknowledged)
-  totalOpen: number;      // all non-cancelled, non-served orders
-  summaryLines: string[]; // e.g. ["12× Schnitzel (Mo 12.05)", "8× Suppe (Di 13.05)"]
-  updatedAt: string;      // ISO timestamp
+  locationName: string;        // readable name, e.g. "Samariterstraße"
+  totalNew: number;            // orders with status "new" (unacknowledged)
+  totalOpen: number;           // all non-cancelled, non-served orders
+  totalPortions: number;       // total portions across open orders
+
+  // Top dishes across all dates, sorted by qty desc
+  // e.g. "25× Schnitzel (Di 13.05)", "12× Suppe (Mo 12.05)"
+  summaryLines: string[];
+
+  // Per-date totals — one line per delivery day
+  // e.g. "Di 13.05: 45 Portionen — 25× Schnitzel, 20× Gulasch"
+  byDateLines: string[];
+
+  // Per-customer breakdown — one line per customer (top 10)
+  // e.g. "S3 (Di 13.05): 2× Schnitzel, 1× Suppe"
+  customerLines: string[];
+
+  // Per-menu-slot totals (from weekly menu join) — only if weekly menu loaded
+  // e.g. "Menü 1: 25× Schnitzel, 20× Gulasch", "Menü 2: 15× Pasta"
+  menuSlotLines: string[];
+
+  updatedAt: string;
 }
 let preorderCtxCache: PreorderCtx | null = null;
 
@@ -227,11 +245,22 @@ export function buildKitchenContext(state: AppState): string {
     multiLocation ? `Multi-Standort aktiv: Bestand-Transfer zwischen Standorten möglich (Inventur-Seite)` : null,
     okoEnabled ? `Öko-Wizard: ${okoScore} Punkte, ${okoCompletions} erledigte Aufgaben` : null,
     brandingName ? `Vorbestellung-Branding: Name "${brandingName}"${brandingColor ? `, Farbe ${brandingColor}` : ""}` : null,
-    // Live preorder summary — injected from polling cache
-    poc && poc.totalOpen > 0
-      ? `Vorbestellungen bei ${poc.locationCode}: ${poc.totalNew} NEU (unbestätigt), ${poc.totalOpen} gesamt offen` +
-        (poc.summaryLines.length > 0 ? ` — Top-Gerichte: ${poc.summaryLines.slice(0, 5).join(", ")}` : "")
-      : poc ? `Vorbestellungen bei ${poc.locationCode}: keine offenen Bestellungen aktuell` : null,
+    // Live preorder summary — injected from polling cache (see preorder.tsx)
+    poc
+      ? [
+          `Vorbestellungen bei ${poc.locationName || poc.locationCode} (${poc.locationCode}):` +
+            ` ${poc.totalNew} NEU, ${poc.totalOpen} offen, ${poc.totalPortions} Portionen gesamt`,
+          poc.byDateLines.length > 0
+            ? `  Tage: ${poc.byDateLines.join(" | ")}`
+            : null,
+          poc.menuSlotLines.length > 0
+            ? `  Menüs: ${poc.menuSlotLines.join(" | ")}`
+            : null,
+          poc.customerLines.length > 0
+            ? `  Kunden: ${poc.customerLines.join(" | ")}`
+            : null,
+        ].filter(Boolean).join("\n")
+      : null,
   ].filter(Boolean).join("\n");
 }
 
