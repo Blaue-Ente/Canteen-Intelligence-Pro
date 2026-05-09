@@ -639,6 +639,7 @@ export interface AppState {
   // ---- Kios voice ----
   kiosVoice: KiosVoice;
   kiosName?: string;
+  themeMode: "light" | "dark" | "system";
   // ---- TSE / cash register (T011, Voll-Modus only) ----
   /**
    * Legacy single-register config. Kept for migration — new code should

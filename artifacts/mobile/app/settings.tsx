@@ -58,6 +58,7 @@ export default function Settings() {
   const [pbLogo, setPbLogo] = useState(branding.logoUri ?? "");
   const [pbWelcome, setPbWelcome] = useState(branding.welcomeMessage ?? "");
   const [kiosName, setKiosName] = useState(state.kiosName ?? "");
+  const [themeMode, setThemeMode] = useState(state.themeMode ?? "system");
 
   async function pickBrandingLogo() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -91,6 +92,11 @@ export default function Settings() {
   function saveKiosName() {
     dispatch({ type: "setKiosName", name: kiosName.trim() || undefined });
     Alert.alert("✓", state.locale === "de" ? "Kios-Name gespeichert." : "Kios name saved.");
+  }
+
+  function saveThemeMode(mode: "light" | "dark" | "system") {
+    setThemeMode(mode);
+    dispatch({ type: "setThemeMode", mode });
   }
 
   function saveCompanyProfile() {
@@ -234,6 +240,18 @@ export default function Settings() {
           <View style={{ flexDirection: "row", gap: 8 }}>
             <Chip label="Deutsch" active={state.locale === "de"} onPress={() => dispatch({ type: "setLocale", locale: "de" })} />
             <Chip label="English" active={state.locale === "en"} onPress={() => dispatch({ type: "setLocale", locale: "en" })} />
+          </View>
+        </Card>
+
+        <Card>
+          <SectionHeader title={state.locale === "de" ? "Stil" : "Theme"} />
+          <Text style={[subStyle, { marginBottom: 10 }]}>
+            {state.locale === "de" ? "Wähle hell, dunkel oder automatisch." : "Choose light, dark, or system."}
+          </Text>
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+            <Chip label={state.locale === "de" ? "Hell" : "Light"} active={themeMode === "light"} onPress={() => saveThemeMode("light")} />
+            <Chip label={state.locale === "de" ? "Dunkel" : "Dark"} active={themeMode === "dark"} onPress={() => saveThemeMode("dark")} />
+            <Chip label={state.locale === "de" ? "System" : "System"} active={themeMode === "system"} onPress={() => saveThemeMode("system")} />
           </View>
         </Card>
 

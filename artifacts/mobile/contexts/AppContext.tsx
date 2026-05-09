@@ -139,6 +139,7 @@ type Action =
   | { type: "setOkoEnabled"; enabled: boolean }
   | { type: "setKiosVoice"; voice: KiosVoice }
   | { type: "setKiosName"; name: string | undefined }
+  | { type: "setThemeMode"; mode: "light" | "dark" | "system" }
   | { type: "setAppMode"; mode: AppMode }
   | { type: "completeOkoChallenge"; completion: OkoCompletion }
   | { type: "removeOkoCompletion"; id: string }
@@ -457,6 +458,8 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, kiosVoice: action.voice };
     case "setKiosName":
       return { ...state, kiosName: action.name };
+    case "setThemeMode":
+      return { ...state, themeMode: action.mode };
     case "setAppMode":
       return { ...state, appMode: action.mode };
     case "completeOkoChallenge": {
@@ -661,6 +664,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           okoProgress: pick("okoProgress"),
           kiosVoice: pick("kiosVoice"),
           kiosName: pick("kiosName"),
+          themeMode: pick("themeMode"),
           appMode: pick("appMode"),
           tseConfig: pick("tseConfig"),
           tseConfigs: pick("tseConfigs"),

@@ -365,6 +365,7 @@ export const seedState: AppState = {
   okoEnabled: true,
   okoProgress: { score: 0, completions: [] },
   kiosVoice: "sarah",
+  themeMode: "system",
   appMode: "lite",
   // ---- T011 TSE / KassenSichV (only used when appMode === "full") ----
   tseConfig: undefined,
