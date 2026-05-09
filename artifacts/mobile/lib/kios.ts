@@ -1,6 +1,7 @@
 import { generateJson } from "@/lib/ai";
 import { scoreMenu, next7DayWindow } from "@/lib/dge";
-import type { AppState, DgeScore, DgeStandard } from "@/types";
+import { getWeatherCache, buildWeatherContext } from "@/lib/weather";
+import type { AppState, DgeScore, DgeStandard, InventoryItem } from "@/types";
 
 // ─── Preorder context cache ───────────────────────────────────────────────────
 // Updated by preorder.tsx after every poll so Kios has live, structured data
@@ -77,9 +78,84 @@ export type KiosNav =
   | "production" | "cleaning" | "kasse" | "dge"
   | "null";
 
+// ─── Conversation memory ─────────────────────────────────────────────────────
+// Passed from useKios.ts so Kios can resolve anaphora and chain questions
+// naturally ("Und was ist damit?" after "Was hat S3 bestellt?").
+export interface ConversationMessage {
+  role: "user" | "kios";
+  text: string;
+}
+
 export interface KiosResponse {
   answer: string;
   navigate: KiosNav | null;
+  /** Optional follow-up suggestion spoken after the answer, e.g. "Soll ich die Portionen anpassen?" */
+  suggestion?: string | null;
+}
+
+// ─── Proactive anomaly detection ─────────────────────────────────────────────
+export interface KiosAnomaly {
+  severity: "warn" | "critical";
+  title: string;
+  body: string;
+}
+
+/**
+ * Cross-checks the live preorder cache against the current inventory and
+ * returns any anomalies Kios should proactively report (e.g. not enough stock
+ * for ordered portions, unusually low preorder volume, etc.).
+ * Best-effort: returns [] when inputs are empty.
+ */
+export function checkPreorderAnomalies(
+  poc: PreorderCtx,
+  inventory: readonly InventoryItem[],
+): KiosAnomaly[] {
+  if (!poc || poc.totalOpen === 0) return [];
+  const anomalies: KiosAnomaly[] = [];
+
+  // Build: dishName → total ordered portions (across all dates)
+  const dishDemand = new Map<string, number>();
+  for (const line of poc.summaryLines) {
+    // Format: "25× Schnitzel (Di 13.05)"
+    const m = line.match(/^(\d+)×\s+(.+?)\s*\(/);
+    if (m) dishDemand.set(m[2]!, Number(m[1]));
+  }
+
+  // Check inventory coverage for each ordered dish
+  for (const [dish, portions] of dishDemand) {
+    const lower = dish.toLowerCase();
+    const inv = inventory.find((i) => {
+      const n = (i.nameDe || i.name).toLowerCase();
+      return n.includes(lower) || lower.includes(n);
+    });
+    if (!inv) continue;
+
+    // Rough: assume 200g per portion for solid food, 300ml for liquids
+    const gramsPerPortion = inv.unit === "l" || inv.unit === "ml" ? 0.3 : 0.2;
+    const neededKg = portions * gramsPerPortion;
+    const availKg =
+      inv.unit === "kg" ? inv.quantity
+      : inv.unit === "g" ? inv.quantity / 1000
+      : inv.unit === "l" ? inv.quantity
+      : inv.unit === "ml" ? inv.quantity / 1000
+      : 0;
+
+    if (availKg > 0 && availKg < neededKg * 0.5) {
+      anomalies.push({
+        severity: "critical",
+        title: `⚠ Bestand kritisch: ${inv.nameDe || inv.name}`,
+        body: `${portions} Portionen ${dish} bestellt, aber nur ${availKg.toFixed(1)} ${inv.unit === "l" || inv.unit === "ml" ? "l" : "kg"} im Lager (benötigt ca. ${neededKg.toFixed(1)} kg).`,
+      });
+    } else if (availKg > 0 && availKg < neededKg) {
+      anomalies.push({
+        severity: "warn",
+        title: `⚡ Bestand knapp: ${inv.nameDe || inv.name}`,
+        body: `${portions} Portionen ${dish} bestellt. Nur ${availKg.toFixed(1)} ${inv.unit === "l" || inv.unit === "ml" ? "l" : "kg"} verfügbar.`,
+      });
+    }
+  }
+
+  return anomalies;
 }
 
 export function buildKitchenContext(state: AppState): string {
@@ -275,21 +351,55 @@ const NAV_LIST = [
   "production", "cleaning", "kasse", "dge", "null",
 ].join("|");
 
-const SCHEMA_HINT = `{"answer":"string","navigate":"${NAV_LIST}"}`;
+const SCHEMA_HINT = `{"answer":"string","navigate":"${NAV_LIST}","suggestion":"string|null"}`;
 
-export async function askKios(question: string, state: AppState): Promise<KiosResponse> {
+// ── Time-of-day tone signal ──────────────────────────────────────────────────
+function getTimeOfDayHint(): string {
+  const h = new Date().getHours();
+  if (h < 9)  return "Frühschicht (vor 09:00): freundlicher Morgengruß-Ton, proaktiver Tagesbriefing-Stil.";
+  if (h < 12) return "Vorbereitungszeit (09–12): sachlich, präzise, Fokus auf Produktion und Einkauf.";
+  if (h < 14) return "Mittagsservice (12–14): RUSH MODE — ultrakurze Antworten, keine Floskeln.";
+  if (h < 17) return "Nachbereitungszeit (14–17): entspannt, ausführlicher für Planungsfragen.";
+  if (h < 20) return "Abendschicht (17–20): RUSH MODE — kurze Antworten; nach 19:00 Tagesabschluss-Tipps.";
+  return "Spätschicht (nach 20:00): ruhig, Fokus auf Abschluss und Vorbereitung für morgen.";
+}
+
+export async function askKios(
+  question: string,
+  state: AppState,
+  history: readonly ConversationMessage[] = [],
+): Promise<KiosResponse> {
   const ctx = buildKitchenContext(state);
   const lowCount = state.inventory.filter((i) => i.quantity <= i.minQuantity).length;
+  const weather = getWeatherCache();
+  const weatherLine = weather ? `\nAktuelles Wetter: ${buildWeatherContext(weather)}` : "";
+  const timeHint = getTimeOfDayHint();
+
+  // Embed last ≤6 exchanges so Kios can resolve anaphora and chain questions
+  const historyBlock = history.length > 0
+    ? "\nBisheriger Gesprächsverlauf (älteste zuerst):\n" +
+      history.map((m) => `  [${m.role === "user" ? "Koch" : "Kios"}]: ${m.text}`).join("\n") +
+      "\n"
+    : "";
 
   const prompt = `\
-Du bist "Kios", der smarte Küchen-Assistent von KitchenOS auf einem iPad in einer deutschen Profiküche.
+Du bist "Kios", der intelligente Küchen-Assistent von KitchenOS auf einem iPad in einer deutschen Profiküche.
+
+Persönlichkeit & Verhalten:
+- Du bist ein echter Profi-Assistent, der mitdenkt — nicht nur ein Sprachrohr.
+- Verknüpfe Informationen aus verschiedenen Bereichen (Bestand + Bestellungen + Wetter + Personal).
+- Wenn du unsicher bist, sag es ehrlich: "Basierend auf den letzten Daten schätze ich..." oder "Dazu habe ich keine genauen Daten."
+- Nutze den Gesprächsverlauf für Folgefragen — "davon", "das", "sie" beziehen sich auf das zuletzt genannte Thema.
+- Schlage proaktiv eine sinnvolle nächste Aktion vor (Feld "suggestion") — kurzer Satz als Frage.
+
+Ton: ${timeHint}
 
 Antwort-Regeln:
-- Sprache: Deutsch, max. 1 Satz, max. 18 Wörter.
-- Für Sprachausgabe: kein Markdown, keine Symbole, keine Klammern, keine Aufzählungen.
-- Sei konkret mit Zahlen aus dem Status. Vermeide Phrasen wie "schau in der Statistik".
-- Wenn keine Daten vorliegen: das ehrlich sagen ("Dazu habe ich noch keine Daten.").
-- "navigate" wählst du nur, wenn die Frage einen klaren Bereich betrifft, sonst "null".
+- Sprache: Deutsch. "answer": max. 1 Satz, max. 20 Wörter, kein Markdown, keine Symbole.
+- "suggestion": 1 kurze Folgefrage ODER null. Beispiele: "Soll ich die Portionen im Produktionsplan anpassen?", "Möchtest du Schnitzel nachbestellen?"
+- Sei konkret mit echten Zahlen aus dem Status unten.
+- "navigate" nur wenn ein klarer App-Bereich gemeint ist, sonst "null".
+- Bei Wetterfragen: nutze die Wetterdaten und verbinde sie mit Prognose/Absatz (Regen → mehr Suppe-Nachfrage etc.).
 
 App-Bereiche (verwende den Schlüssel als "navigate"):
 
@@ -353,47 +463,18 @@ ALLGEMEIN
   null        = Keine Navigation, nur Antwort
 
 Aktueller Küchen-Status:
-${ctx}
-
-Beispiele:
-  "Wie viel Milch?" → answer: "Du hast aktuell [X] Liter Milch im Lager." navigate: inventory
-  "Was kochen wir morgen?" → answer: "Morgen stehen [Gericht1] und [Gericht2] auf dem Plan." navigate: menu
-  "Muss ich nachbestellen?" → answer: "${lowCount > 0 ? `Ja, ${lowCount} Artikel sind unter Mindestbestand.` : "Nein, alles in Ordnung."}" navigate: procurement
-  "Wie war der Umsatz?" → answer: "Heute wurden bisher [X] Portionen für ca. [Y]€ verkauft." navigate: stats
-  "Catering diese Woche?" → answer: "Ja, [Anzahl] Veranstaltungen, die nächste am [Datum]." navigate: catering
-  "Wer wartet auf Genehmigung?" → answer: "[N] Geschäftskunden warten auf deine Freigabe." navigate: customers
-  "Welche Marge ist schlecht?" → answer: "Niedrige Marge bei [Gericht1] und [Gericht2]." navigate: margin
-  "Was läuft bald ab?" → answer: "[Produkt] läuft am [Datum] ab." navigate: inventory
-  "Mach den Tagesabschluss" → answer: "Tagesabschluss wird geöffnet." navigate: sales
-  "Hygiene-Check" → answer: "HACCP-Protokoll wird geöffnet." navigate: haccp
-  "Wie viel Abfall heute?" → answer: "Heute wurden [X]€ Abfall erfasst." navigate: waste
-  "Erkläre Reste-Rezepte" → answer: "Hier kannst du aus Übrigem neue Gerichte vorschlagen lassen." navigate: reste
-  "Wie ist mein DGE-Score?" → answer: "Aktuell [X]/100 für [Standard], [N] Kriterien noch offen." navigate: dge
-  "DGE-Zertifikat erstellen" → answer: "Ich öffne den DGE-Bereich, dort kannst du das Zertifikat als PDF erstellen." navigate: dge
-  "Rückstellprobe von Gulasch nehmen" → answer: "Ich erfasse die Rückstellprobe für Gulasch — bitte bestätige." navigate: null
-  "Wie viele Rückstellproben habe ich?" → answer: "Aktuell [N] aktive Proben in der 7-Tage-Frist." navigate: production
-  "Reinigung erledigt" → answer: "Reinigungsplan wird geöffnet." navigate: cleaning
-  "Rechnung schreiben" → answer: "Kasse wird geöffnet." navigate: kasse
-  "Welcher Tarif bin ich?" → answer: "Du bist im [Tier]-Tarif." navigate: settings
-  "Bestand von Standort A nach B transferieren" → answer: "Inventur-Seite wird geöffnet, dort kannst du den Transfer starten." navigate: inventur
-  "E-Mail an Lieferant schicken" → answer: "Bestellvorschlag wird geöffnet, dort findest du den E-Mail-Button pro Lieferant." navigate: procurement
-  "Öffnungszeiten für Standort ändern" → answer: "Ich öffne die Standortverwaltung, dort kannst du Öffnungs- und Schließzeiten eintragen." navigate: locations
-  "Öko-Punkte wie viele?" → answer: "Du hast aktuell [okoScore] Öko-Punkte aus [okoCompletions] erledigten Challenges." navigate: okowizard
-  "Foto-Nachweis für Öko-Challenge" → answer: "Öko-Wizard wird geöffnet, beim Erledigen einer Challenge kannst du ein Foto beifügen." navigate: okowizard
-  "Branding für Vorbestellung ändern" → answer: "Einstellungen werden geöffnet, dort findest du den Abschnitt Vorbestellung-Branding." navigate: settings
-  "Wie viele Vorbestellungen haben wir?" → answer: "[N] offene Vorbestellungen bei [Standort], davon [M] neu und unbestätigt." navigate: preorder
-  "Was wurde am meisten vorbestellt?" → answer: "Am häufigsten bestellt: [Gericht1] ([X]×), [Gericht2] ([Y]×)." navigate: preorder
-  "Wie viele neue Bestellungen?" → answer: "[N] neue Vorbestellungen warten auf deine Bestätigung." navigate: preorder
-  "Wer hat heute vorbestellt?" → answer: "Für heute liegen [N] Vorbestellungen vor, insgesamt [X] Portionen." navigate: preorder
-  "Vorbestellungen für morgen?" → answer: "[N] Vorbestellungen für morgen, davon [X] Portionen [Gericht]." navigate: preorder
-  "Benachrichtigungen einrichten" → answer: "Ich öffne Einstellungen — dort findest du alle Notification-Optionen inkl. Öko-Reminder und Vorbestellungs-Alerts." navigate: settings
-  "Abwesenheit melden" → answer: "Dienstplan wird geöffnet, dort kannst du Urlaub oder Krankmeldung eintragen." navigate: dienstplan
-  "Setze Linsensuppe auf Montag" → answer: "Ich trage Linsensuppe für Montag in den Speiseplan ein — bitte bestätige." navigate: null
-  "Wir haben 45 Portionen Schnitzel verkauft" → answer: "Ich erfasse 45 Portionen Schnitzel als Tagesverkauf — bitte bestätige." navigate: null
-  "Womit kann ich Butter ersetzen?" → answer: "Butter kannst du durch Margarine oder Kokosöl ersetzen." navigate: null
-  "Habe ich alles für Linsensuppe?" → answer: "Alle Zutaten für Linsensuppe sind ausreichend auf Lager." navigate: inventory
-  "Wie lange braucht Schnitzel?" → answer: "Schnitzel braucht ca. [X] Minuten Zubereitung." navigate: null
-  "Was kannst du?" → answer: "Ich kann Timer stellen, Temperaturen protokollieren, Bestand abfragen, Rezepte suchen, Menüplanung, Verkäufe erfassen und durch die App navigieren." navigate: null
+${ctx}${weatherLine}
+${historyBlock}
+Beispiele mit suggestion-Feld:
+  "Muss ich nachbestellen?" → answer: "${lowCount > 0 ? `Ja, ${lowCount} Artikel unter Mindestbestand.` : "Nein, alles in Ordnung."}" navigate: procurement suggestion: "Soll ich einen Bestellvorschlag erstellen?"
+  "Was hat S3 zum Dienstag bestellt?" → answer: "S3 hat 2 Portionen Schnitzel und 1 Suppe für Dienstag bestellt." navigate: preorder suggestion: "Soll ich die Bestellung für S3 bestätigen?"
+  "Wie oft Menü 1 für Samariterstraße?" → answer: "Menü 1 bei Samariterstraße wurde [X]-mal bestellt, insgesamt [Y] Portionen." navigate: preorder suggestion: "Möchtest du den Produktionsplan für Menü 1 öffnen?"
+  "Wie ist das Wetter?" → answer: "Aktuell [T]°C und [Beschreibung]. Morgen [T2]°C — [Prog]." navigate: null suggestion: "Bei Regen empfehle ich mehr Suppe einzuplanen — soll ich die Prognose öffnen?"
+  "Wird es morgen regnen?" → answer: "Morgen [Beschreibung], [T_min]–[T_max]°C, [X] mm Niederschlag erwartet." navigate: forecast suggestion: "Soll ich die Bedarfsprognose für morgen anpassen?"
+  "Haben wir genug für Schnitzel morgen?" → answer: "Du hast [X] kg Fleisch — für [N] Portionen Schnitzel reicht das [gut/knapp]." navigate: inventory suggestion: "Soll ich Fleisch auf die Bestellliste setzen?"
+  "Womit kann ich Butter ersetzen?" → answer: "Butter lässt sich durch Margarine oder Kokosöl ersetzen." navigate: null suggestion: null
+  "Was kannst du?" → answer: "Timer, Temperaturen, Bestand, Rezepte, Menüplanung, Wetter, Vorbestellungen — einfach fragen." navigate: null suggestion: null
+  "Das war falsch" → answer: "Entschuldigung — bitte formuliere deine Frage neu, ich versuche es besser." navigate: null suggestion: null
 
 Frage: "${question}"`.trim();
 

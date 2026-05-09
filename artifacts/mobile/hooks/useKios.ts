@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { askKios } from "@/lib/kios";
+import { askKios, type ConversationMessage } from "@/lib/kios";
 import { generateRecipe } from "@/lib/ai";
 import { searchOffline } from "@/constants/offlineKnowledge";
 import { speakHQ, stopSpeaking, isSafari, prewarmTtsCache, primeAudio, prefetchKiosPhrases } from "@/lib/voice";
@@ -1420,6 +1420,10 @@ function handleHandsFree(
 //              the wake word (10-second window). On timeout → wake.
 //   confirm  — a destructive action is pending; listen for Ja/Nein
 //              (30-second window). On timeout → cancel + back to wake.
+// Maximum number of Q+A exchanges to keep in the conversation ring buffer.
+// Enough for a natural chained conversation; not so many that the prompt bloats.
+const CONV_HISTORY_MAX = 6;
+
 interface KiosRefs {
   status: KiosStatus;
   phase: "wake" | "question" | "ai" | "followup" | "confirm";
@@ -1436,6 +1440,8 @@ interface KiosRefs {
   lastContext: LastContext | null;
   /** Block 1 — last spoken text so "Wiederhole" can replay it. */
   lastSpokenText: string;
+  /** Conversation ring buffer — last N Q+A pairs for multi-turn memory. */
+  convHistory: ConversationMessage[];
 }
 
 // Time windows (T015). Tuned for kitchen-floor reality:
@@ -1478,6 +1484,7 @@ export function useKios() {
     state,
     lastContext: null,
     lastSpokenText: "",
+    convHistory: [],
   });
 
   r.current.state = state;
@@ -1584,6 +1591,7 @@ export function useKios() {
     setStatus("thinking");
     const snap   = r.current.state;
     const locale = snap.locale;
+    const lower  = question.toLowerCase().trim();
 
     // Block 1: "Wiederhole" / "Nochmal" — replay the last spoken text without
     // an AI round-trip. Useful when the cook was distracted or the kitchen
@@ -1724,13 +1732,29 @@ export function useKios() {
       return;
     }
 
-    // AI round-trip
+    // ── Correction handler ────────────────────────────────────────────────
+    // "Das war falsch" / "Das stimmt nicht" → pop the last exchange from
+    // history so the wrong answer doesn't contaminate follow-up context.
+    if (/\b(das\s+war\s+falsch|das\s+stimmt\s+nicht|falsche\s+antwort|du\s+hast\s+dich\s+geirrt)\b/i.test(lower)) {
+      const hist = r.current.convHistory;
+      if (hist.length >= 2) {
+        // Remove the last Q+A pair (user + kios)
+        r.current.convHistory = hist.slice(0, -2);
+      }
+      setStatus("speaking");
+      const sorry = "Entschuldigung — ich habe die falsche Antwort aus meinem Gedächtnis gelöscht. Bitte stelle die Frage neu.";
+      r.current.lastSpokenText = sorry;
+      speakHQ(sorry, locale, () => scheduleFollowup(400), snap.kiosVoice);
+      return;
+    }
+
+    // AI round-trip — pass conversation history for multi-turn memory
     let result: Awaited<ReturnType<typeof askKios>> | null = null;
     try {
       const ac = new AbortController();
       const tid = setTimeout(() => ac.abort(), AI_TIMEOUT_MS);
       result = await Promise.race([
-        askKios(question, snap),
+        askKios(question, snap, r.current.convHistory),
         new Promise<never>((_, reject) =>
           ac.signal.addEventListener("abort", () => reject(new Error("timeout"))),
         ),
@@ -1760,6 +1784,14 @@ export function useKios() {
 
     if (!result) { scheduleFollowup(500); return; }
 
+    // ── Update conversation ring buffer ───────────────────────────────────
+    // Push user Q + Kios answer; trim to CONV_HISTORY_MAX pairs (2 messages each).
+    r.current.convHistory = [
+      ...r.current.convHistory,
+      { role: "user" as const, text: question },
+      { role: "kios" as const, text: result.answer },
+    ].slice(-(CONV_HISTORY_MAX * 2));
+
     const navKey = result.navigate && result.navigate !== "null" ? result.navigate : null;
 
     // When Kios explicitly routes to chat, store the question so chat.tsx
@@ -1772,7 +1804,21 @@ export function useKios() {
 
     r.current.lastSpokenText = result.answer;
     setStatus("speaking");
-    speakHQ(result.answer, locale, () => scheduleFollowup(300), snap.kiosVoice);
+
+    // Speak answer, then — after a short pause — speak suggestion if present.
+    // The suggestion is a follow-up question (e.g. "Soll ich nachbestellen?")
+    // that keeps the conversation alive without needing the wake word again.
+    const suggestion = result.suggestion?.trim() ?? null;
+    speakHQ(result.answer, locale, () => {
+      if (suggestion && !isRushMode()) {
+        // In rush mode skip suggestion entirely — the cook is busy.
+        setTimeout(() => {
+          speakHQ(suggestion, locale, () => scheduleFollowup(400), snap.kiosVoice);
+        }, 400);
+      } else {
+        scheduleFollowup(300);
+      }
+    }, snap.kiosVoice);
   }
 
   // T015: Execute a confirmed pending mutation. Called from the Ja-branch in

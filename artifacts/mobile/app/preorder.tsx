@@ -12,7 +12,8 @@ import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { apiFetch } from "@/lib/api";
 import { pushAlertBus } from "@/lib/pushAlertBus";
-import { updatePreorderCache } from "@/lib/kios";
+import { updatePreorderCache, checkPreorderAnomalies } from "@/lib/kios";
+import { fetchAndCacheWeather } from "@/lib/weather";
 
 interface PreorderDish {
   id: string;
@@ -642,7 +643,7 @@ export default function PreorderScreen() {
         }
       } catch { /* weekly menu fetch is best-effort */ }
 
-      updatePreorderCache({
+      const cacheEntry = {
         locationCode,
         locationName,
         totalNew: list.filter((o) => o.status === "new").length,
@@ -653,18 +654,47 @@ export default function PreorderScreen() {
         customerLines,
         menuSlotLines,
         updatedAt: new Date().toISOString(),
-      });
+      };
+      updatePreorderCache(cacheEntry);
+
+      // ── Proactive anomaly detection ──────────────────────────────────────
+      // Cross-check preorder demand vs inventory stock.
+      // Only trigger on the first detection per session (avoid alert storms).
+      if (openOrders.length > 0 && !isFirstPoll.current) {
+        const anomalies = checkPreorderAnomalies(cacheEntry, state.inventory);
+        for (const anomaly of anomalies.slice(0, 2)) {
+          if (Platform.OS === "web") {
+            pushAlertBus.emit({ title: anomaly.title, body: anomaly.body });
+          } else {
+            try {
+              await Notifications.scheduleNotificationAsync({
+                content: { title: anomaly.title, body: anomaly.body, sound: true },
+                trigger: null,
+              });
+            } catch { /* ignore if notifications not granted */ }
+          }
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
 
-  // Reset seen set when location changes
+  // Reset seen set and fetch weather when location changes
   useEffect(() => {
     seenOrderIds.current = new Set();
     isFirstPoll.current = true;
     // Also clear Kios cache for old location
     updatePreorderCache(null);
+
+    // Fetch weather for the active location (best-effort, for Kios context)
+    const loc = state.locations.find(
+      (l) => (l.code ?? "").toUpperCase() === locationCode,
+    );
+    if (loc?.lat && loc?.lng) {
+      void fetchAndCacheWeather(loc.lat, loc.lng, loc.name);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locationCode]);
 
   useEffect(() => {
