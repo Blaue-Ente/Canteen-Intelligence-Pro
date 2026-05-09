@@ -73,3 +73,83 @@ The mobile application uses a charcoal and amber theme (`#0a0a0b` / `#f59e0b`) w
 - **`pdf-parse`**: For extracting text from PDF documents for menu scanning.
 - **`pdfkit`**: Used in `scripts` for generating marketing collateral PDFs.
 - **Microsoft 365 / Outlook Integration**: For email/event AI bridge, with planned multi-tenant OAuth.
+
+## Roadmap — Fiscalization (Kasse / TSE)
+
+> Status: **Planned** — to be implemented after client discovery meetings confirm demand for the Kasse module.
+
+### Context & Decision
+KitchenOS Kasse is currently operable without TSE (demo/internal only). The foundation already exists in `artifacts/api-server/src/routes/tse.ts` with a `STUB-DEV-TSE` HMAC fallback for development.
+
+**Chosen provider: Fiskaly Cloud TSE** (`https://kassensichv-middleware.fiskaly.com/api/v2`)
+- BSI-certified cloud TSE, no hardware required
+- Developer-friendly REST API, transparent pricing (~€1–12/month/terminal)
+- Supports retroactive signing for offline scenarios (Ausfall-Modus)
+- Already wired into `tse.ts` via OAuth2 proxy pattern
+
+Alternatives evaluated and rejected for now:
+- **Swissbit** — good hybrid cloud/hardware, but hardware overhead doesn't fit SaaS model
+- **Deutsche Fiskal / D-TRUST** — enterprise-only, no public pricing, excess complexity for current scale
+
+---
+
+### Phase 1 — Fiskaly Live Integration (~4 weeks)
+
+| Step | Task | Est. |
+|------|------|------|
+| 1 | Fiskaly Dashboard registration + production API keys (secrets) | 1 day |
+| 2 | Activate Fiskaly OAuth2 in `tse.ts` (replace STUB with live client) | 3 days |
+| 3 | TSS serial number + digital signature + QR code on every Kassenbon | 3 days |
+| 4 | DSFinV-K export endpoint (mandatory for Finanzamt audits) | 1 week |
+| 5 | Verfahrensdokumentation PDF (required process documentation) | 2 days |
+| 6 | End-to-end test against Fiskaly sandbox environment | 3 days |
+
+**Running cost per client:** ~€6–12/month → passes through to client as part of Premium plan.
+
+---
+
+### Phase 1b — Offline TSE Queue (~1 week, built alongside Phase 1)
+
+German KassenSichV explicitly allows TSE unavailability (Ausfall-Modus) with these legal obligations:
+- Transactions must be queued locally with exact original timestamp
+- Receipt must display *"TSE nicht verfügbar"* during offline period
+- Retroactive signing must happen within **48 hours** of the transaction
+- Downtime (Ausfallzeit) must be logged in Verfahrensdokumentation
+
+**Implementation plan:**
+
+| Component | Location | Responsibility |
+|-----------|----------|----------------|
+| `offlineTseQueue.ts` | `artifacts/mobile/lib/` | AsyncStorage queue + NetInfo sync trigger |
+| `tse.ts` extension | `artifacts/api-server/` | Accept `originalTimestamp` for retro signing |
+| Kassenbon UI | `artifacts/mobile/` | Show amber *"TSE ausstehend"* badge; update after sync |
+
+**Flow:**
+```
+Sale → [Online?] → Yes → Fiskaly → signed receipt immediately
+              ↓ No
+         LocalQueue { id, timestamp, items, total, status: "pending_tse" }
+              ↓ NetInfo reconnect event
+         Background sync → Fiskaly (originalTimestamp preserved)
+              ↓
+         Receipt updated with TSE serial + QR code
+```
+
+---
+
+### Phase 2 — Bulgarian Market (СУПТО / Наредба Н-18)
+
+If Bulgarian clients request Kasse functionality — different legal path:
+- One-time declaration to НАП that software meets Наредба Н-18
+- Integration with a certified fiscal printer (Datecs, Tremol, etc.) instead of cloud TSE
+- Full operator audit log (already partially covered by Storno mechanism)
+- No Fiskaly involved — entirely separate integration track
+
+---
+
+### Client Discovery Checklist (pre-implementation gate)
+
+Before starting Phase 1, confirm with prospects:
+1. *"Използвате ли вече касова система?"* → If yes, KitchenOS can run as Light-Modus overlay
+2. *"Искате ли пълна замяна на касата?"* → If yes, TSE/СУПТО is mandatory
+3. *"Работите ли с публични институции?"* → If yes, XRechnung + AVV from day one
