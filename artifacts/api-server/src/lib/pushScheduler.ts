@@ -7,7 +7,7 @@ import cron from "node-cron";
 import webpush from "web-push";
 import { db } from "@workspace/db";
 import { pushSubscriptionsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { logger } from "./logger";
 interface NotificationPrefs {
   enabled?: boolean;
@@ -48,6 +48,42 @@ async function send(sub: SubRow, title: string, body: string): Promise<void> {
     } else {
       logger.warn({ err }, "push scheduler: send failed");
     }
+  }
+}
+
+// ─── Triggered push: new guest preorder arrived ───────────────────────────────
+// Called from the preorder route immediately after a new order is inserted.
+// Sends a push notification to all staff subscriptions in the same org that
+// have preorderAlert enabled.
+export async function triggerNewOrderPush(
+  ownerOrgId: string,
+  details: { guestName: string; itemCount: number; locationCode: string; locale?: string },
+): Promise<void> {
+  if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return;
+
+  let subs: SubRow[];
+  try {
+    // Filter by orgId — only staff of the restaurant that owns this location
+    subs = await db
+      .select()
+      .from(pushSubscriptionsTable)
+      .where(eq(pushSubscriptionsTable.orgId, ownerOrgId));
+  } catch (err) {
+    logger.warn({ err }, "triggerNewOrderPush: db query failed");
+    return;
+  }
+
+  const targets = subs.filter((s) => (s.prefs as Partial<NotificationPrefs>).preorderAlert);
+  if (targets.length === 0) return;
+
+  const { guestName, itemCount, locationCode } = details;
+  for (const sub of targets) {
+    const de = (sub.locale ?? "de") !== "en";
+    const title = de ? "🛎 Neue Vorbestellung" : "🛎 New preorder";
+    const body = de
+      ? `${guestName} hat ${itemCount} Artikel bei ${locationCode} bestellt.`
+      : `${guestName} ordered ${itemCount} item(s) at ${locationCode}.`;
+    await send(sub, title, body);
   }
 }
 

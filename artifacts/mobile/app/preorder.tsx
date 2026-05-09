@@ -1,7 +1,8 @@
 import { Feather } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import * as Notifications from "expo-notifications";
 import QRCode from "react-native-qrcode-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -10,6 +11,8 @@ import { Badge, Button, Card, EmptyState, Field, SectionHeader } from "@/compone
 import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { apiFetch } from "@/lib/api";
+import { pushAlertBus } from "@/lib/pushAlertBus";
+import { updatePreorderCache } from "@/lib/kios";
 
 interface PreorderDish {
   id: string;
@@ -49,6 +52,7 @@ interface GuestOrder {
   locationCode: string;
   guestName: string;
   guestNote?: string | null;
+  wantedFor?: string | null;
   items: OrderItem[];
   total: number;
   currency: string;
@@ -435,6 +439,10 @@ export default function PreorderScreen() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // Track which order IDs we've already alerted about (survives re-renders)
+  const seenOrderIds = useRef<Set<string>>(new Set());
+  const isFirstPoll = useRef(true);
+
   // Build dish payload from today's planned menu (or all recipes as fallback).
   const todaysDishes = useMemo<PreorderDish[]>(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -495,10 +503,83 @@ export default function PreorderScreen() {
       ]);
       setPublishedMenu(menu);
       setOrders(list);
+
+      // ── New-order detection ──────────────────────────────────────────────
+      // On the first poll we just populate the seen set — no alerts.
+      // On subsequent polls, any "new" order whose ID wasn't seen triggers
+      // a pushAlertBus emit (web Kios overlay) + native notification.
+      const newOrders = list.filter((o) => o.status === "new" && !seenOrderIds.current.has(o.id));
+
+      if (!isFirstPoll.current && newOrders.length > 0) {
+        for (const o of newOrders) {
+          const totalItems = o.items.reduce((s, i) => s + i.qty, 0);
+          const dishNames = o.items.slice(0, 2).map((i) => `${i.qty}× ${i.name}`).join(", ");
+          const title = "🛎 Neue Vorbestellung";
+          const body = `${o.guestName}: ${dishNames}${o.items.length > 2 ? " …" : ""} (${totalItems} Portionen)`;
+
+          // Web: trigger Kios overlay
+          if (Platform.OS === "web") {
+            pushAlertBus.emit({ title, body });
+          } else {
+            // Native: fire an immediate local notification
+            try {
+              await Notifications.scheduleNotificationAsync({
+                content: { title, body, sound: true },
+                trigger: null, // immediate
+              });
+            } catch { /* notifications might not be granted — ignore */ }
+          }
+        }
+      }
+
+      // Mark all current IDs as seen (regardless of status, so re-polls don't
+      // re-alert for the same order if it gets updated)
+      list.forEach((o) => seenOrderIds.current.add(o.id));
+      isFirstPoll.current = false;
+
+      // ── Kios context cache update ────────────────────────────────────────
+      // Aggregate dish totals for Kios — "12× Schnitzel (Mo 12.05)"
+      const openOrders = list.filter((o) => o.status !== "cancelled" && o.status !== "served");
+      const dishTotals = new Map<string, number>();
+      for (const o of openOrders) {
+        const dayLabel = o.wantedFor
+          ? (() => {
+              const [, m, d] = (o.wantedFor as string).split("-");
+              return `${d}.${m}`;
+            })()
+          : "?";
+        for (const item of o.items) {
+          const key = `${item.qty > 0 ? "" : ""}${item.name} (${dayLabel})`;
+          dishTotals.set(key, (dishTotals.get(key) ?? 0) + item.qty);
+        }
+      }
+      const summaryLines = [...dishTotals.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, qty]) => `${qty}× ${name}`);
+
+      updatePreorderCache(
+        openOrders.length > 0
+          ? {
+              locationCode,
+              totalNew: list.filter((o) => o.status === "new").length,
+              totalOpen: openOrders.length,
+              summaryLines,
+              updatedAt: new Date().toISOString(),
+            }
+          : { locationCode, totalNew: 0, totalOpen: 0, summaryLines: [], updatedAt: new Date().toISOString() },
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
+
+  // Reset seen set when location changes
+  useEffect(() => {
+    seenOrderIds.current = new Set();
+    isFirstPoll.current = true;
+    // Also clear Kios cache for old location
+    updatePreorderCache(null);
+  }, [locationCode]);
 
   useEffect(() => {
     void fetchData();

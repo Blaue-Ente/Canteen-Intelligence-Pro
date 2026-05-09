@@ -2,6 +2,22 @@ import { generateJson } from "@/lib/ai";
 import { scoreMenu, next7DayWindow } from "@/lib/dge";
 import type { AppState, DgeScore, DgeStandard } from "@/types";
 
+// ─── Preorder context cache ───────────────────────────────────────────────────
+// Updated by preorder.tsx after every poll so Kios knows about pending orders
+// without needing to make an extra API call.
+export interface PreorderCtx {
+  locationCode: string;
+  totalNew: number;       // orders with status "new" (unacknowledged)
+  totalOpen: number;      // all non-cancelled, non-served orders
+  summaryLines: string[]; // e.g. ["12× Schnitzel (Mo 12.05)", "8× Suppe (Di 13.05)"]
+  updatedAt: string;      // ISO timestamp
+}
+let preorderCtxCache: PreorderCtx | null = null;
+
+export function updatePreorderCache(ctx: PreorderCtx | null): void {
+  preorderCtxCache = ctx;
+}
+
 // Memoize the DGE score across Kios questions — recipes/menu/inventory rarely
 // change between voice commands, so recomputing the 7-day score on every
 // "Hey Kios" wake-up is wasted CPU on iPad. Invalidate by length-based signature
@@ -182,6 +198,9 @@ export function buildKitchenContext(state: AppState): string {
     }
   }
 
+  // ── Preorder context (live cache from polling) ───────────────────────────
+  const poc = preorderCtxCache;
+
   return [
     `Datum: ${today}`,
     `Abo-Tarif: ${tier}, App-Modus: ${appMode}`,
@@ -208,6 +227,11 @@ export function buildKitchenContext(state: AppState): string {
     multiLocation ? `Multi-Standort aktiv: Bestand-Transfer zwischen Standorten möglich (Inventur-Seite)` : null,
     okoEnabled ? `Öko-Wizard: ${okoScore} Punkte, ${okoCompletions} erledigte Aufgaben` : null,
     brandingName ? `Vorbestellung-Branding: Name "${brandingName}"${brandingColor ? `, Farbe ${brandingColor}` : ""}` : null,
+    // Live preorder summary — injected from polling cache
+    poc && poc.totalOpen > 0
+      ? `Vorbestellungen bei ${poc.locationCode}: ${poc.totalNew} NEU (unbestätigt), ${poc.totalOpen} gesamt offen` +
+        (poc.summaryLines.length > 0 ? ` — Top-Gerichte: ${poc.summaryLines.slice(0, 5).join(", ")}` : "")
+      : poc ? `Vorbestellungen bei ${poc.locationCode}: keine offenen Bestellungen aktuell` : null,
   ].filter(Boolean).join("\n");
 }
 
@@ -328,6 +352,11 @@ Beispiele:
   "Öko-Punkte wie viele?" → answer: "Du hast aktuell [okoScore] Öko-Punkte aus [okoCompletions] erledigten Challenges." navigate: okowizard
   "Foto-Nachweis für Öko-Challenge" → answer: "Öko-Wizard wird geöffnet, beim Erledigen einer Challenge kannst du ein Foto beifügen." navigate: okowizard
   "Branding für Vorbestellung ändern" → answer: "Einstellungen werden geöffnet, dort findest du den Abschnitt Vorbestellung-Branding." navigate: settings
+  "Wie viele Vorbestellungen haben wir?" → answer: "[N] offene Vorbestellungen bei [Standort], davon [M] neu und unbestätigt." navigate: preorder
+  "Was wurde am meisten vorbestellt?" → answer: "Am häufigsten bestellt: [Gericht1] ([X]×), [Gericht2] ([Y]×)." navigate: preorder
+  "Wie viele neue Bestellungen?" → answer: "[N] neue Vorbestellungen warten auf deine Bestätigung." navigate: preorder
+  "Wer hat heute vorbestellt?" → answer: "Für heute liegen [N] Vorbestellungen vor, insgesamt [X] Portionen." navigate: preorder
+  "Vorbestellungen für morgen?" → answer: "[N] Vorbestellungen für morgen, davon [X] Portionen [Gericht]." navigate: preorder
   "Benachrichtigungen einrichten" → answer: "Ich öffne Einstellungen — dort findest du alle Notification-Optionen inkl. Öko-Reminder und Vorbestellungs-Alerts." navigate: settings
   "Abwesenheit melden" → answer: "Dienstplan wird geöffnet, dort kannst du Urlaub oder Krankmeldung eintragen." navigate: dienstplan
   "Setze Linsensuppe auf Montag" → answer: "Ich trage Linsensuppe für Montag in den Speiseplan ein — bitte bestätige." navigate: null

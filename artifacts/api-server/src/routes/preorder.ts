@@ -19,6 +19,7 @@ import {
   type LedgerItemRow,
 } from "@workspace/db";
 import { and, desc, eq, gte, inArray, lte, ne } from "drizzle-orm";
+import { triggerNewOrderPush } from "../lib/pushScheduler";
 import { schemas } from "@workspace/api-zod";
 import { requireAuth, type AuthedRequest } from "../lib/auth";
 import { randomBytes } from "crypto";
@@ -353,6 +354,14 @@ router.post("/preorder/orders", requireAuth, async (req: Request, res: Response)
       accessToken,
     })
     .returning();
+
+  // Fire push notification to staff — non-blocking, ignore errors
+  void triggerNewOrderPush(menu.ownerOrgId, {
+    guestName: profile.displayName || body.guestName || "Gast",
+    itemCount: resolvedItems.reduce((s, i) => s + i.qty, 0),
+    locationCode: body.locationCode,
+  });
+
   res.status(201).json(serializeOrder(inserted[0]!, { includeToken: true }));
 });
 
