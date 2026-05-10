@@ -127,18 +127,19 @@ export default function Menu() {
   // Date selection — default to first available day
   const deliveryDates = useMemo(() => buildDeliveryDates(14), []);
   const [selectedDate, setSelectedDate] = useState<string>(() => deliveryDates[0] ?? "");
+  const [draftByDate, setDraftByDate] = useState<Record<string, Array<WeeklyMenuDish & { menuSlot: string; currency: string }>>>({});
 
   // Determine mode: weekly or legacy
   const hasWeeklyMenus = weeklyMenus && weeklyMenus.length > 0;
   const isLoading = weeklyLoading || (legacyLoading && !hasWeeklyMenus);
 
   // Dishes for selected date (weekly) or all dishes (legacy)
-  const dishesForDate = useMemo(
-    () => hasWeeklyMenus ? getDishesForDate(weeklyMenus, selectedDate) : [],
-    [weeklyMenus, selectedDate, hasWeeklyMenus],
-  );
+  const dishesForSelectedDate = useMemo(() => {
+    if (!hasWeeklyMenus) return [];
+    return draftByDate[selectedDate] ?? getDishesForDate(weeklyMenus, selectedDate);
+  }, [draftByDate, weeklyMenus, selectedDate, hasWeeklyMenus]);
   const legacyDishes = legacyMenu?.dishes ?? [];
-  const displayDishes = hasWeeklyMenus ? dishesForDate : legacyDishes;
+  const displayDishes = hasWeeklyMenus ? dishesForSelectedDate : legacyDishes;
   const locationName = legacyMenu?.locationName ?? locationCode;
   const currency = legacyMenu?.currency ?? weeklyMenus?.[0]?.currency ?? "EUR";
 
@@ -266,7 +267,14 @@ export default function Menu() {
                 return (
                   <button
                     key={d}
-                    onClick={() => { setSelectedDate(d); clearCart(); }}
+                    onClick={() => {
+                      setDraftByDate((prev) => ({
+                        ...prev,
+                        [selectedDate]: dishesForSelectedDate,
+                      }));
+                      setSelectedDate(d);
+                      clearCart();
+                    }}
                     className={[
                       "flex flex-col items-center px-3 py-2 rounded-xl border text-xs font-medium transition-all",
                       active
