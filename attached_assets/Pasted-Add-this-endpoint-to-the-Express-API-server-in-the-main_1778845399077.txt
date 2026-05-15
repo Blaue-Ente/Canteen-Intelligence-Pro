@@ -1,0 +1,51 @@
+Add this endpoint to the Express API server (in the main router file, e.g. src/routes/index.ts or src/app.ts):
+
+POST /api/iyveris
+
+It must:
+1. Check req.headers['x-iyveris-mesh-key'] === process.env.IYVERIS_MESH_KEY
+   If it doesn't match, return: res.status(401).json({ ok: false, result: null, error: 'Invalid mesh key' })
+
+2. Destructure: const { action, payload, from_service } = req.body
+
+3. Handle these actions:
+
+   "ping"
+   → res.json({ ok: true, result: { status: 'active', service: 'kitchenos' }, error: null })
+
+   "capabilities"
+   → res.json({ ok: true, result: ['kitchen', 'horeca', 'restaurant', 'menu', 'recipes', 'inventory', 'supplier-orders', 'haccp', 'pos', 'catering', 'staff-scheduling', 'demand-forecast', 'guest-portal'], error: null })
+
+   "get_menu"
+   → query the database for active menu items (optionally filter by payload.date or payload.category)
+   → return { ok: true, result: { items: [...], date: payload.date ?? today }, error: null }
+
+   "get_inventory"
+   → query the database for current stock levels (optionally filter by payload.category or payload.low_stock_only)
+   → return { ok: true, result: { items: [...], low_stock: [...] }, error: null }
+
+   "create_order"
+   → create a new guest/catering order from payload (fields: items[], customer, delivery_date, notes)
+   → return { ok: true, result: { order_id, status: 'created' }, error: null }
+
+   "get_sales"
+   → return aggregated sales data for payload.date_from / payload.date_to
+   → return { ok: true, result: { total_revenue, covers, top_items: [...] }, error: null }
+
+   "get_haccp_logs"
+   → return recent HACCP temperature logs for payload.zone or all zones
+   → return { ok: true, result: { logs: [...], alerts: [...] }, error: null }
+
+   "ask"
+   → pass payload.query to the app's AI assistant logic (Kios or the main LLM) and return
+   → { ok: true, result: { answer: '...' }, error: null }
+
+   default (any other action)
+   → res.json({ ok: false, result: null, error: `Unknown action: ${action}` })
+
+4. Add IYVERIS_MESH_KEY to the app's Replit secrets with this value:
+   iOeOQsxCM1IN75AFPNQHTRGOF-n1kTRCULdUp1AJZ18
+
+5. The endpoint should be accessible at the root API server path — e.g. if the API runs at /api, the full path is POST /api/iyveris. Verify the route is not blocked by auth middleware (this endpoint uses its own mesh key check, not the app's normal auth).
+
+No other changes to the app are needed. This single endpoint makes KitchenOS fully reachable from the entire Iyveris ecosystem.
