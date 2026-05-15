@@ -1,0 +1,45 @@
+The app is running but is missing one endpoint. This is a monorepo — add the route to the Express API server only (not the Expo app or the Vite marketing site).
+
+POST /api/iyveris
+
+Find the main Express router file in the API server package (e.g. packages/api/src/routes/index.ts or src/app.ts) and add:
+
+router.post('/api/iyveris', async (req, res) => {
+  const meshKey = req.headers['x-iyveris-mesh-key'];
+  if (meshKey !== process.env.IYVERIS_MESH_KEY) {
+    return res.status(401).json({ ok: false, result: null, error: 'Invalid mesh key' });
+  }
+  const { action, payload } = req.body;
+
+  if (action === 'ping') {
+    return res.json({ ok: true, result: { status: 'active', service: 'kitchenos' }, error: null });
+  }
+  if (action === 'capabilities') {
+    return res.json({ ok: true, result: ['kitchen', 'horeca', 'menu', 'inventory', 'haccp', 'pos', 'catering', 'staff-scheduling'], error: null });
+  }
+  if (action === 'get_menu') {
+    const items = await db.query.menuItems.findMany({ where: eq(menuItems.active, true) });
+    return res.json({ ok: true, result: { items }, error: null });
+  }
+  if (action === 'get_inventory') {
+    const items = await db.query.inventory.findMany();
+    return res.json({ ok: true, result: { items }, error: null });
+  }
+  if (action === 'create_order') {
+    const order = await createOrder(payload);
+    return res.json({ ok: true, result: { order_id: order.id, status: 'created' }, error: null });
+  }
+  if (action === 'ask') {
+    const answer = await kiosAsk(payload.query);
+    return res.json({ ok: true, result: { answer }, error: null });
+  }
+  return res.json({ ok: false, result: null, error: `Unknown action: ${action}` });
+});
+
+Replace db.query, createOrder(), and kiosAsk() with the actual database and service functions used in the app.
+
+Also add IYVERIS_MESH_KEY to Replit Secrets with value:
+iOeOQsxCM1IN75AFPNQHTRGOF-n1kTRCULdUp1AJZ18
+
+Make sure this route is NOT blocked by authentication middleware — it uses its own mesh key check.
+Redeploy the app after adding the endpoint.
