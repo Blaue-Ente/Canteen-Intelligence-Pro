@@ -13,6 +13,7 @@ import trayScanRouter from "./trayScan";
 import { pushRouter } from "./push";
 import recipeLibraryRouter from "./recipeLibrary";
 import foodLookupRouter from "./foodLookup";
+import iyverisRouter from "./iyveris";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(demoAuthRouter);
 router.use(pushRouter);
 router.use(recipeLibraryRouter);
 router.use(foodLookupRouter);
+router.use(iyverisRouter);
 
 export default router;
