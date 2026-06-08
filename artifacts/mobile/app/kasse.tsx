@@ -31,7 +31,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as Print from "expo-print";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
@@ -334,6 +334,7 @@ export default function Kasse() {
 function KassePos() {
   const { state, dispatch, newId } = useApp();
   const author = useAuthor();
+  const router = useRouter();
   const { currentMembership } = useAuthCtx();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -2316,6 +2317,27 @@ function KassePos() {
                 </View>
               )}
             </View>
+
+            {/* Tray scan shortcut */}
+            <Pressable
+              onPress={() => router.push("/tray-scan")}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 5,
+                backgroundColor: P.primary + "22",
+                borderRadius: 8,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderWidth: 1,
+                borderColor: P.primary + "44",
+              }}
+            >
+              <Feather name="camera" size={14} color={P.primary} />
+              <Text style={{ color: P.primary, fontFamily: "Inter_600SemiBold", fontSize: 12 }}>
+                {isDe ? "Tablett" : "Tray"}
+              </Text>
+            </Pressable>
 
             {/* View switcher */}
             <View
