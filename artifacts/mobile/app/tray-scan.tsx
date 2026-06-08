@@ -15,6 +15,7 @@ import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
 import { Stack, useRouter } from "expo-router";
+import * as Print from "expo-print";
 import React, { useCallback, useEffect, useRef, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -113,6 +114,13 @@ export default function TrayScanScreen() {
     Array<{ label: string; value: number; count: number; type: "banknote" | "coin" }>
   >([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // "input" = method selection + amount entry | "complete" = drawer opened, show change + actions
+  const [payStep, setPayStep] = useState<"input" | "complete">("input");
+  const [completedTotal, setCompletedTotal] = useState(0);
+  const [completedChange, setCompletedChange] = useState(0);
+  const [completedMethod, setCompletedMethod] = useState<"cash" | "card">("cash");
+  // Snapshot of booked items for receipt printing
+  const [completedItems, setCompletedItems] = useState<typeof activeItems>([]);
 
   // ── Active location cash drawer URL ──────────────────────────────────
   const activeLocationId = state.currentLocationId ?? "primary";
@@ -407,9 +415,83 @@ export default function TrayScanScreen() {
     }
   }, [isDe, t]);
 
-  // ── Internal: actually book the sale after payment confirmed ──────────
+  // ── Print a simple tray-scan receipt via AirPrint / expo-print ────────
+  const printTrayReceipt = useCallback(async (
+    items: typeof activeItems,
+    tot: number,
+    method: "cash" | "card",
+    change: number,
+  ) => {
+    const companyName = state.companyProfile?.name ?? "KItchenOS Kasse";
+    const now = new Date();
+    const dateStr = now.toLocaleDateString("de-DE");
+    const timeStr = now.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+    const methodLabel = method === "card"
+      ? (isDe ? "EC-/Kreditkarte" : "Card")
+      : (isDe ? "Bargeld" : "Cash");
+    const rows = items
+      .map((i) => `<tr><td>${i.name}</td><td>${i.qty}×</td><td class="r">€${(i.pricePerUnit * i.qty).toFixed(2)}</td></tr>`)
+      .join("");
+    const changeRow = method === "cash" && change > 0
+      ? `<tr class="change"><td colspan="2">${isDe ? "Rückgeld" : "Change"}</td><td class="r">€${change.toFixed(2)}</td></tr>`
+      : "";
+    const html = `<!doctype html><html><head><meta charset="utf-8">
+      <style>
+        body{font-family:monospace;font-size:13px;padding:16px;max-width:320px;margin:auto}
+        h2{text-align:center;font-size:14px;margin:0 0 4px}
+        .meta{text-align:center;font-size:11px;color:#666;margin-bottom:12px}
+        table{width:100%;border-collapse:collapse}
+        td{padding:3px 2px}
+        .r{text-align:right}
+        .total td{font-weight:bold;border-top:1px solid #000;padding-top:6px}
+        .change td{color:#15803d}
+        .method{text-align:center;margin-top:8px;font-size:11px;color:#444}
+        .thanks{text-align:center;margin-top:12px;font-size:11px}
+      </style></head><body>
+      <h2>${companyName}</h2>
+      <div class="meta">${dateStr} · ${timeStr}</div>
+      <table>
+        ${rows}
+        <tr class="total"><td colspan="2">${isDe ? "Gesamt" : "Total"}</td><td class="r">€${tot.toFixed(2)}</td></tr>
+        ${changeRow}
+      </table>
+      <div class="method">${methodLabel}</div>
+      <div class="thanks">${isDe ? "Vielen Dank!" : "Thank you!"}</div>
+    </body></html>`;
+    try {
+      await Print.printAsync({ html });
+    } catch (err) {
+      Alert.alert(
+        isDe ? "Druckfehler" : "Print error",
+        err instanceof Error ? err.message : "unknown",
+      );
+    }
+  }, [state.companyProfile?.name, isDe]);
+
+  // ── Dismiss completed payment → reset + optional auto-mode ─────────────
+  const dismissPayment = useCallback(() => {
+    setShowPayModal(false);
+    setPayStep("input");
+    setGivenAmount("");
+    setCashDenominations([]);
+    setDrawerOpen(false);
+    setCompletedItems([]);
+    setSession(undefined);
+    setPhotoUri(undefined);
+    if (autoMode) {
+      setAutoCountdown(3);
+    }
+  }, [autoMode]);
+
+  // ── Internal: book the sale, open drawer, switch to "complete" step ───
   const finalizeBooking = useCallback(async (method: "cash" | "card") => {
     if (!session || activeItems.length === 0) return;
+
+    const itemsSnapshot = [...activeItems];
+    const totSnapshot = total;
+    const changeSnapshot = method === "cash"
+      ? Math.round((givenNum - total) * 100) / 100
+      : 0;
 
     const now = new Date().toISOString();
     const confirmed: TraySession = {
@@ -440,19 +522,24 @@ export default function TrayScanScreen() {
       }
     }
 
-    // Close pay modal + reset scan state
-    setShowPayModal(false);
-    setGivenAmount("");
-    setCashDenominations([]);
-    setDrawerOpen(false);
-    setSession(undefined);
-    setPhotoUri(undefined);
+    // Store completion state for the "complete" step
+    setCompletedTotal(totSnapshot);
+    setCompletedChange(changeSnapshot);
+    setCompletedMethod(method);
+    setCompletedItems(itemsSnapshot);
 
-    // Auto-Modus: countdown 3s then trigger next scan
-    if (autoMode) {
-      setAutoCountdown(3);
+    // Auto-open cash drawer for cash payments
+    if (method === "cash") {
+      const drawerUrl = activeTseConfig?.cashDrawerUrl;
+      if (drawerUrl) {
+        fetch(drawerUrl, { method: "GET" }).catch(() => {/* silent — show step regardless */});
+      }
+      setDrawerOpen(true);
     }
-  }, [session, activeItems, total, queue, dispatch, newId, today, state.currentLocationId, autoMode]);
+
+    // Switch modal to "complete" step (show change + receipt/next buttons)
+    setPayStep("complete");
+  }, [session, activeItems, total, givenNum, queue, dispatch, newId, today, state.currentLocationId, activeTseConfig?.cashDrawerUrl]);
 
   // ── Payment modal open (called from "Bestellung buchen" button) ───────
   const confirmOrder = () => {
@@ -461,6 +548,8 @@ export default function TrayScanScreen() {
     setGivenAmount("");
     setCashDenominations([]);
     setDrawerOpen(false);
+    setPayStep("input");
+    setCompletedItems([]);
     setShowPayModal(true);
   };
 
@@ -1076,24 +1165,20 @@ export default function TrayScanScreen() {
       </ScrollView>
 
       {/* ═══════════════════════════════════════════════════════════════
-          PAYMENT MODAL
-          Opens after cashier taps "Bestellung buchen".
-          Steps: choose method → (cash) enter given amount / scan cash →
-                 open drawer → confirm → finalizeBooking()
+          PAYMENT MODAL — two-step flow
+          Step "input"   : choose method → enter / scan cash amount → confirm
+          Step "complete": drawer opened, show change, Bon drucken / Nächster Kunde
           ═══════════════════════════════════════════════════════════════ */}
       <Modal
         visible={showPayModal}
         animationType="slide"
         transparent
-        onRequestClose={() => setShowPayModal(false)}
+        onRequestClose={() => {
+          if (payStep === "complete") dismissPayment();
+          else setShowPayModal(false);
+        }}
       >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: "rgba(0,0,0,0.55)",
-            justifyContent: "flex-end",
-          }}
-        >
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" }}>
           <View
             style={{
               backgroundColor: c.background,
@@ -1106,289 +1191,244 @@ export default function TrayScanScreen() {
             }}
           >
             {/* Drag handle */}
-            <View
-              style={{
-                width: 40,
-                height: 4,
-                borderRadius: 2,
-                backgroundColor: c.border,
-                alignSelf: "center",
-                marginBottom: 4,
-              }}
-            />
+            <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: c.border, alignSelf: "center", marginBottom: 4 }} />
 
-            {/* Title + total */}
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 18 }}>
-                {t("paymentMethod")}
-              </Text>
-              <Text style={{ color: c.primary, fontFamily: "Inter_700Bold", fontSize: 22 }}>
-                €{total.toFixed(2)}
-              </Text>
-            </View>
-
-            {/* Method picker */}
-            <View style={{ flexDirection: "row", gap: 10 }}>
-              {(["cash", "card"] as const).map((m) => {
-                const active = payMethod === m;
-                const icon = m === "cash" ? "dollar-sign" : "credit-card";
-                const label = m === "cash" ? t("payByCash") : t("payByCard");
-                return (
-                  <Pressable
-                    key={m}
-                    onPress={() => {
-                      setPayMethod(m);
-                      setGivenAmount("");
-                      setCashDenominations([]);
-                    }}
-                    style={{
-                      flex: 1,
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 8,
-                      paddingVertical: 14,
-                      borderRadius: 12,
-                      borderWidth: 2,
-                      borderColor: active ? c.primary : c.border,
-                      backgroundColor: active ? c.primary + "18" : c.card,
-                    }}
-                  >
-                    <Feather name={icon} size={18} color={active ? c.primary : c.mutedForeground} />
-                    <Text
-                      style={{
-                        color: active ? c.primary : c.mutedForeground,
-                        fontFamily: active ? "Inter_700Bold" : "Inter_500Medium",
-                        fontSize: 15,
-                      }}
-                    >
-                      {label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            {/* ── CASH FLOW ─────────────────────────────────────────── */}
-            {payMethod === "cash" && (
+            {/* ──────────── STEP 1: INPUT ──────────── */}
+            {payStep === "input" && (
               <>
-                {/* Cash drawer button */}
-                <Pressable
-                  onPress={() => void openCashDrawer()}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                    paddingVertical: 12,
-                    borderRadius: 10,
-                    backgroundColor: drawerOpen ? c.success + "22" : c.muted,
-                    borderWidth: 1,
-                    borderColor: drawerOpen ? c.success + "55" : c.border,
-                  }}
-                >
-                  <Feather
-                    name={drawerOpen ? "check-circle" : "inbox"}
-                    size={16}
-                    color={drawerOpen ? c.success : c.foreground}
-                  />
-                  <Text
-                    style={{
-                      color: drawerOpen ? c.success : c.foreground,
-                      fontFamily: "Inter_600SemiBold",
-                      fontSize: 14,
-                    }}
-                  >
-                    {drawerOpen ? t("drawerOpened") : t("openDrawer")}
+                {/* Title + total */}
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 18 }}>
+                    {t("paymentMethod")}
                   </Text>
-                </Pressable>
-
-                {/* Given amount + banknote scanner */}
-                <View style={{ gap: 8 }}>
-                  <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 13 }}>
-                    {t("cashGiven")}
+                  <Text style={{ color: c.primary, fontFamily: "Inter_700Bold", fontSize: 24 }}>
+                    €{total.toFixed(2)}
                   </Text>
-                  <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-                    <TextInput
-                      value={givenAmount}
-                      onChangeText={setGivenAmount}
-                      keyboardType="decimal-pad"
-                      placeholder="0.00"
-                      placeholderTextColor={c.mutedForeground}
-                      style={{
-                        flex: 1,
-                        borderWidth: 1,
-                        borderColor: c.border,
-                        borderRadius: 10,
-                        paddingHorizontal: 14,
-                        paddingVertical: 12,
-                        color: c.foreground,
-                        fontFamily: "Inter_700Bold",
-                        fontSize: 22,
-                        backgroundColor: c.card,
-                      }}
-                    />
-                    {/* Banknote camera button */}
-                    <Pressable
-                      onPress={() => void runCashScan()}
-                      disabled={cashScanning}
-                      style={{
-                        width: 52,
-                        height: 52,
-                        borderRadius: 12,
-                        backgroundColor: c.primary + "22",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        borderWidth: 1,
-                        borderColor: c.primary + "44",
-                      }}
-                    >
-                      {cashScanning
-                        ? <ActivityIndicator size="small" color={c.primary} />
-                        : <Feather name="camera" size={22} color={c.primary} />}
-                    </Pressable>
-                  </View>
-                  {cashScanning && (
-                    <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12 }}>
-                      {t("scanningCash")}
-                    </Text>
-                  )}
-
-                  {/* Recognised denominations */}
-                  {cashDenominations.length > 0 && (
-                    <View
-                      style={{
-                        backgroundColor: c.card,
-                        borderRadius: 10,
-                        padding: 12,
-                        gap: 6,
-                        borderWidth: 1,
-                        borderColor: c.border,
-                      }}
-                    >
-                      <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 11 }}>
-                        {t("cashScanResult")}
-                      </Text>
-                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                        {cashDenominations.map((d, i) => (
-                          <View
-                            key={i}
-                            style={{
-                              flexDirection: "row",
-                              alignItems: "center",
-                              gap: 4,
-                              backgroundColor: d.type === "banknote" ? c.primary + "18" : c.muted,
-                              paddingHorizontal: 8,
-                              paddingVertical: 4,
-                              borderRadius: 8,
-                            }}
-                          >
-                            <Feather
-                              name={d.type === "banknote" ? "bookmark" : "circle"}
-                              size={10}
-                              color={d.type === "banknote" ? c.primary : c.mutedForeground}
-                            />
-                            <Text style={{ color: c.foreground, fontFamily: "Inter_600SemiBold", fontSize: 12 }}>
-                              {d.count > 1 ? `${d.count}×` : ""} {d.label}
-                            </Text>
-                          </View>
-                        ))}
-                      </View>
-                    </View>
-                  )}
                 </View>
 
-                {/* Change display */}
-                {givenAmount !== "" && (
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      padding: 14,
-                      borderRadius: 12,
-                      backgroundColor: changeNum >= 0 ? c.success + "18" : c.destructive + "18",
-                      borderWidth: 1,
-                      borderColor: changeNum >= 0 ? c.success + "44" : c.destructive + "44",
-                    }}
-                  >
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                      <Feather
-                        name={changeNum >= 0 ? "arrow-left" : "alert-circle"}
-                        size={16}
-                        color={changeNum >= 0 ? c.success : c.destructive}
-                      />
-                      <Text
+                {/* Method picker */}
+                <View style={{ flexDirection: "row", gap: 10 }}>
+                  {(["cash", "card"] as const).map((m) => {
+                    const active = payMethod === m;
+                    const icon = m === "cash" ? "dollar-sign" : "credit-card";
+                    const label = m === "cash" ? t("payByCash") : t("payByCard");
+                    return (
+                      <Pressable
+                        key={m}
+                        onPress={() => { setPayMethod(m); setGivenAmount(""); setCashDenominations([]); }}
                         style={{
-                          color: changeNum >= 0 ? c.success : c.destructive,
-                          fontFamily: "Inter_600SemiBold",
-                          fontSize: 14,
+                          flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+                          gap: 8, paddingVertical: 14, borderRadius: 12, borderWidth: 2,
+                          borderColor: active ? c.primary : c.border,
+                          backgroundColor: active ? c.primary + "18" : c.card,
                         }}
                       >
-                        {t("changeAmount")}
+                        <Feather name={icon} size={18} color={active ? c.primary : c.mutedForeground} />
+                        <Text style={{ color: active ? c.primary : c.mutedForeground, fontFamily: active ? "Inter_700Bold" : "Inter_500Medium", fontSize: 15 }}>
+                          {label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                {/* ── CASH: amount entry + banknote scanner ── */}
+                {payMethod === "cash" && (
+                  <>
+                    <View style={{ gap: 8 }}>
+                      <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 13 }}>
+                        {t("cashGiven")}
                       </Text>
+                      <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+                        <TextInput
+                          value={givenAmount}
+                          onChangeText={setGivenAmount}
+                          keyboardType="decimal-pad"
+                          placeholder="0.00"
+                          placeholderTextColor={c.mutedForeground}
+                          style={{
+                            flex: 1, borderWidth: 1, borderColor: c.border, borderRadius: 10,
+                            paddingHorizontal: 14, paddingVertical: 12,
+                            color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 24,
+                            backgroundColor: c.card,
+                          }}
+                        />
+                        {/* Banknote AI camera */}
+                        <Pressable
+                          onPress={() => void runCashScan()}
+                          disabled={cashScanning}
+                          style={{
+                            width: 54, height: 54, borderRadius: 12,
+                            backgroundColor: c.primary + "22",
+                            alignItems: "center", justifyContent: "center",
+                            borderWidth: 1, borderColor: c.primary + "44",
+                          }}
+                        >
+                          {cashScanning
+                            ? <ActivityIndicator size="small" color={c.primary} />
+                            : <Feather name="camera" size={22} color={c.primary} />}
+                        </Pressable>
+                      </View>
+                      {cashScanning && (
+                        <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12 }}>
+                          {t("scanningCash")}
+                        </Text>
+                      )}
+                      {/* Denominations chip list */}
+                      {cashDenominations.length > 0 && (
+                        <View style={{ backgroundColor: c.card, borderRadius: 10, padding: 10, gap: 6, borderWidth: 1, borderColor: c.border }}>
+                          <Text style={{ color: c.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 11 }}>{t("cashScanResult")}</Text>
+                          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                            {cashDenominations.map((d, i) => (
+                              <View
+                                key={i}
+                                style={{
+                                  flexDirection: "row", alignItems: "center", gap: 4,
+                                  backgroundColor: d.type === "banknote" ? c.primary + "18" : c.muted,
+                                  paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8,
+                                }}
+                              >
+                                <Feather name={d.type === "banknote" ? "bookmark" : "circle"} size={10} color={d.type === "banknote" ? c.primary : c.mutedForeground} />
+                                <Text style={{ color: c.foreground, fontFamily: "Inter_600SemiBold", fontSize: 12 }}>
+                                  {d.count > 1 ? `${d.count}× ` : ""}{d.label}
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+                        </View>
+                      )}
                     </View>
-                    <Text
-                      style={{
-                        color: changeNum >= 0 ? c.success : c.destructive,
-                        fontFamily: "Inter_700Bold",
-                        fontSize: 22,
-                      }}
-                    >
-                      €{Math.abs(changeNum).toFixed(2)}
+
+                    {/* Live change preview */}
+                    {givenAmount !== "" && (
+                      <View
+                        style={{
+                          flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+                          padding: 14, borderRadius: 12,
+                          backgroundColor: changeNum >= 0 ? c.success + "18" : c.destructive + "18",
+                          borderWidth: 1, borderColor: changeNum >= 0 ? c.success + "44" : c.destructive + "44",
+                        }}
+                      >
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                          <Feather name={changeNum >= 0 ? "corner-down-left" : "alert-circle"} size={16} color={changeNum >= 0 ? c.success : c.destructive} />
+                          <Text style={{ color: changeNum >= 0 ? c.success : c.destructive, fontFamily: "Inter_600SemiBold", fontSize: 14 }}>
+                            {t("changeAmount")}
+                          </Text>
+                        </View>
+                        <Text style={{ color: changeNum >= 0 ? c.success : c.destructive, fontFamily: "Inter_700Bold", fontSize: 24 }}>
+                          €{Math.abs(changeNum).toFixed(2)}
+                        </Text>
+                      </View>
+                    )}
+                  </>
+                )}
+
+                {/* ── CARD: instruction ── */}
+                {payMethod === "card" && (
+                  <View style={{ padding: 16, borderRadius: 12, backgroundColor: c.card, borderWidth: 1, borderColor: c.border, flexDirection: "row", alignItems: "center", gap: 12 }}>
+                    <Feather name="credit-card" size={24} color={c.primary} />
+                    <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 14, flex: 1 }}>
+                      {isDe
+                        ? `€${total.toFixed(2)} — Karte am Terminal einlesen, dann bestätigen.`
+                        : `€${total.toFixed(2)} — Process card on terminal, then confirm.`}
                     </Text>
                   </View>
                 )}
+
+                {/* Action buttons */}
+                <View style={{ flexDirection: "row", gap: 10 }}>
+                  <Button
+                    label={t("cancel")}
+                    variant="ghost"
+                    onPress={() => setShowPayModal(false)}
+                    style={{ flex: 1 }}
+                  />
+                  <Button
+                    label={t("payConfirm")}
+                    icon="check"
+                    onPress={() => {
+                      if (payMethod === "cash" && givenAmount !== "" && changeNum < 0) {
+                        Alert.alert(isDe ? "Ungültiger Betrag" : "Invalid amount", t("insufficientAmount"));
+                        return;
+                      }
+                      void finalizeBooking(payMethod);
+                    }}
+                    style={{ flex: 2 }}
+                  />
+                </View>
               </>
             )}
 
-            {/* ── CARD FLOW ─────────────────────────────────────────── */}
-            {payMethod === "card" && (
-              <View
-                style={{
-                  padding: 16,
-                  borderRadius: 12,
-                  backgroundColor: c.card,
-                  borderWidth: 1,
-                  borderColor: c.border,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 12,
-                }}
-              >
-                <Feather name="credit-card" size={24} color={c.primary} />
-                <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 14, flex: 1 }}>
-                  {isDe
-                    ? `€${total.toFixed(2)} — Karte am Terminal einlesen, dann bestätigen.`
-                    : `€${total.toFixed(2)} — Process card on terminal, then confirm.`}
-                </Text>
-              </View>
-            )}
+            {/* ──────────── STEP 2: COMPLETE ──────────── */}
+            {payStep === "complete" && (
+              <>
+                {/* Success icon */}
+                <View style={{ alignItems: "center", gap: 10, paddingVertical: 8 }}>
+                  <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: c.success + "22", alignItems: "center", justifyContent: "center" }}>
+                    <Feather name="check" size={32} color={c.success} />
+                  </View>
+                  <Text style={{ color: c.foreground, fontFamily: "Inter_700Bold", fontSize: 18 }}>
+                    {isDe ? "Zahlung erfasst" : "Payment recorded"}
+                  </Text>
+                  <Text style={{ color: c.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 13, textAlign: "center" }}>
+                    €{completedTotal.toFixed(2)} · {completedMethod === "cash" ? t("payByCash") : t("payByCard")}
+                  </Text>
+                </View>
 
-            {/* Action buttons */}
-            <View style={{ flexDirection: "row", gap: 10 }}>
-              <Button
-                label={t("cancel")}
-                variant="ghost"
-                onPress={() => setShowPayModal(false)}
-                style={{ flex: 1 }}
-              />
-              <Button
-                label={t("payConfirm")}
-                icon="check"
-                onPress={() => {
-                  if (payMethod === "cash" && givenAmount !== "" && changeNum < 0) {
-                    Alert.alert(
-                      isDe ? "Ungültiger Betrag" : "Invalid amount",
-                      t("insufficientAmount"),
-                    );
-                    return;
-                  }
-                  void finalizeBooking(payMethod);
-                }}
-                style={{ flex: 2 }}
-              />
-            </View>
+                {/* Drawer status (cash only) */}
+                {completedMethod === "cash" && (
+                  <View
+                    style={{
+                      flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10,
+                      padding: 12, borderRadius: 12,
+                      backgroundColor: c.primary + "15",
+                      borderWidth: 1, borderColor: c.primary + "33",
+                    }}
+                  >
+                    <Feather name="inbox" size={18} color={c.primary} />
+                    <Text style={{ color: c.primary, fontFamily: "Inter_600SemiBold", fontSize: 14 }}>
+                      {t("drawerOpened")}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Change amount — big display */}
+                {completedMethod === "cash" && completedChange > 0 && (
+                  <View
+                    style={{
+                      alignItems: "center", gap: 4, padding: 20, borderRadius: 16,
+                      backgroundColor: c.success + "18",
+                      borderWidth: 2, borderColor: c.success + "55",
+                    }}
+                  >
+                    <Text style={{ color: c.success, fontFamily: "Inter_500Medium", fontSize: 14 }}>
+                      {t("changeAmount")}
+                    </Text>
+                    <Text style={{ color: c.success, fontFamily: "Inter_700Bold", fontSize: 40 }}>
+                      €{completedChange.toFixed(2)}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Actions: print receipt OR next customer */}
+                <View style={{ gap: 10 }}>
+                  <Button
+                    label={t("printAndNext")}
+                    icon="printer"
+                    onPress={async () => {
+                      await printTrayReceipt(completedItems, completedTotal, completedMethod, completedChange);
+                      dismissPayment();
+                    }}
+                  />
+                  <Button
+                    label={t("nextCustomer")}
+                    icon="arrow-right"
+                    variant="ghost"
+                    onPress={dismissPayment}
+                  />
+                </View>
+              </>
+            )}
           </View>
         </View>
       </Modal>

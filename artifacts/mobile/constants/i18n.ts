@@ -652,6 +652,9 @@ const dict = {
     payConfirm:         "Zahlung abschließen",
     insertAmount:       "Betrag eingeben",
     insufficientAmount: "Betrag zu gering — Rückgeld wäre negativ",
+    nextCustomer:       "Nächster Kunde",
+    printAndNext:       "Bon drucken & weiter",
+    drawerOpening:      "Kassenschublade wird geöffnet…",
   },
   en: {
     appName: "KItchenOS",
@@ -1304,6 +1307,9 @@ const dict = {
     payConfirm:         "Complete payment",
     insertAmount:       "Enter amount",
     insufficientAmount: "Amount too low — change would be negative",
+    nextCustomer:       "Next customer",
+    printAndNext:       "Print receipt & continue",
+    drawerOpening:      "Opening cash drawer…",
   },
 } as const;
 

@@ -535,7 +535,10 @@ router.post("/ai/cash-scan", async (req: Request, res: Response) => {
 
   try {
     const completion = await openai.chat.completions.create({
-      model: "gpt-5.4",
+      // gpt-4o-mini: denomination recognition is a structured/constrained task —
+      // the output space is a known set of Euro values, so a smaller model is
+      // accurate enough and ~10× cheaper than gpt-5.4.
+      model: "gpt-4o-mini",
       max_completion_tokens: 512,
       response_format: { type: "json_object" },
       messages: [
