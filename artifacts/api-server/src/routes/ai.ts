@@ -488,4 +488,87 @@ router.post("/ai/import-recipes", async (req: Request, res: Response) => {
   }
 });
 
+// ── Cash / banknote scan ─────────────────────────────────────────────────────
+//
+// Accepts a base64 JPEG of Euro banknotes and/or coins lying on a surface.
+// Returns the recognised denominations and their sum so the frontend can
+// pre-fill the "Gegeben" (amount received) field in the cash payment flow.
+
+interface CashScanBody {
+  imageBase64: string;
+}
+
+interface CashDenomination {
+  label: string;       // e.g. "20 €", "2 €", "50 ct"
+  value: number;       // face value in EUR (e.g. 20, 2, 0.50)
+  count: number;       // how many of this denomination are visible
+  type: "banknote" | "coin";
+}
+
+interface CashScanResult {
+  total: number;
+  denominations: CashDenomination[];
+}
+
+router.post("/ai/cash-scan", async (req: Request, res: Response) => {
+  const { imageBase64 } = req.body as CashScanBody;
+  if (!imageBase64) {
+    res.status(400).json({ error: "imageBase64 required" });
+    return;
+  }
+  if (imageBase64.length > 20 * 1024 * 1024) {
+    res.status(413).json({ error: "Image too large (max 15 MB base64)" });
+    return;
+  }
+
+  const systemPrompt = [
+    "You are a Euro cash recognition system for a German POS terminal.",
+    "The user will send you a photo of Euro banknotes and/or coins.",
+    "Identify every visible denomination and count how many of each appear.",
+    "Euro banknotes: 5, 10, 20, 50, 100, 200, 500 EUR.",
+    "Euro coins: 0.01, 0.02, 0.05, 0.10, 0.20, 0.50, 1.00, 2.00 EUR.",
+    "Respond with ONLY a JSON object matching this schema (no markdown):",
+    '{ "total": <number>, "denominations": [{ "label": "20 €", "value": 20, "count": 1, "type": "banknote" }, ...] }',
+    "If no money is visible, return { \"total\": 0, \"denominations\": [] }.",
+    "Round total to 2 decimal places.",
+  ].join("\n");
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-5.4",
+      max_completion_tokens: 512,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "image_url",
+              image_url: {
+                url: `data:image/jpeg;base64,${imageBase64}`,
+                detail: "high",
+              },
+            },
+            { type: "text", text: systemPrompt },
+          ],
+        },
+      ],
+    });
+
+    const raw = completion.choices[0]?.message?.content ?? "{}";
+    let result: CashScanResult = { total: 0, denominations: [] };
+    try {
+      result = JSON.parse(raw) as CashScanResult;
+      // Clamp total to 2 decimals
+      result.total = Math.round(result.total * 100) / 100;
+    } catch {
+      req.log.warn({ raw }, "cash-scan: failed to parse model JSON");
+    }
+    res.json(result);
+  } catch (err) {
+    req.log.error({ err }, "cash-scan error");
+    res.status(500).json({ error: err instanceof Error ? err.message : "unknown" });
+  }
+});
+
 export default router;

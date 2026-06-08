@@ -867,6 +867,12 @@ export interface TseConfig {
   /** Fiskaly client/TSS id when using a real cloud provider. */
   fiskalyClientId?: string;
   fiskalyTssId?: string;
+  /**
+   * Optional HTTP URL of a network cash drawer (e.g. Star mPOP or Epson LAN drawer).
+   * A GET request to this URL triggers the drawer to open.
+   * Example: "http://192.168.1.100/open"
+   */
+  cashDrawerUrl?: string;
 }
 
 /** A SaleEntry with its TSE signature attached. KassenSichV §6 mandatory fields. */
