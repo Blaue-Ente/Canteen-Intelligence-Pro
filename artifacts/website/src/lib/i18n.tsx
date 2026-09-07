@@ -490,7 +490,9 @@ const de: Dict = {
   demoMsgLabel: "Was möchten Sie erreichen?",
   demoMsgPh: "Wir möchten unsere Vorbestellung digitalisieren …",
   demoSubmit: "Demo anfragen",
+  demoSending: "Wird gesendet…",
   demoThanks: "Danke! Wir melden uns innerhalb eines Werktages.",
+  demoError: "Senden fehlgeschlagen. Bitte später erneut versuchen oder uns per E-Mail schreiben.",
 
   // Downloads
   downloadsTitle: "Downloads & Ressourcen",
@@ -980,7 +982,9 @@ const en: Dict = {
   demoMsgLabel: "What are you trying to achieve?",
   demoMsgPh: "We want to digitise our pre-order flow …",
   demoSubmit: "Request demo",
+  demoSending: "Sending…",
   demoThanks: "Thanks! We'll get back to you within one working day.",
+  demoError: "Could not send. Please try again later or email us.",
 
   downloadsTitle: "Downloads & resources",
   downloadsSub:

@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/clerk-react";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { CartProvider } from "@/hooks/use-cart";
 import NotFound from "@/pages/not-found";
 
 import Landing from "@/pages/landing";
@@ -66,10 +67,12 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ClerkTokenBridge />
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
+        <CartProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <Router />
+          </WouterRouter>
+          <Toaster />
+        </CartProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );

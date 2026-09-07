@@ -10,6 +10,22 @@ export function setApiTokenGetter(g: TokenGetter | null): void {
   tokenGetter = g;
 }
 
+export async function getAuthToken(): Promise<string | null> {
+  if (!tokenGetter) return null;
+  try {
+    return await tokenGetter();
+  } catch {
+    return null;
+  }
+}
+
+export async function authHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const token = await getAuthToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
 export async function apiFetch<T = unknown>(
   path: string,
   init: { method?: string; body?: unknown; headers?: Record<string, string> } = {},

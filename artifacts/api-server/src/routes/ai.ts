@@ -12,7 +12,11 @@ import {
   KIOS_STATIC_PHRASES_EN,
 } from "../lib/tts";
 
+import { requireAuth } from "../lib/auth";
+
 const router: IRouter = Router();
+
+router.use(requireAuth);
 
 // Map a friendly voice name → ElevenLabs voice ID.
 // Default = Sarah (warm German female), best for canteen Kios.

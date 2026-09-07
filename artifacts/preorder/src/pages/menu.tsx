@@ -1,11 +1,11 @@
 import { useState, useMemo } from "react";
 import { Link, useRoute, useLocation } from "wouter";
 import { SignedIn, SignedOut, useAuth } from "@clerk/clerk-react";
-import { useQuery } from "@tanstack/react-query";
 import {
   useGetPublishedMenu,
   useGetCustomerProfile,
   useListAnnouncements,
+  useListPublicWeeklyMenus,
   WeeklyMenu,
   WeeklyMenuDish,
 } from "@workspace/api-client-react";
@@ -98,18 +98,9 @@ export default function Menu() {
     query: { enabled: !!locationCode, queryKey: [`/api/preorder/menu/${locationCode}`] },
   });
 
-  // Weekly KW menus — public endpoint (no auth required)
-  const { data: weeklyMenus, isLoading: weeklyLoading } = useQuery<WeeklyMenu[]>({
-    queryKey: [`/api/preorder/weekly-menus/${locationCode}`],
-    queryFn: async () => {
-      if (!locationCode) return [];
-      const res = await fetch(
-        `${import.meta.env.BASE_URL}api/preorder/weekly-menus/${encodeURIComponent(locationCode)}`,
-      );
-      if (!res.ok) return [];
-      return res.json() as Promise<WeeklyMenu[]>;
-    },
-    enabled: !!locationCode,
+  // Weekly KW menus — origin-relative /api (never prefix with Vite BASE_PATH).
+  const { data: weeklyMenus, isLoading: weeklyLoading } = useListPublicWeeklyMenus(locationCode, {
+    query: { enabled: !!locationCode },
   });
 
   const { items, addItem, removeItem, total, count, clearCart } = useCart();
@@ -143,6 +134,21 @@ export default function Menu() {
   const locationName = legacyMenu?.locationName ?? locationCode;
   const currency = legacyMenu?.currency ?? weeklyMenus?.[0]?.currency ?? "EUR";
 
+  // Group weekly dates by KW — must run before any early return (Rules of Hooks).
+  const datesByWeek = useMemo(() => {
+    const weeks: { kw: number; year: number; dates: string[] }[] = [];
+    for (const d of deliveryDates) {
+      const { year, week } = getISOWeek(new Date(d + "T12:00:00"));
+      let bucket = weeks.find(w => w.kw === week && w.year === year);
+      if (!bucket) { bucket = { kw: week, year, dates: [] }; weeks.push(bucket); }
+      bucket.dates.push(d);
+    }
+    return weeks;
+  }, [deliveryDates]);
+
+  const [visibleWeekIdx, setVisibleWeekIdx] = useState(0);
+  const visibleWeek = datesByWeek[visibleWeekIdx];
+
   if (isLoading) {
     return (
       <div className="min-h-[100dvh] flex items-center justify-center p-6 bg-background">
@@ -164,21 +170,6 @@ export default function Menu() {
       </div>
     );
   }
-
-  // Group weekly dates by KW for the date picker
-  const datesByWeek = useMemo(() => {
-    const weeks: { kw: number; year: number; dates: string[] }[] = [];
-    for (const d of deliveryDates) {
-      const { year, week } = getISOWeek(new Date(d + "T12:00:00"));
-      let bucket = weeks.find(w => w.kw === week && w.year === year);
-      if (!bucket) { bucket = { kw: week, year, dates: [] }; weeks.push(bucket); }
-      bucket.dates.push(d);
-    }
-    return weeks;
-  }, [deliveryDates]);
-
-  const [visibleWeekIdx, setVisibleWeekIdx] = useState(0);
-  const visibleWeek = datesByWeek[visibleWeekIdx];
 
   return (
     <div className="min-h-[100dvh] pb-32 bg-background flex flex-col">
@@ -370,12 +361,12 @@ export default function Menu() {
                             <Minus className="w-4 h-4" />
                           </Button>
                           <span className="w-6 text-center font-medium">{qty}</span>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => addItem(dish as Parameters<typeof addItem>[0])}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => addItem(dish as Parameters<typeof addItem>[0], locationCode)}>
                             <Plus className="w-4 h-4" />
                           </Button>
                         </div>
                       ) : (
-                        <Button variant="secondary" size="sm" className="rounded-full px-4 font-medium" onClick={() => addItem(dish as Parameters<typeof addItem>[0])}>
+                        <Button variant="secondary" size="sm" className="rounded-full px-4 font-medium" onClick={() => addItem(dish as Parameters<typeof addItem>[0], locationCode)}>
                           Hinzufügen <span className="opacity-50 font-normal ml-1 text-xs">/ Add</span>
                         </Button>
                       )
@@ -404,7 +395,7 @@ export default function Menu() {
                 {ann.body && <p className="text-xs text-muted-foreground leading-relaxed">{ann.body}</p>}
                 {ann.hasFile && ann.fileName && (
                   <a
-                    href={`${import.meta.env.BASE_URL}api/preorder/announcements/${locationCode}/${ann.id}/file`}
+                    href={`/api/preorder/announcements/${locationCode}/${ann.id}/file`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline mt-1"

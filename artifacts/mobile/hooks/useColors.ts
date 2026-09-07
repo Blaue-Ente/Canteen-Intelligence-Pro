@@ -17,7 +17,8 @@ import { useApp } from "@/contexts/AppContext";
  */
 export function useColors() {
   const { state } = useApp();
-  const scheme = state.themeMode === "system" ? useColorScheme() : state.themeMode;
+  const systemScheme = useColorScheme();
+  const scheme = state.themeMode === "system" ? systemScheme : state.themeMode;
   const palette =
     scheme === "dark" && "dark" in colors
       ? (colors as unknown as Record<string, typeof colors.light>).dark

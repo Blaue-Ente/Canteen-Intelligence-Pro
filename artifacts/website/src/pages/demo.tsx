@@ -40,6 +40,8 @@ export default function Demo() {
   const { t, lang } = useI18n();
   const [sent, setSent] = useState(false);
   const [size, setSize] = useState<string>("");
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const isDe = lang === "de";
 
@@ -216,22 +218,46 @@ export default function Demo() {
             ) : (
               <form
                 className="grid gap-5"
-                onSubmit={(e) => {
+                onSubmit={async (e) => {
                   e.preventDefault();
-                  setSent(true);
+                  setFormError(null);
+                  const form = e.currentTarget;
+                  const fd = new FormData(form);
+                  setSubmitting(true);
+                  try {
+                    const res = await fetch("/api/leads", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        name: String(fd.get("name") ?? ""),
+                        company: String(fd.get("company") ?? ""),
+                        email: String(fd.get("email") ?? ""),
+                        size,
+                        message: String(fd.get("message") ?? ""),
+                      }),
+                    });
+                    if (!res.ok) {
+                      throw new Error("lead_failed");
+                    }
+                    setSent(true);
+                  } catch {
+                    setFormError(t("demoError"));
+                  } finally {
+                    setSubmitting(false);
+                  }
                 }}
               >
                 <div className="grid gap-2">
                   <Label htmlFor="name">{t("demoNameLabel")}</Label>
-                  <Input id="name" placeholder={t("demoNamePh")} required />
+                  <Input id="name" name="name" placeholder={t("demoNamePh")} required autoComplete="name" />
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="company">{t("demoCompanyLabel")}</Label>
-                  <Input id="company" placeholder={t("demoCompanyPh")} required />
+                  <Input id="company" name="company" placeholder={t("demoCompanyPh")} required autoComplete="organization" />
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="email">{t("demoEmailLabel")}</Label>
-                  <Input id="email" type="email" placeholder={t("demoEmailPh")} required />
+                  <Input id="email" name="email" type="email" placeholder={t("demoEmailPh")} required autoComplete="email" />
                 </div>
                 <div className="grid gap-2">
                   <Label>{t("demoSizeLabel")}</Label>
@@ -254,9 +280,16 @@ export default function Demo() {
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="msg">{t("demoMsgLabel")}</Label>
-                  <Textarea id="msg" placeholder={t("demoMsgPh")} rows={4} />
+                  <Textarea id="msg" name="message" placeholder={t("demoMsgPh")} rows={4} />
                 </div>
-                <Button size="lg" type="submit">{t("demoSubmit")}</Button>
+                {formError ? (
+                  <p className="text-sm text-destructive" role="alert">
+                    {formError}
+                  </p>
+                ) : null}
+                <Button size="lg" type="submit" disabled={submitting}>
+                  {submitting ? t("demoSending") : t("demoSubmit")}
+                </Button>
               </form>
             )}
           </CardContent>

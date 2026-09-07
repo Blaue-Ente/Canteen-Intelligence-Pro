@@ -1,4 +1,5 @@
 import { fetch as expoFetch } from "expo/fetch";
+import { authHeaders } from "@/lib/api";
 
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
@@ -21,7 +22,9 @@ export interface FoodProduct {
 }
 
 export async function lookupBarcode(barcode: string): Promise<FoodProduct> {
-  const res = await expoFetch(`${API_BASE}/api/food-lookup/${encodeURIComponent(barcode)}`);
+  const res = await expoFetch(`${API_BASE}/api/food-lookup/${encodeURIComponent(barcode)}`, {
+    headers: await authHeaders(),
+  });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `Fehler ${res.status}`);

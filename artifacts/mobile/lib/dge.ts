@@ -60,7 +60,8 @@ type ClassifierFeature =
   | "seaFish"
   | "vegetarianOrVegan"
   | "dairy"
-  | "softTexture";
+  | "softTexture"
+  | "sweet";
 
 const SCHULE_RULES: DgeRule[] = [
   {
@@ -165,8 +166,22 @@ const SCHULE_RULES: DgeRule[] = [
 ];
 
 const KITA_RULES: DgeRule[] = [
-  // Same backbone as Schule but daily fruit + dairy + softer fried cap.
-  ...SCHULE_RULES.filter((r) => r.id !== "fruit" && r.id !== "friedMax"),
+  // Kita is stricter than Schule: daily fruit + dairy, no weekly frying,
+  // more vegetarian days, sweets capped.
+  ...SCHULE_RULES.filter(
+    (r) => r.id !== "fruit" && r.id !== "friedMax" && r.id !== "vegetarianOrVegan",
+  ),
+  {
+    id: "vegetarianOrVegan",
+    labelDe: "Vegetarisch / vegan ≥ 3x / Woche",
+    labelEn: "Vegetarian/vegan ≥ 3x / week",
+    kind: "min",
+    thresholdPer7Days: 3,
+    weight: 1.0,
+    feature: "vegetarianOrVegan",
+    recommendDe: "Plane mindestens drei fleischlose Hauptgerichte in der Kita-Woche.",
+    recommendEn: "Plan at least three meat-free mains in the daycare week.",
+  },
   {
     id: "fruit",
     labelDe: "Obstportion täglich",
@@ -199,6 +214,17 @@ const KITA_RULES: DgeRule[] = [
     feature: "fried",
     recommendDe: "Frittierte Speisen für Kita-Kinder vermeiden.",
     recommendEn: "Avoid deep-fried items for nursery children.",
+  },
+  {
+    id: "sweetMax",
+    labelDe: "Süßspeise ≤ 1x / Woche",
+    labelEn: "Sweet dessert ≤ 1x / week",
+    kind: "max",
+    thresholdPer7Days: 1,
+    weight: 0.8,
+    feature: "sweet",
+    recommendDe: "Nachtisch mit Zucker höchstens einmal pro Woche — Obst bevorzugen.",
+    recommendEn: "Sugary dessert at most once per week — prefer fruit.",
   },
 ];
 
@@ -401,6 +427,8 @@ export interface RecipeFeatures {
   dairy: boolean;
   /** soup, stew or pureé — easy to chew. */
   softTexture: boolean;
+  /** sweet dessert / cake — limited in Kita. */
+  sweet: boolean;
 }
 
 const WHOLEGRAIN_KEYWORDS = [
@@ -457,6 +485,13 @@ const SEAFISH_KEYWORDS = [
 const SOFT_KEYWORDS = [
   "suppe", "eintopf", "püree", "brei", "auflauf", "ragout",
   "soup", "stew", "purée", "puree", "mash",
+];
+
+const SWEET_KEYWORDS = [
+  "kuchen", "torte", "muffin", "keks", "pudding", "eis", "nachtisch",
+  "süßspeise", "suessspeise", "dessert", "tiramisu", "mousse",
+  "schokolade", "brownie", "donut", "berliner", "pfannkuchen süß",
+  "cake", "cookie", "ice cream", "pudding",
 ];
 
 /**
@@ -542,6 +577,7 @@ export function classifyRecipe(
       text.includes("yoghurt") ||
       text.includes("cheese"),
     softTexture: recipe.type === "soup" || anyKeyword(text, SOFT_KEYWORDS),
+    sweet: recipe.type === "dessert" || anyKeyword(text, SWEET_KEYWORDS),
   };
 }
 
@@ -614,6 +650,7 @@ export function scoreMenu(input: ScoreInput): DgeScore {
       vegetarianOrVegan: false,
       dairy: false,
       softTexture: false,
+      sweet: false,
     };
     let anyRecipe = false;
     for (const id of entry.recipeIds ?? []) {
