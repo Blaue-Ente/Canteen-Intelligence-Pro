@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button } from "@/components/ui";
 import { getDgeKnowledge, getDgeLabel } from "@/constants/dgeAiKnowledge";
-import { searchOffline } from "@/constants/offlineKnowledge";
+import { isKitchenCommand, searchOffline } from "@/constants/offlineKnowledge";
 import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { streamChat, type AiChatMessage } from "@/lib/ai";
@@ -115,17 +115,24 @@ export default function Chat() {
       setBusy(true);
       let final = "";
       try {
-        const sys: AiChatMessage = { role: "system", content: buildSystemPrompt(state) };
-        const history: AiChatMessage[] = state.chat.map((m) => ({
-          role: m.role,
-          content: m.content,
-        }));
-        final = await streamChat(
-          [sys, ...history, { role: "user", content: text.trim() }],
-          (delta) => dispatch({ type: "updateLastChat", content: delta }),
-        );
+        const offline =
+          !isKitchenCommand(text.trim()) ? searchOffline(text.trim()) : null;
+        if (offline) {
+          const src = offline.source ? `\n\n*Quelle: ${offline.source}*` : "";
+          final = `📚 **Aus der Kios-Wissensbasis**\n\n${offline.answerFull}${src}`;
+          dispatch({ type: "updateLastChat", content: final });
+        } else {
+          const sys: AiChatMessage = { role: "system", content: buildSystemPrompt(state) };
+          const history: AiChatMessage[] = state.chat.map((m) => ({
+            role: m.role,
+            content: m.content,
+          }));
+          final = await streamChat(
+            [sys, ...history, { role: "user", content: text.trim() }],
+            (delta) => dispatch({ type: "updateLastChat", content: delta }),
+          );
+        }
       } catch (e) {
-        // Offline fallback: try the local knowledge base before showing error.
         const offline = searchOffline(text.trim());
         if (offline) {
           const src = offline.source ? `\n\n*Quelle: ${offline.source}*` : "";

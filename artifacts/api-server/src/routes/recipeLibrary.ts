@@ -1,8 +1,10 @@
 import { Router } from "express";
 import { db, recipeLibrary } from "@workspace/db";
 import { eq, ilike, or, sql } from "drizzle-orm";
+import { requireAuth } from "../lib/auth";
 
 const router = Router();
+router.use(requireAuth);
 
 /**
  * GET /api/recipe-library

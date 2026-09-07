@@ -171,20 +171,193 @@ export const OFFLINE_KNOWLEDGE: OfflineEntry[] = [
     answerFull: `**Mangelernährungs-Screening**\n\n**NRS-2002** (Krankenhaus):\n- Screening bei **Aufnahme** und wöchentlich\n- Score ≥ 3 → Ernährungstherapeutin einschalten\n- Fragen: BMI < 20,5? Gewichtsverlust? Reduzierte Nahrungsaufnahme? Schwere Erkrankung?\n\n**MNA-SF** (Senioren, Mini Nutritional Assessment):\n- Score < 8 → Mangelernährung → sofort handeln\n- Score 8–11 → Risiko → beobachten\n- Score 12+ → normal\n\nBei Mangelernährung: Trinknahrung (ONS), angereicherte Speisen, ggf. Sondenernährung.`,
     source: "DGEM-Leitlinie / DGE-Qualitätsstandard Krankenhausverpflegung 2020",
   },
+
+  // ── Kita: Zucker, Getränke, Sicherheit ────────────────────────────────────
+  {
+    keywords: [
+      "kita zucker", "zucker kita", "süßigkeiten kita", "nachtisch kita",
+      "dessert kita", "süßspeise kindergarten", "kita sweets", "sugar kindergarten",
+    ],
+    answerShort: "In der Kita höchstens 1 Süßspeise pro Woche — keine gesüßten Getränke.",
+    answerFull: `**Zucker in der Kita-Verpflegung** (DGE Kita 7. Aufl. 2022)\n\n- Süßspeisen / Nachtisch: **höchstens 1× pro Woche**\n- Keine gesüßten Milchprodukte als Alltag (Fruchtjoghurt mit Zucker, Kakao)\n- Natürliche Süße bevorzugen: Obst, ungesüßter Joghurt, Kompott ohne Zucker\n- Kuchen nur zu besonderen Anlässen, nicht im Speiseplan\n\n**Warum:** Kleinkinder prägen den Geschmack jetzt. Viel Zucker erhöht Karies- und Übergewichtsrisiko.`,
+    source: "DGE-Qualitätsstandard Kita-Verpflegung, 7. Auflage 2022",
+  },
+  {
+    keywords: [
+      "kita getränk", "kindergarten trinken", "kita wasser", "kita saft",
+      "kita limonade", "kita milch trinken", "kita drinks",
+    ],
+    answerShort: "In der Kita: Wasser und ungesüßter Tee. Kein Saft als Alltagsgetränk.",
+    answerFull: `**Getränke in der Kita**\n\n✅ Leitungswasser, stilles Mineralwasser, ungesüßter Kräutertee\n✅ Milch zu den Mahlzeiten (Vollmilch 3,5 % für U3, 1,5 % ab Ü3 üblich)\n\n❌ Limonade, Eistee, Nektar, Smoothies als Getränk, gesüßter Kakao im Alltag\n❌ Fruchtsaft unverdünnt — höchstens stark verdünnt und selten\n\nWasser steht den ganzen Tag frei zur Verfügung. In Berlin: Trinkbrunnen und Leitungswasser sind einwandfrei.`,
+    source: "DGE-Qualitätsstandard Kita-Verpflegung, 7. Auflage 2022",
+  },
+  {
+    keywords: [
+      "erstickungsgefahr", "verschluck", "ganze nüsse kita", "trauben kita",
+      "kirschen kita", "würstchen kita", "choking kindergarten", "nüsse kleinkind",
+    ],
+    answerShort: "Keine ganzen Nüsse, Trauben oder runden Würstchen unter 3 Jahren — Erstickungsgefahr.",
+    answerFull: `**Erstickungsgefahr in der Kita** (unter 3 Jahren besonders)\n\nImmer mundgerecht, weich, nicht rund:\n- Trauben, Kirschen, Cocktailtomaten **halbieren oder vierteln**\n- Keine ganzen Nüsse, Mandeln, Popcorn\n- Würstchen der Länge nach aufschneiden, nicht in Scheiben\n- Hartes Rohkost-Gemüse (Möhre, Apfel) raspeln oder dünsten\n- Stücke unter **1,5 cm**\n\nPersonal bleibt während der Mahlzeit am Tisch. Notfallplan (Erste Hilfe Kind) muss bekannt sein.`,
+    source: "DGE-Qualitätsstandard Kita-Verpflegung, 7. Auflage 2022",
+  },
+  {
+    keywords: [
+      "kita milch", "rohmilch", "vorzugsmilch kita", "milch u3", "vollmilch kita",
+      "raw milk kindergarten",
+    ],
+    answerShort: "Keine Rohmilch in der Kita. U3: Vollmilch, pasteurisiert.",
+    answerFull: `**Milch in der Kita**\n\n- **Immer pasteurisiert** — keine Rohmilch / Vorzugsmilch (Listerien, EHEC)\n- **U3 (1–3 J.):** Vollmilch ca. 3,5 % Fett (Energie und fettlösliche Vitamine)\n- **Ü3:** fettarme Milch 1,5 % ist üblich, Vollmilch bleibt erlaubt\n- Pflanzendrinks nur nach Absprache (Allergie, familiäre Vorgabe) und angereichert (Calcium, B12)\n- Ungezuckert. Kakao nicht als Alltagsgetränk.`,
+    source: "DGE-Qualitätsstandard Kita-Verpflegung, 7. Auflage 2022",
+  },
+  {
+    keywords: [
+      "kita salz", "salz kleinkind", "jodsalz kita", "kindergarten salt",
+    ],
+    answerShort: "In der Kita sparsam salzen — immer Jodsalz, keine Würzsoßen extra auf den Tisch.",
+    answerFull: `**Salz in der Kita**\n\n- Sparsam würzen, Kräuter statt Salz\n- **Immer Jodsalz** (Deutschland ist Jodmangelgebiet)\n- Keine Salzstreuer auf dem Kindertisch\n- Fertigsoßen, Brühwürfel und Knabbergebäck oft versteckt salzig — meiden\n- DGE: der Salzgehalt der Mittagsverpflegung soll niedrig bleiben; genaue mg-Grenzen gehören in die Nährwertberechnung.`,
+    source: "DGE-Qualitätsstandard Kita-Verpflegung, 7. Auflage 2022",
+  },
+  {
+    keywords: [
+      "kita fleisch", "fleisch kindergarten", "kita wurst", "kita fisch",
+      "kita vegetarisch",
+    ],
+    answerShort: "Kita: max. 2× Fleisch/Woche, davon max. 1× rot. Fisch 1×. Vegetarisch oft.",
+    answerFull: `**Fleisch, Fisch, Vegetarisch — Kita (DGE 2022)**\n\n- Fleisch/Wurst **höchstens 2×/Woche**\n- Rotes Fleisch (Rind, Schwein, Lamm) **höchstens 1×/Woche**\n- **Seefisch mindestens 1×/Woche** (MSC, ohne Gräten, weich)\n- Vegetarische/vegane Hauptgerichte **mindestens 3×/Woche**\n- Hülsenfrüchte **mindestens 1×/Woche** (Linsen, Bohnen — weich gekocht)\n- Frittiertes **vermeiden** (höchstens selten, nicht wöchentlich)\n\nIn KitchenOS: DGE-Standard auf **Kita** stellen — der Score prüft genau diese Frequenzen.`,
+    source: "DGE-Qualitätsstandard Kita-Verpflegung, 7. Auflage 2022",
+  },
+  {
+    keywords: [
+      "kantine dge", "betriebsgastronomie", "betriebsrestaurant standard",
+      "kantine fleisch", "kantine vollkorn",
+    ],
+    answerShort: "Kantine: Gemüse täglich, Vollkorn 3×, Fleisch max. 2×, Fisch 1×, Wasser frei.",
+    answerFull: `**DGE in der Kantine / Betriebsgastronomie**\n\nDie DGE-Kriterien für Gemeinschaftsverpflegung gelten analog:\n- Gemüse oder Salat **täglich**\n- Vollkorn **≥ 3×/Woche**\n- Hülsenfrüchte **≥ 1×/Woche**\n- Seefisch **≥ 1×/Woche**\n- Rotes Fleisch **≤ 1–2×/Woche**\n- Frittiertes **≤ 1×/Woche**\n- Ungesüßte Getränke, Wasser kostenlos\n- Jodsalz, wenig Zucker\n\nFür Berliner Behördenkantinen gilt zusätzlich die Berliner Ernährungsstrategie (Bio-Quote, regional, saisonal).`,
+    source: "DGE-Qualitätsstandards Gemeinschaftsverpflegung",
+  },
+
+  // ── Berlin / Vorbestellung ────────────────────────────────────────────────
+  {
+    keywords: [
+      "berlin kita", "berliner ernährungsstrategie", "bio quote berlin",
+      "berlin kantine", "berlin speiseplan",
+    ],
+    answerShort: "Berlin: öffentliche Küchen sollen Bio und Regional steigern — DGE bleibt die fachliche Basis.",
+    answerFull: `**Berlin — Kita und Kantine**\n\n- Fachliche Grundlage: **DGE-Qualitätsstandard Kita bzw. Gemeinschaftsverpflegung**\n- Berliner Ernährungsstrategie: mehr Bio, regional, saisonal, weniger Fleisch in öffentlichen Küchen\n- Leitungswasser in Berlin ist einwandfrei — als Standardgetränk nutzen\n- Allergenkennzeichnung (LMIV) muss für Erzieher:innen und Eltern nachvollziehbar sein\n- Bei Träger-Ausschreibungen oft DGE-Nachweis + Bio-Anteil gefordert — KitchenOS DGE-PDF nutzen\n\nKitchenOS sitzt in Berlin: Speiseplan, Vorbestellung und HACCP sind auf genau dieses Umfeld gebaut.`,
+    source: "DGE 2022 / Berliner Ernährungsstrategie",
+  },
+  {
+    keywords: [
+      "vorbestellung", "wochenplan bestellen", "preorder", "kita bestellen",
+      "speiseplan woche", "bestellung 08:00", "cutoff vorbestellung",
+      "weekly order kindergarten",
+    ],
+    answerShort: "Kitas bestellen die Woche im Portal. Änderungen nur bis 08:00 Berlin am Liefertag.",
+    answerFull: `**Wochen-Vorbestellung für Kitas**\n\n1. Küche veröffentlicht den **KW-Speiseplan** (Mo–Fr) im KitchenOS Preorder\n2. Kita / Standort loggt sich als **Geschäftskonto** ein (nach Freigabe durch die Küche)\n3. Pro Tag Gerichte und Stückzahlen wählen — Warenkorb bleibt erhalten bis zur Bestellung\n4. Bestellung absenden. **Stichtag: 08:00 Uhr Europe/Berlin** am gewünschten Liefertag\n5. Küche sieht Mengen in Produktion / Lieferliste\n\nTipp: Referenzcode vom Caterer einlösen, dann ist der Standort der Küche zugeordnet.\nOhne Internet in der Kita: Bestellung am Büro-Rechner der Leitung, nicht in der Küche.`,
+    source: "KitchenOS Preorder / Europe/Berlin Cut-off 08:00",
+  },
+  {
+    keywords: [
+      "geschäftskonto", "business account", "kita portal zugang",
+      "referenzcode", "freigabe kunde",
+    ],
+    answerShort: "Kitas brauchen ein freigeschaltetes Geschäftskonto und oft einen Referenzcode der Küche.",
+    answerFull: `**Zugang zum Bestellportal**\n\n- Registrierung im Preorder-Portal\n- **Referenzcode** der liefernden Küche einlösen (Profil)\n- Küche schaltet das Konto frei (**Geschäftskonto genehmigt**)\n- Erst dann sind Wochenbestellungen möglich — schützt vor Fremdbestellungen\n\nEltern einzelner Kinder bestellen hier nicht; das Portal ist für **Standorte / Träger / Kantinenkunden**.`,
+  },
+  {
+    keywords: [
+      "anlieferung kita", "warmhaltezeit", "lieferkette warm", "ausgabe kita",
+      "speisenverteilung",
+    ],
+    answerShort: "Warme Anlieferung: Ausgabe ≥ 65 °C, max. 30 Min halten. Kühlkost ≤ 7 °C.",
+    answerFull: `**Anlieferung Kita / Außenstelle**\n\n- Warmkette: **≥ 65 °C** bei Ausgabe, Warmhalten **max. 30 Minuten**\n- Kühlkost: **≤ 7 °C**, Tiefkühl **≤ −18 °C**\n- Thermoboxen vorheizen / vorkühlen, Temperatur loggen (HACCP)\n- Rückstellprobe **≥ 100 g, 7 Tage, −18 °C** auch für ausgelieferte Chargen\n- Allergeninfo fährt mit (Aushang oder Lieferschein)\n\nIn KitchenOS: Produktion → Rückstellproben + HACCP-Temperaturlog.`,
+    source: "LMHV §4 / §11 / EU 852/2004",
+  },
+  {
+    keywords: [
+      "kios was kannst du", "kios hilfe", "was kann kios", "kios befehle",
+      "offline kios",
+    ],
+    answerShort: "Kios antwortet zu DGE, HACCP und Kita auch ohne Internet. Sage z. B. Kita kcal oder HACCP.",
+    answerFull: `**Kios — der Küchenassistent**\n\nOhne Internet beantwortet Kios vorbereitete Fragen zu:\n- DGE Kita / Schule / Kantine (kcal, Fleisch, Fisch, Zucker, Getränke)\n- HACCP-Temperaturen, Allergene, Rückstellproben\n- Vorbestellung und Berliner Praxis\n\nMit Internet zusätzlich: Rezeptvorschläge, Bildscan, freie Fragen.\n\nBeispiele: „Kios, Kita kcal“, „Kios, Ausgabetemperatur“, „Kios, Honig unter einem Jahr“, „Kios, Vorbestellung“.`,
+  },
+  {
+    keywords: ["dge kita", "dge kindergarten", "kita standard dge", "qualitätsstandard kita"],
+    answerShort: "DGE Kita 2022: Obst und Milch täglich, kein Frittieren, wenig Fleisch, Fisch 1×.",
+    answerFull: `**DGE-Qualitätsstandard Kita-Verpflegung (7. Aufl. 2022) — Kern**\n\n| Regel | Soll |\n|---|---|\n| Gemüse/Salat | täglich |\n| Obst | täglich |\n| Milchprodukt | täglich |\n| Vollkorn | ≥ 3×/Woche |\n| Hülsenfrüchte | ≥ 1×/Woche |\n| Seefisch | ≥ 1×/Woche |\n| Vegetarisch | ≥ 3×/Woche |\n| Rotes Fleisch | ≤ 1×/Woche |\n| Frittiert | vermeiden |\n| Süßspeise | ≤ 1×/Woche |\n\nMittagessen deckt bei Ganztagskita etwa **50 %** des Tagesbedarfs.\nKitchenOS → Mehr → DGE-Qualitätsstandard, Einrichtungstyp **Kita**.`,
+    source: "DGE-Qualitätsstandard Kita-Verpflegung, 7. Auflage 2022",
+  },
+  {
+    keywords: [
+      "portion kita", "wie viel gramm kita", "ü3 gramm", "u3 gramm",
+      "kantine portion erwachsene",
+    ],
+    answerShort: "Kita U3 150–200 g, Ü3 200–250 g. Kantine Erwachsene 350–450 g.",
+    answerFull: `**Portionsgrößen (Richtwerte)**\n\n| Gruppe | Hauptgericht |\n|---|---|\n| Kita U3 (1–3 J.) | 150–200 g |\n| Kita Ü3 (3–6 J.) | 200–250 g |\n| Grundschule | 280–350 g |\n| Kantine Erwachsene | 350–450 g |\n| Suppe | 300–400 ml |\n| Dessert / Obst | 80–150 g |\n\nLieber nachnehmen lassen als überfüllen — besonders in der Kita.`,
+    source: "DGE-Qualitätsstandards / Mensa-Richtwerte",
+  },
+  {
+    keywords: [
+      "kita allergen", "eltern allergen", "aushang kita", "notfall allergen",
+    ],
+    answerShort: "14 LMIV-Allergene schriftlich bereithalten. Bei Notfall: Notfallplan, nicht selbst experimentieren.",
+    answerFull: `**Allergene in der Kita**\n\n- Die 14 LMIV-Allergene müssen **schriftlich** vorliegen (Aushang oder Karte)\n- Erzieher:innen brauchen die Info **vor** der Ausgabe, nicht erst auf Nachfrage der Eltern\n- Rezepturänderungen sofort nachziehen\n- Bei bekanntem Allergen: Gericht sperren oder Alternative — keine „ist nur ein bisschen“-Kompromisse\n- Notfall (Anaphylaxie): Notfallset laut Kita-Konzept, Rettungsdienst\n\nKitchenOS: Rezept → LMIV-Aushang drucken.`,
+    source: "EU LMIV 1169/2011",
+  },
+  {
+    keywords: [
+      "eier kita", "rohes ei", "salmonellen kita", "tiramisu kita",
+    ],
+    answerShort: "Keine rohen Eier in der Kita — Salmonellen. Nur durcherhitzt.",
+    answerFull: `**Eier in der Kita**\n\n- Kein Tiramisu, Zabaione, Mayonnaise aus Roh-Ei\n- Eier **durcherhitzen** (Omelett, gekocht, gebacken)\n- Hände und Flächen nach Kontakt reinigen\n- Kühlkette einhalten\n\nGilt analog für Mousse und Desserts mit unpasteurisiertem Ei.`,
+    source: "LMHV / DGE Kita 2022",
+  },
 ];
+
 
 /**
  * Search offline knowledge for the best matching entry.
- * Returns null when no keyword matches.
+ * Scores by longest matching keyword so "kita kcal" beats a generic "kcal" hit.
+ * Returns null when no keyword matches strongly enough.
  */
+function normalizeQuery(question: string): string {
+  return question
+    .toLowerCase()
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
+    .replace(/ß/g, "ss");
+}
+
 export function searchOffline(question: string): OfflineEntry | null {
   const q = question.toLowerCase();
+  const qn = normalizeQuery(question);
+  let best: { entry: OfflineEntry; score: number } | null = null;
   for (const entry of OFFLINE_KNOWLEDGE) {
-    if (entry.keywords.some((kw) => q.includes(kw.toLowerCase()))) {
-      return entry;
+    let score = 0;
+    for (const kw of entry.keywords) {
+      const k = kw.toLowerCase();
+      const kn = normalizeQuery(kw);
+      if (q.includes(k) || qn.includes(kn)) {
+        score += k.length + (k.includes(" ") ? 6 : 0);
+      }
+    }
+    if (score > 0 && (!best || score > best.score)) {
+      best = { entry, score };
     }
   }
-  return null;
+  if (!best || best.score < 4) return null;
+  return best.entry;
+}
+
+/**
+ * Kitchen mutations and navigation should not be answered from the static
+ * knowledge base — they need live state or the AI command parser.
+ */
+export function isKitchenCommand(question: string): boolean {
+  return /\b(bestell\w*|nachbestell\w*|öffne|navigier\w*|stornier\w*|starte|lösch\w*|lege\s+an|addiere|buche\s+|zeig\s+mir\s+(die\s+)?(karte|lager|haccp)|geh\s+zu|go\s+to|open\s+|order\s+\d)\b/i.test(
+    question,
+  );
 }
 
 /**

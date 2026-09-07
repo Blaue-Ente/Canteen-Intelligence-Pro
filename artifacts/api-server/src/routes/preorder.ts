@@ -1251,7 +1251,7 @@ router.get("/preorder/announcements/:locationCode/:id/file", async (req: Request
 
 /** GET /api/preorder/branding?orgId=xxx  — public, returns branding data for an org */
 router.get(
-  "/branding",
+  "/preorder/branding",
   async (req: Request, res: Response) => {
     const orgId = req.query["orgId"] as string | undefined;
     if (!orgId) return res.status(400).json({ error: "orgId required" });
@@ -1266,7 +1266,7 @@ router.get(
 
 /** PUT /api/preorder/branding  — authed (owner/manager), saves branding for the caller's org */
 router.put(
-  "/branding",
+  "/preorder/branding",
   requireAuth,
   async (req: Request, res: Response) => {
     const userId = (req as AuthedRequest).userId;

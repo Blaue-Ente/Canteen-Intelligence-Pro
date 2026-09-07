@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { askKios, type ConversationMessage } from "@/lib/kios";
 import { generateRecipe } from "@/lib/ai";
-import { searchOffline } from "@/constants/offlineKnowledge";
+import { isKitchenCommand, searchOffline } from "@/constants/offlineKnowledge";
 import { speakHQ, stopSpeaking, isSafari, prewarmTtsCache, primeAudio, prefetchKiosPhrases } from "@/lib/voice";
 import { useApp } from "@/contexts/AppContext";
 import {
@@ -1746,6 +1746,18 @@ export function useKios() {
       r.current.lastSpokenText = sorry;
       speakHQ(sorry, locale, () => scheduleFollowup(400), snap.kiosVoice);
       return;
+    }
+
+    // Knowledge questions: answer from the local DGE/HACCP/Kita corpus first
+    // so kitchens without internet (and LLM cost) stay usable.
+    if (!isKitchenCommand(question)) {
+      const offlineHit = searchOffline(question);
+      if (offlineHit) {
+        setStatus("speaking");
+        r.current.lastSpokenText = offlineHit.answerShort;
+        speakHQ(offlineHit.answerShort, locale, () => scheduleFollowup(500), snap.kiosVoice);
+        return;
+      }
     }
 
     // AI round-trip — pass conversation history for multi-turn memory

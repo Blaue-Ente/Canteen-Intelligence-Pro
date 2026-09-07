@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import { getAuthToken } from "@/lib/api";
 
 type AnyWindow = {
   SpeechRecognition?: new () => SpeechRecognitionInstance;
@@ -344,9 +345,13 @@ async function fetchTts(text: string, voice: string): Promise<AudioBuffer | null
   try {
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), 8_000);
+    const token = await getAuthToken();
     const resp = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify({ text, voice }),
       signal: ac.signal,
     });
@@ -393,9 +398,13 @@ export async function prewarmTtsCache(opts?: {
   const key = `${opts?.preset ?? "kios-de"}|${opts?.voice ?? "sarah"}`;
   if (_prewarmedKey === key && !opts?.phrases) return true;
   try {
+    const token = await getAuthToken();
     const resp = await fetch(`${ttsBaseUrl()}/api/ai/tts/prewarm`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify({
         preset: opts?.preset ?? "kios-de",
         voice: opts?.voice,

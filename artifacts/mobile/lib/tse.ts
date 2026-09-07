@@ -14,6 +14,7 @@
 
 import { fetch as expoFetch } from "expo/fetch";
 import { roundMoney, toCents, sumMoney, mulMoney } from "@/lib/money";
+import { authHeaders } from "@/lib/api";
 import type { SaleEntry, SignedSale, TseConfig, TseProvider } from "@/types";
 
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
@@ -40,9 +41,10 @@ export function buildProcessData(args: {
   paymentMethod?: "Bar" | "Unbar";
 }): string {
   const gross = roundMoney(args.gross);
-  const vat19 = args.vatPct === 19 ? gross : 0;
-  const vat7  = args.vatPct === 7  ? gross : 0;
-  const vat0  = args.vatPct === 0  ? gross : 0;
+  const vat = args.vatPct > 0 ? roundMoney((gross * args.vatPct) / (100 + args.vatPct)) : 0;
+  const vat19 = args.vatPct === 19 ? vat : 0;
+  const vat7  = args.vatPct === 7  ? vat : 0;
+  const vat0  = args.vatPct === 0  ? 0 : 0;
   const fmt = (n: number) => n.toFixed(2);
   return `Beleg^${fmt(gross)}_${fmt(vat19)}_${fmt(vat7)}_${fmt(vat0)}_0.00^${fmt(gross)}:${args.paymentMethod ?? "Bar"}`;
 }
@@ -72,7 +74,7 @@ export async function signSale(args: {
   const processData = buildProcessData({ gross: args.sale.revenue, vatPct: args.vatPct });
   const res = await expoFetch(`${API_BASE}/api/tse/sign`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await authHeaders(),
     body: JSON.stringify({
       txNumber,
       kassennummer: args.config.kassennummer || "K-001",

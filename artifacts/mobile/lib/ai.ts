@@ -1,4 +1,5 @@
 import { fetch as expoFetch } from "expo/fetch";
+import { authHeaders } from "@/lib/api";
 
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
@@ -13,7 +14,7 @@ export async function streamChat(
 ): Promise<string> {
   const res = await expoFetch(`${API_BASE}/api/ai/chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await authHeaders(),
     body: JSON.stringify({ messages }),
   });
   if (!res.ok || !res.body) {
@@ -58,7 +59,7 @@ export async function analyzePhoto(
 ): Promise<string> {
   const res = await expoFetch(`${API_BASE}/api/ai/vision`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await authHeaders(),
     body: JSON.stringify({ base64, prompt }),
   });
   if (!res.ok) throw new Error(`Vision failed: ${res.status}`);
@@ -74,7 +75,7 @@ export async function generateJson<T>(
 ): Promise<T> {
   const res = await expoFetch(`${API_BASE}/api/ai/json`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await authHeaders(),
     body: JSON.stringify({ prompt, schemaHint, base64, base64Array }),
   });
   if (!res.ok) throw new Error(`JSON failed: ${res.status}`);
@@ -422,7 +423,7 @@ export async function parseMenuPdf(args: {
 }): Promise<ParsedMenu> {
   const res = await expoFetch(`${API_BASE}/api/ai/parse-menu-pdf`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await authHeaders(),
     body: JSON.stringify({ base64: args.base64, locale: args.locale }),
   });
   if (!res.ok) {
@@ -756,7 +757,7 @@ export async function importRecipesFromSource(args: {
 }): Promise<ImportedRecipe[]> {
   const res = await expoFetch(`${API_BASE}/api/ai/import-recipes`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await authHeaders(),
     body: JSON.stringify({ base64: args.base64, text: args.text, locale: args.locale }),
   });
   if (!res.ok) {

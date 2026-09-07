@@ -36,6 +36,7 @@ import { Badge, Button, Card, Field, SectionHeader, Stat } from "@/components/ui
 import { useApp, useT } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { computeTotal, useTimeMachineQueue } from "@/lib/salesQueue";
+import { authHeaders } from "@/lib/api";
 import type { SaleEntry, TrayItem, TraySession } from "@/types";
 
 const API_BASE =
@@ -226,7 +227,7 @@ export default function TrayScanScreen() {
 
       const res = await fetch(`${API_BASE}/ai/tray-scan`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await authHeaders(),
         body: JSON.stringify({
           base64,
           menuItems: menuContext,
@@ -393,7 +394,7 @@ export default function TrayScanScreen() {
       const imageBase64 = await uriToBase64(uri);
       const resp = await fetch(`${API_BASE}/ai/cash-scan`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await authHeaders(),
         body: JSON.stringify({ imageBase64 }),
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);

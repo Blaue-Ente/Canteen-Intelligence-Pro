@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link, useRoute, useLocation } from "wouter";
 import { SignedIn, SignedOut, RedirectToSignIn, useUser } from "@clerk/clerk-react";
 import {
@@ -51,15 +51,19 @@ function CheckoutInner() {
   );
   const [guestName, setGuestName] = useState(initialName);
   const [guestNote, setGuestNote] = useState("");
-  const [wantedFor, setWantedFor] = useState<string>(defaultWantedFor());
+  const dateFromQuery = new URLSearchParams(window.location.search).get("date");
+  const [wantedFor, setWantedFor] = useState<string>(() => {
+    if (dateFromQuery && /^\d{4}-\d{2}-\d{2}$/.test(dateFromQuery)) return dateFromQuery;
+    return defaultWantedFor();
+  });
 
   const createOrder = useCreateGuestOrder();
 
-  // Redirect if cart is empty
-  if (items.length === 0) {
-    setLocation(`/menu/${locationCode}`);
-    return null;
-  }
+  useEffect(() => {
+    if (items.length === 0 && !createOrder.isPending && !createOrder.isSuccess) {
+      setLocation(`/menu/${locationCode}`);
+    }
+  }, [items.length, locationCode, setLocation, createOrder.isPending, createOrder.isSuccess]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,7 +101,7 @@ function CheckoutInner() {
     }
   };
 
-  if (profileLoading) {
+  if (profileLoading || items.length === 0) {
     return (
       <div className="min-h-[100dvh] flex items-center justify-center bg-background">
         <Loader2 className="w-6 h-6 animate-spin text-primary" />

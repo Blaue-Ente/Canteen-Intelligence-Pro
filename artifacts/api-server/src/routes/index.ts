@@ -14,6 +14,7 @@ import { pushRouter } from "./push";
 import recipeLibraryRouter from "./recipeLibrary";
 import foodLookupRouter from "./foodLookup";
 import iyverisRouter from "./iyveris";
+import leadsRouter from "./leads";
 
 const router: IRouter = Router();
 
@@ -32,5 +33,6 @@ router.use(pushRouter);
 router.use(recipeLibraryRouter);
 router.use(foodLookupRouter);
 router.use(iyverisRouter);
+router.use(leadsRouter);
 
 export default router;

@@ -1,6 +1,8 @@
 import { Router } from "express";
+import { requireAuth } from "../lib/auth";
 
 const router = Router();
+router.use(requireAuth);
 
 // Simple in-memory cache: barcode → { data, fetchedAt }
 const CACHE = new Map<string, { data: FoodProduct; fetchedAt: number }>();

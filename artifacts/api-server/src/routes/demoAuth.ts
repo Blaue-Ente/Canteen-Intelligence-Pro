@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { createRateLimiter } from "../lib/rateLimit";
 
 /**
  * Demo sign-in token endpoint.
@@ -38,8 +39,10 @@ const DEMO_EMAILS: Record<DemoVariant, string> = {
 };
 
 const VALID_VARIANTS: ReadonlySet<string> = new Set(Object.keys(DEMO_EMAILS));
+const limitDemoSignIn = createRateLimiter({ windowMs: 15 * 60_000, max: 10 });
 
 router.post("/auth/demo-sign-in-token", async (req, res) => {
+  if (!limitDemoSignIn(req, res)) return;
   const variantRaw: unknown = (req.body as { variant?: unknown } | undefined)?.variant;
   if (typeof variantRaw !== "string" || !VALID_VARIANTS.has(variantRaw)) {
     res.status(400).json({ error: "invalid_variant" });

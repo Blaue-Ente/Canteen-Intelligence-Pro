@@ -1,7 +1,9 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { ReplitConnectors } from "@replit/connectors-sdk";
+import { requireAuth } from "../lib/auth";
 
 const router: IRouter = Router();
+router.use(requireAuth);
 
 interface OutlookMessage {
   id: string;
@@ -35,9 +37,10 @@ router.get("/mail/inbox", async (req: Request, res: Response) => {
       $select: "id,subject,bodyPreview,from,receivedDateTime,isRead,hasAttachments",
     });
     if (filter) {
+      const safe = filter.replace(/'/g, "''").slice(0, 80);
       params.set(
         "$filter",
-        `contains(tolower(subject),'${filter}') or contains(tolower(bodyPreview),'${filter}')`,
+        `contains(tolower(subject),'${safe}') or contains(tolower(bodyPreview),'${safe}')`,
       );
     }
 

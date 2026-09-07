@@ -1,8 +1,10 @@
 import { Router, type IRouter, type Response } from "express";
 import { db, supplierDirectory } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
+import { requireAuth } from "../lib/auth";
 
 const router: IRouter = Router();
+router.use(requireAuth);
 
 // ─── Category config ────────────────────────────────────────────────────────
 const CATEGORIES: Record<string, { osmTags: string[]; productGroups: string[]; placesKeyword: string }> = {

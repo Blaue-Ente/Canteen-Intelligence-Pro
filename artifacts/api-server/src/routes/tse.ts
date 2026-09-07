@@ -27,8 +27,10 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { requireAuth } from "../lib/auth";
 
 const router: IRouter = Router();
+router.use(requireAuth);
 
 // ─── Provider selection ─────────────────────────────────────────────────────
 
@@ -193,14 +195,19 @@ router.post("/tse/sign", async (req: Request, res: Response) => {
     processData: body.processData,
   };
 
-  try {
-    if (fiskalyConfigured()) {
+  if (fiskalyConfigured()) {
+    try {
       const signed = await signFiskaly(fullBody);
       res.json(signed);
       return;
+    } catch (err) {
+      req.log.error({ err }, "fiskaly sign failed — refusing legally invalid stub fallback");
+      res.status(502).json({
+        error: "tse_unavailable",
+        message: "TSE-Signatur fehlgeschlagen. Beleg darf nicht ausgegeben werden.",
+      });
+      return;
     }
-  } catch (err) {
-    req.log.warn({ err }, "fiskaly sign failed — falling back to stub");
   }
   res.json(signStub(fullBody));
 });

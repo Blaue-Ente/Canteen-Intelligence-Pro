@@ -1,8 +1,10 @@
 import { Router, type IRouter, type Response } from "express";
 import { db, supplierDirectory } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
+import { requireAuth } from "../lib/auth";
 
 const router: IRouter = Router();
+router.use(requireAuth);
 
 // Default bounding box used only when the caller did NOT provide a location
 // (lat/lng). The default covers Berlin + Brandenburg because that's where the

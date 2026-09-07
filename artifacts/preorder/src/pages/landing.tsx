@@ -26,7 +26,9 @@ function useBranding(): PreorderBranding {
     fetch(`/api/preorder/branding?orgId=${encodeURIComponent(orgId)}`)
       .then((r) => (r.ok ? r.json() : {}))
       .then((d: PreorderBranding) => setBranding(d))
-      .catch(() => {});
+      .catch(() => {
+        // Branding is optional — keep default landing if the org has none yet.
+      });
   }, []);
   return branding;
 }

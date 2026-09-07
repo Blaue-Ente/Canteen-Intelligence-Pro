@@ -40,7 +40,39 @@ app.use(
 app.use(`${CLERK_PROXY_PATH}/npm`, clerkNpmMiddleware());
 app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 
-app.use(cors({ credentials: true, origin: true }));
+function isAllowedCorsOrigin(origin: string): boolean {
+  try {
+    const { hostname, protocol } = new URL(origin);
+    if (protocol !== "http:" && protocol !== "https:") return false;
+    if (hostname === "localhost" || hostname === "127.0.0.1") return true;
+    if (hostname === "kitchenos.de" || hostname.endsWith(".kitchenos.de")) return true;
+    // Current hosting is Replit; keep preview + production repl origins working.
+    if (
+      hostname.endsWith(".replit.app") ||
+      hostname.endsWith(".replit.dev") ||
+      hostname.endsWith(".repl.co")
+    ) {
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+app.use(
+  cors({
+    credentials: true,
+    origin: (origin, callback) => {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      callback(null, isAllowedCorsOrigin(origin));
+    },
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }),
+);
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true }));
 

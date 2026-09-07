@@ -44,6 +44,11 @@ Thumbs.db
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md
 
+# Secrets — never commit local env files. Replit [userenv] stays in `.replit`.
+.env
+.env.*
+!.env.example
+
 # Replit
 .cache/
 .local/

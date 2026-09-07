@@ -50,8 +50,8 @@ export default function More() {
     {
       title: t("secDailyOps"),
       items: [
-        { icon: "check-square",   label: "Tagesabschluss",        to: "/sales" },
-        { icon: "credit-card",    label: "Kasse",                  to: "/kasse" },
+        { icon: "check-square",   label: t("dailyClose"),         to: "/sales" },
+        { icon: "credit-card",    label: t("posRegister"),         to: "/kasse" },
         { icon: "camera",         label: t("trayScanTitle"),       to: "/tray-scan", tint: "#f59e0b" },
         { icon: "credit-card",    label: t("zettle"),              to: "/zettle" },
         { icon: "message-square", label: t("handover"),            to: "/handover" },
@@ -62,7 +62,7 @@ export default function More() {
     {
       title: t("secKitchenProd"),
       items: [
-        { icon: "clipboard",      label: "Produktion / Rückstellproben", to: "/production" },
+        { icon: "clipboard",      label: t("productionSamples"), to: "/production" },
         { icon: "refresh-ccw",    label: t("resteRezepte"),    to: "/reste" },
         { icon: "dollar-sign",    label: t("calculator"),      to: "/calculator" },
       ],
@@ -94,10 +94,10 @@ export default function More() {
       title: t("secComplianceQuality"),
       items: [
         { icon: "shield",         label: "HACCP & " + t("legalDocs"), to: "/haccp" },
-        { icon: "award",          label: "DGE-Qualitätsstandard",     to: "/dge",      tint: "#059669" },
-        { icon: "droplet",        label: "Reinigungsplan",            to: "/cleaning" },
+        { icon: "award",          label: t("dgeQualityStandard"),     to: "/dge",      tint: "#059669" },
+        { icon: "droplet",        label: t("cleaningPlan"),           to: "/cleaning" },
         { icon: "trash-2",        label: t("waste"),                  to: "/waste" },
-        { icon: "camera",         label: "Tablett-Foto-Analyse",      to: "/wastecam" },
+        { icon: "camera",         label: t("trayPhotoAnalysis"),      to: "/wastecam" },
       ],
     },
     // 7. Insights & Berichte — KI-Vorhersagen + Reports + Multi-Standort

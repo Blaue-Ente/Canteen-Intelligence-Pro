@@ -1,4 +1,5 @@
 import { fetch as expoFetch } from "expo/fetch";
+import { authHeaders } from "@/lib/api";
 
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
@@ -23,6 +24,7 @@ export async function fetchInbox(opts?: {
 
   const res = await expoFetch(`${API_BASE}/api/mail/inbox?${params.toString()}`, {
     method: "GET",
+    headers: await authHeaders(),
   });
   if (!res.ok) {
     const j = (await res.json().catch(() => ({}))) as { error?: string };
@@ -35,6 +37,7 @@ export async function fetchInbox(opts?: {
 export async function fetchMessage(id: string): Promise<MailMessage> {
   const res = await expoFetch(`${API_BASE}/api/mail/message/${encodeURIComponent(id)}`, {
     method: "GET",
+    headers: await authHeaders(),
   });
   if (!res.ok) {
     const j = (await res.json().catch(() => ({}))) as { error?: string };
@@ -47,5 +50,6 @@ export async function fetchMessage(id: string): Promise<MailMessage> {
 export async function markAsRead(id: string): Promise<void> {
   await expoFetch(`${API_BASE}/api/mail/message/${encodeURIComponent(id)}/read`, {
     method: "PATCH",
+    headers: await authHeaders(),
   });
 }
